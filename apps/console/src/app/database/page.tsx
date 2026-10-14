@@ -227,9 +227,13 @@ export default function FirebaseStudioReplicaPage() {
     }
     setIsCreatingDb(true);
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/databases`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           databaseId: newDbId.trim(),
           name: newDbName.trim(),

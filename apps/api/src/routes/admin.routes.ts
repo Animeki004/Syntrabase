@@ -316,13 +316,18 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
     let mailDispatched = false;
     let mailError: string | null = null;
     try {
+      const consoleBaseUrl = process.env.CONSOLE_DOMAIN
+        ? (process.env.CONSOLE_DOMAIN.startsWith('http') ? process.env.CONSOLE_DOMAIN : `https://${process.env.CONSOLE_DOMAIN}`)
+        : 'https://console.originhub.me';
+      const loginUrl = `${consoleBaseUrl}/login`;
+
       await EmailService.sendEmail({
         projectId: 'platform',
         to: dev.email,
-        from: 'security@syntrabase.internal',
+        from: 'security@syntrabase.app',
         fromName: 'Syntrabase Cloud Security',
         subject: 'Syntrabase Console — Your Password Has Been Reset',
-        text: `An administrator has initiated a secure credentials reset for your developer console account (${dev.email}). Temporary password: ${generatedTempPassword}`,
+        text: `An administrator has initiated a secure credentials reset for your developer console account (${dev.email}). Temporary password: ${generatedTempPassword}\n\nPlease sign in to the developer console at ${loginUrl} using this temporary password.`,
         html: `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 32px 24px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 24px;">
@@ -338,7 +343,7 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
               <code style="font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; color: #34d399; letter-spacing: 0.05em; user-select: all;">${generatedTempPassword}</code>
             </div>
             <p style="font-size: 13px; color: #9ca3af; margin-bottom: 24px;">
-              Please sign in to the developer console at <a href="http://localhost:3000/login" style="color: #818cf8; text-decoration: underline;">http://localhost:3000/login</a> using this temporary password and immediately update your credentials.
+              Please sign in to the developer console at <a href="${loginUrl}" style="color: #818cf8; text-decoration: underline;">${loginUrl}</a> using this temporary password and immediately update your credentials.
             </p>
             <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px; font-size: 12px; color: #6b7280;">
               This is an automated security advisory. If you did not request this, notify platform security immediately.
@@ -1094,6 +1099,7 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
   // Trigger Immediate Outbox Queue Flush
   server.post('/api/v1/admin/email/queue/flush', async (req, reply) => {
     await requireSuperAdmin(req);
+    await query(`UPDATE email_outbox_queue SET next_retry_at = NOW(), attempts = 0 WHERE status = 'deferred'`).catch(() => {});
     const result = await EmailService.processOutboxQueue();
     return reply.send({ success: true, ...result });
   });

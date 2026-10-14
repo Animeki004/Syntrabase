@@ -94,13 +94,35 @@ export const authRoutes: FastifyPluginAsync = async (server: FastifyInstance) =>
         [dev.id, tokenHash]
       );
 
-      const resetUrl = `http://localhost:3000/login?reset_token=${rawToken}`;
+      const origin =
+        (req.headers.origin as string) ||
+        (req.headers.referer ? new URL(req.headers.referer).origin : null) ||
+        (process.env.CONSOLE_DOMAIN ? `https://${process.env.CONSOLE_DOMAIN}` : 'https://console.originhub.me');
+      const resetUrl = `${origin}/login?reset_token=${rawToken}`;
+
+      // Dynamically resolve verified sender address
+      let platformFromEmail = 'security@syntrabase.app';
+      try {
+        const senderRes = await query<{ email_address: string }>(
+          `SELECT email_address FROM authorized_sender_identities WHERE (project_id = 'platform' OR project_id = 'default') AND status = 'active' LIMIT 1`
+        );
+        if (senderRes.rows[0]?.email_address) {
+          platformFromEmail = senderRes.rows[0].email_address;
+        } else {
+          const accRes = await query<{ account_email: string }>(
+            `SELECT account_email FROM email_provider_accounts WHERE is_enabled = TRUE AND status = 'healthy' AND account_email IS NOT NULL LIMIT 1`
+          );
+          if (accRes.rows[0]?.account_email) {
+            platformFromEmail = accRes.rows[0].account_email;
+          }
+        }
+      } catch {}
 
       // Enqueue transactional email via durable Brevo outbox
       await EmailService.enqueueEmail({
         projectId: 'platform',
         toEmail: dev.email,
-        fromEmail: 'security@syntrabase.app',
+        fromEmail: platformFromEmail,
         fromName: 'Syntrabase Security',
         subject: 'Reset your Syntrabase Developer Console password',
         text: `Hello ${dev.displayName || 'Developer'},\n\nA request was made to reset your password for the Syntrabase Developer Console.\n\nClick the link below to set a new password:\n${resetUrl}\n\nThis single-use link is valid for 30 minutes. If you did not make this request, you can safely ignore this email.\n\nSyntrabase Security Team`,

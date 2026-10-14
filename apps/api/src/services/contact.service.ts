@@ -385,31 +385,35 @@ export class ContactService {
         .replace(/>/g, '&gt;')
         .replace(/\n/g, '<br/>');
 
-      EmailService.enqueueEmail({
-        projectId: submission.projectId,
-        toEmail: recipientEmail.trim(),
-        fromEmail: 'support@syntrabase.app',
-        fromName: 'Syntrabase Support Team',
-        subject: `[${submission.ticketReference}] Response to your support inquiry: ${submission.subject}`,
-        text: `Hello,\n\nAn official response has been posted to your support inquiry (${submission.ticketReference}):\n\n${cleanReply}\n\nStatus: ${nextStatus.toUpperCase()}\nReplied by: ${operator}\n\nYou can review your ticket status and follow up in the Syntrabase Developer Console.\n\nBest regards,\nSyntrabase Support Team`,
-        html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:20px auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff;color:#0f172a;">
-          <div style="margin-bottom:16px;">
-            <h2 style="color:#2563eb;margin:0;font-size:20px;letter-spacing:-0.02em;">Syntrabase Support Team</h2>
-          </div>
-          <p style="font-size:14px;color:#334155;line-height:1.6;">An official response has been issued for your ticket <strong style="font-family:monospace;color:#2563eb;">${submission.ticketReference}</strong> (<strong>${submission.subject}</strong>):</p>
-          <div style="background:#f8fafc;border-left:4px solid #2563eb;padding:16px;border-radius:6px;font-size:14px;line-height:1.6;color:#1e293b;margin:20px 0;">
-            ${safeReplyHtml}
-          </div>
-          <div style="background:#f1f5f9;border-radius:8px;padding:12px 16px;font-size:13px;color:#475569;display:flex;justify-content:space-between;margin-bottom:18px;">
-            <span><strong>Status:</strong> ${nextStatus.toUpperCase()}</span>
-            <span><strong>Representative:</strong> ${operator}</span>
-          </div>
-          <p style="font-size:13px;color:#64748b;margin-top:20px;border-top:1px solid #f1f5f9;padding-top:14px;">View and follow up on this ticket in your <a href="http://localhost:3000/contact" style="color:#2563eb;text-decoration:none;font-weight:600;">Developer Console Support Center</a>.</p>
-        </div>`,
-        actionType: 'SUPPORT_REPLY',
-      }).catch((err) => {
-        console.warn('[CONTACT SERVICE] Non-fatal notification email dispatch error:', err.message);
-      });
+          const consoleBaseUrl = process.env.CONSOLE_DOMAIN
+            ? (process.env.CONSOLE_DOMAIN.startsWith('http') ? process.env.CONSOLE_DOMAIN : `https://${process.env.CONSOLE_DOMAIN}`)
+            : 'https://console.originhub.me';
+
+          EmailService.enqueueEmail({
+            projectId: submission.projectId,
+            toEmail: recipientEmail.trim(),
+            fromEmail: 'support@syntrabase.app',
+            fromName: 'Syntrabase Support Team',
+            subject: `[${submission.ticketReference}] Response to your support inquiry: ${submission.subject}`,
+            text: `Hello,\n\nAn official response has been posted to your support inquiry (${submission.ticketReference}):\n\n${cleanReply}\n\nStatus: ${nextStatus.toUpperCase()}\nReplied by: ${operator}\n\nYou can review your ticket status and follow up in the Syntrabase Developer Console at ${consoleBaseUrl}/contact.\n\nBest regards,\nSyntrabase Support Team`,
+            html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:20px auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff;color:#0f172a;">
+              <div style="margin-bottom:16px;">
+                <h2 style="color:#2563eb;margin:0;font-size:20px;letter-spacing:-0.02em;">Syntrabase Support Team</h2>
+              </div>
+              <p style="font-size:14px;color:#334155;line-height:1.6;">An official response has been issued for your ticket <strong style="font-family:monospace;color:#2563eb;">${submission.ticketReference}</strong> (<strong>${submission.subject}</strong>):</p>
+              <div style="background:#f8fafc;border-left:4px solid #2563eb;padding:16px;border-radius:6px;font-size:14px;line-height:1.6;color:#1e293b;margin:20px 0;">
+                ${safeReplyHtml}
+              </div>
+              <div style="background:#f1f5f9;border-radius:8px;padding:12px 16px;font-size:13px;color:#475569;display:flex;justify-content:space-between;margin-bottom:18px;">
+                <span><strong>Status:</strong> ${nextStatus.toUpperCase()}</span>
+                <span><strong>Representative:</strong> ${operator}</span>
+              </div>
+              <p style="font-size:13px;color:#64748b;margin-top:20px;border-top:1px solid #f1f5f9;padding-top:14px;">View and follow up on this ticket in your <a href="${consoleBaseUrl}/contact" style="color:#2563eb;text-decoration:none;font-weight:600;">Developer Console Support Center</a>.</p>
+            </div>`,
+            actionType: 'SUPPORT_REPLY',
+          }).catch((err) => {
+            console.warn('[CONTACT SERVICE] Non-fatal notification email dispatch error:', err.message);
+          });
     }
 
     if (params.actorId) {

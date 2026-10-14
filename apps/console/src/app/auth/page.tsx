@@ -519,8 +519,10 @@ export default function SyntrabaseAuthPage() {
 
   const handleRevokeTokens = async (uid: string) => {
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/users/${uid}/revoke`, {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.ok) {
         addToast('All active refresh tokens revoked', 'info');
@@ -578,6 +580,7 @@ export default function SyntrabaseAuthPage() {
       return;
     }
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const payload = {
         senderName: templateSenderName,
         fromEmail: templateFromEmail,
@@ -587,7 +590,10 @@ export default function SyntrabaseAuthPage() {
       };
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/templates/${activeTemplateType}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify(payload),
       });
 
@@ -610,9 +616,13 @@ export default function SyntrabaseAuthPage() {
   const handleSendTestEmail = async () => {
     if (!testEmailAddress) return;
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/templates/test-email`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           templateType: activeTemplateType,
           recipientEmail: testEmailAddress.trim(),
@@ -639,9 +649,13 @@ export default function SyntrabaseAuthPage() {
     }
     setIsResettingPassword(true);
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/users/${resetPasswordTargetUser.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ password: newResetPassword }),
       });
       if (!res.ok) {
@@ -666,9 +680,13 @@ export default function SyntrabaseAuthPage() {
     }
     setIsSendingResetEmail(true);
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/forgot-password`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ email: resetPasswordTargetUser.email }),
       });
       if (!res.ok) {

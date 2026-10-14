@@ -1432,19 +1432,63 @@ export class EmailService {
           apiKey = inMemoryProviderAccounts.get(account.id)?.rawApiKey || 'mock-key';
         }
 
+        // Determine effective sender email that the email provider will accept
+        let effectiveSenderEmail = item.senderEmail;
+        const isPlaceholder =
+          effectiveSenderEmail.endsWith('@syntrabase.app') ||
+          effectiveSenderEmail.endsWith('@syntrabase.internal') ||
+          effectiveSenderEmail.endsWith('@localhost');
+
+        if (isPlaceholder || (domainRecord && domainRecord.verificationStatus !== 'verified')) {
+          // Check for active authorized sender identity for this project or platform
+          try {
+            const senderRes = await query<{ email_address: string }>(
+              `SELECT email_address FROM authorized_sender_identities
+               WHERE (project_id = $1 OR project_id = 'platform') AND status = 'active'
+               LIMIT 1`,
+              [item.projectId]
+            );
+            if (senderRes.rows.length > 0 && senderRes.rows[0].email_address) {
+              effectiveSenderEmail = senderRes.rows[0].email_address;
+            } else if (account.accountEmail) {
+              effectiveSenderEmail = account.accountEmail;
+            }
+          } catch {
+            if (account.accountEmail) {
+              effectiveSenderEmail = account.accountEmail;
+            }
+          }
+        }
+
         const adapter = EmailProviderRegistry.getAdapter(account.providerType);
-        const result = await adapter.sendEmail(apiKey, {
+        let result = await adapter.sendEmail(apiKey, {
           projectId: item.projectId,
           toEmail: item.recipientEmail,
           toName: item.recipientName,
-          fromEmail: item.senderEmail,
+          fromEmail: effectiveSenderEmail,
           fromName: item.senderName,
-          replyTo: item.replyTo,
+          replyTo: item.replyTo || effectiveSenderEmail,
           subject: item.subject,
           html: item.htmlBody,
           text: item.textBody,
           queueId: item.id,
         });
+
+        // Failover: If provider rejects unverified custom domain / sender, retry immediately with account owner email
+        if (!result.success && result.status === 'DOMAIN_ERROR' && account.accountEmail && effectiveSenderEmail !== account.accountEmail) {
+          result = await adapter.sendEmail(apiKey, {
+            projectId: item.projectId,
+            toEmail: item.recipientEmail,
+            toName: item.recipientName,
+            fromEmail: account.accountEmail,
+            fromName: item.senderName,
+            replyTo: item.replyTo || effectiveSenderEmail,
+            subject: item.subject,
+            html: item.htmlBody,
+            text: item.textBody,
+            queueId: item.id,
+          });
+        }
 
         const nowIso = new Date().toISOString();
 

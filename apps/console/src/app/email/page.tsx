@@ -335,9 +335,13 @@ export default function ProjectEmailPage() {
 
     try {
       setIsSubmittingDomain(true);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/email/domains`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ domainName: cleanDomain }),
       }).catch(() => null);
 
@@ -348,6 +352,7 @@ export default function ProjectEmailPage() {
         setShowAddDomainModal(false);
         await fetchEmailData();
         if (data.domain) setSelectedDomain(data.domain);
+      } else {
         const errData = await res?.json().catch(() => ({}));
         addToast(errData?.error || 'Failed to register domain on server', 'error');
       }
@@ -362,8 +367,10 @@ export default function ProjectEmailPage() {
   const handleVerifyDomain = async (domainId: string) => {
     try {
       setVerifyingDomainId(domainId);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/email/domains/${domainId}/verify`, {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       if (res.ok) {
@@ -396,9 +403,13 @@ export default function ProjectEmailPage() {
 
     try {
       setIsSyncingCloudflare(true);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/email/domains/${selectedDomain.id}/cloudflare-sync`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ cloudflareToken: cloudflareToken.trim() }),
       });
 
@@ -423,8 +434,10 @@ export default function ProjectEmailPage() {
   const handleDeleteDomain = async (domainId: string, domainName: string) => {
     try {
       setIsDeletingDomain(true);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/email/domains/${domainId}`, {
         method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       if (res.ok) {
@@ -460,9 +473,13 @@ export default function ProjectEmailPage() {
 
     try {
       setIsSubmittingSender(true);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/email/senders`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           domainId: domain.id,
           displayName: senderDisplayName.trim() || `${activeProject.name} Notifications`,
@@ -490,8 +507,10 @@ export default function ProjectEmailPage() {
   // Handle Delete Sender
   const handleDeleteSender = async (senderId: string, address: string) => {
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/email/senders/${senderId}`, {
         method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       }).catch(() => null);
 
       setSenders((prev) => prev.filter((s) => s.id !== senderId));
@@ -511,9 +530,13 @@ export default function ProjectEmailPage() {
 
     try {
       setIsSendingTest(true);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/email/test`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           recipientEmail: testRecipient.trim(),
           senderAddress: testSenderAddress || (senders[0]?.emailAddress || 'notifications@syntrabase.app'),
