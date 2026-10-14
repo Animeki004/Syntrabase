@@ -150,7 +150,7 @@ test('6. Authorized Senders — Project Isolation and Verification Guardrails', 
         emailAddress: `hack@${domainA.domainName}`,
       });
     },
-    /Selected domain is not registered for this project/
+    /Selected domain is not registered for/
   );
 });
 
@@ -514,7 +514,7 @@ test('13. Outbox Scheduler — Rate Limit & Quota Circuit Breaker with Exponenti
     const queued = await EmailService.enqueueEmail({
       projectId,
       toEmail: 'failover@example.com',
-      fromEmail: 'auth@originhub.me',
+      fromEmail: 'auth@example.com',
       fromName: 'Syntrabase Auth',
       subject: 'Circuit Breaker Test',
       text: 'Test message body',

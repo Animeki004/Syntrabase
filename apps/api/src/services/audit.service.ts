@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { query } from '../db/pool.js';
+import { withTransaction, query } from '../db/pool.js';
 import { CryptoUtil } from '../utils/crypto.js';
 import { config } from '../config.js';
 import { AuditEntry } from '@syntrabase/shared-types';
@@ -23,6 +23,7 @@ export class AuditService {
 
   /**
    * Logs a tamper-evident audit record using cryptographic HMAC-SHA256 chaining.
+   * Concurrency-safe: uses pg_advisory_xact_lock to ensure atomic head evaluation.
    */
   public static async log(params: {
     actorId: string;
@@ -37,62 +38,69 @@ export class AuditService {
     const timestamp = new Date().toISOString();
     const payload = params.payload || {};
 
-    // 1. Fetch previous hash from the latest audit ledger record
-    const lastRow = await query<{ current_hash: string }>(
-      'SELECT current_hash FROM audit_ledger ORDER BY sequence_id DESC LIMIT 1'
-    );
-    const prevHash = lastRow.rows[0]?.current_hash || GENESIS_HASH;
-
-    // 2. Compute current hash = HMAC-SHA256(prevHash || timestamp || actorId || action || payload)
-    const payloadString = this.canonicalStringify(payload);
-    const message = `${prevHash}|${timestamp}|${params.actorId}|${params.action}|${params.targetResource}|${payloadString}`;
-    const currentHash = CryptoUtil.hmacSha256(message);
-
     const isUuid = params.projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.projectId);
     const resolvedProjectId = isUuid
       ? params.projectId
       : (params.projectId ? '00000000-0000-0000-0000-000000000020' : null);
 
-    // 3. Persist to PostgreSQL audit_ledger
-    const insertRes = await query<{ sequence_id: string }>(
-      `INSERT INTO audit_ledger (
-        prev_hash, current_hash, actor_id, actor_type, action,
-        target_resource, project_id, ip_address, user_agent, payload, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      RETURNING sequence_id`,
-      [
+    const entry = await withTransaction(async (client) => {
+      // 1. Acquire transaction advisory lock to guarantee serialized chain appends
+      await client.query('SELECT pg_advisory_xact_lock(739201)');
+
+      // 2. Fetch previous hash from the latest audit ledger record
+      const lastRow = await client.query<{ current_hash: string }>(
+        'SELECT current_hash FROM audit_ledger ORDER BY sequence_id DESC LIMIT 1'
+      );
+      const prevHash = lastRow.rows[0]?.current_hash || GENESIS_HASH;
+
+      // 3. Compute current hash = HMAC-SHA256(prevHash || timestamp || actorId || action || payload)
+      const payloadString = this.canonicalStringify(payload);
+      const message = `${prevHash}|${timestamp}|${params.actorId}|${params.action}|${params.targetResource}|${payloadString}`;
+      const currentHash = CryptoUtil.hmacSha256(message);
+
+      // 4. Persist to PostgreSQL audit_ledger
+      const insertRes = await client.query<{ sequence_id: string }>(
+        `INSERT INTO audit_ledger (
+          prev_hash, current_hash, actor_id, actor_type, action,
+          target_resource, project_id, ip_address, user_agent, payload, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING sequence_id`,
+        [
+          prevHash,
+          currentHash,
+          params.actorId,
+          params.actorType,
+          params.action,
+          params.targetResource,
+          resolvedProjectId,
+          params.ipAddress || null,
+          params.userAgent || null,
+          payload,
+          timestamp,
+        ]
+      );
+
+      const sequenceId = insertRes.rows[0].sequence_id;
+
+      const entry: AuditEntry = {
+        sequenceId,
         prevHash,
         currentHash,
-        params.actorId,
-        params.actorType,
-        params.action,
-        params.targetResource,
-        resolvedProjectId,
-        params.ipAddress || null,
-        params.userAgent || null,
-        payload,
         timestamp,
-      ]
-    );
+        actorId: params.actorId,
+        actorType: params.actorType,
+        action: params.action,
+        targetResource: params.targetResource,
+        projectId: params.projectId,
+        ipAddress: params.ipAddress,
+        userAgent: params.userAgent,
+        payload,
+      };
 
-    const sequenceId = insertRes.rows[0].sequence_id;
+      return entry;
+    });
 
-    const entry: AuditEntry = {
-      sequenceId,
-      prevHash,
-      currentHash,
-      timestamp,
-      actorId: params.actorId,
-      actorType: params.actorType,
-      action: params.action,
-      targetResource: params.targetResource,
-      projectId: params.projectId,
-      ipAddress: params.ipAddress,
-      userAgent: params.userAgent,
-      payload,
-    };
-
-    // 4. Stream to append-only log file on disk (with graceful fallback if volume is root-owned)
+    // 5. Stream to append-only log file on disk (with graceful fallback if volume is root-owned)
     try {
       const primaryPath = config.security.auditLogFilePath;
       const logDir = path.dirname(primaryPath);

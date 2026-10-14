@@ -63,82 +63,118 @@ export const authRoutes: FastifyPluginAsync = async (server: FastifyInstance) =>
     return reply.send(authResult);
   });
 
+// Rate limiting map for developer password reset requests (anti-flooding defense)
+const devResetRateLimit = new Map<string, number[]>();
+function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean {
+  const now = Date.now();
+  const timestamps = (devResetRateLimit.get(key) || []).filter((t) => now - t < windowMs);
+  if (timestamps.length >= limit) {
+    return false; // Rate limited
+  }
+  timestamps.push(now);
+  devResetRateLimit.set(key, timestamps);
+  return true;
+}
+
   // Developer Self-Service Password Reset: Request Token & Email Dispatch
   server.post('/api/v1/auth/developer/forgot-password', async (req, reply) => {
     const body = DeveloperForgotPasswordSchema.parse(req.body);
     const normalizedEmail = body.email.trim().toLowerCase();
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'client';
 
-    // Look up developer account
+    // 1. Anti-Flooding Rate Limiting (by IP and by recipient email)
+    if (!checkResetRateLimit(`ip_${clientIp}`, 5, 60_000) || !checkResetRateLimit(`email_${normalizedEmail}`, 3, 60_000)) {
+      return reply.status(429).send({
+        success: false,
+        error: 'TOO_MANY_REQUESTS',
+        message: 'Too many password reset requests. Please wait 60 seconds before trying again.'
+      });
+    }
+
+    // 2. Strict Developer Account Existence Validation
     const devRes = await query<{ id: string; email: string; displayName: string; status: string }>(
       `SELECT id, email, display_name as "displayName", COALESCE(status, 'active') as status
        FROM developers WHERE LOWER(email) = LOWER($1)`,
       [normalizedEmail]
     );
 
-    if (devRes.rows.length > 0 && devRes.rows[0].status !== 'suspended') {
-      const dev = devRes.rows[0];
-      const rawToken = crypto.randomBytes(32).toString('hex');
-      const tokenHash = EmailService.hashToken(rawToken);
-
-      // Invalidate any previously unredeemed tokens for this developer
-      await query(
-        `UPDATE developer_password_reset_tokens
-         SET redeemed_at = NOW()
-         WHERE developer_id = $1 AND redeemed_at IS NULL`,
-        [dev.id]
-      );
-
-      // Insert new single-use token (30 min lifetime)
-      await query(
-        `INSERT INTO developer_password_reset_tokens (developer_id, token_hash, expires_at)
-         VALUES ($1, $2, NOW() + INTERVAL '30 minutes')`,
-        [dev.id, tokenHash]
-      );
-
-      const origin = UrlUtil.resolveConsoleUrl(req);
-      const resetUrl = `${origin}/login?reset_token=${rawToken}`;
-
-      // Dynamically resolve verified sender address and display name
-      const { email: platformFromEmail, name: platformFromName } = await UrlUtil.resolvePlatformSender(req);
-
-      // Enqueue transactional email via durable Brevo outbox
-      await EmailService.enqueueEmail({
-        projectId: 'platform',
-        toEmail: dev.email,
-        fromEmail: platformFromEmail,
-        fromName: platformFromName,
-        subject: 'Reset your Syntrabase Developer Console password',
-        text: `Hello ${dev.displayName || 'Developer'},\n\nA request was made to reset your password for the Syntrabase Developer Console.\n\nClick the link below to set a new password:\n${resetUrl}\n\nThis single-use link is valid for 30 minutes. If you did not make this request, you can safely ignore this email.\n\nSyntrabase Security Team`,
-        html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:540px;margin:24px auto;padding:28px;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff;color:#0f172a;">
-          <h2 style="color:#2563eb;margin-top:0;font-size:20px;letter-spacing:-0.02em;">Syntrabase Security</h2>
-          <p style="font-size:14px;color:#334155;line-height:1.6;">Hello ${dev.displayName || 'Developer'},</p>
-          <p style="font-size:14px;color:#334155;line-height:1.6;">A request was made to reset your Developer Console password. Click the button below to set a new password:</p>
-          <div style="margin:24px 0;text-align:center;">
-            <a href="${resetUrl}" style="background-color:#2563eb;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;display:inline-block;">Reset Console Password</a>
-          </div>
-          <p style="font-size:12px;color:#64748b;line-height:1.5;">This link will expire in 30 minutes and can only be used once. If you did not request a password reset, no action is required.</p>
-          <div style="border-top:1px solid #f1f5f9;margin-top:24px;padding-top:14px;font-size:11px;color:#94a3b8;">
-            Syntrabase Identity Services • Multi-tenant Cloud Infrastructure
-          </div>
-        </div>`,
-        actionType: 'DEVELOPER_PASSWORD_RESET',
-      }).catch((err) => {
-        console.warn('[AUTH] Non-fatal developer reset email warning:', err.message);
+    if (devRes.rows.length === 0) {
+      return reply.status(404).send({
+        success: false,
+        error: 'ACCOUNT_NOT_FOUND',
+        message: 'No developer account found with that email address. Please verify your email or sign up.'
       });
-
-      await AuditService.log({
-        actorId: dev.id,
-        actorType: 'developer',
-        action: 'developer.password_reset_requested',
-        targetResource: `developer:${dev.id}`,
-        payload: { email: dev.email },
-      }).catch(() => {});
     }
 
-    // Always return constant message to prevent email enumeration
+    const dev = devRes.rows[0];
+    if (dev.status === 'suspended') {
+      return reply.status(403).send({
+        success: false,
+        error: 'ACCOUNT_SUSPENDED',
+        message: 'This developer account is suspended. Please contact platform administration.'
+      });
+    }
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = EmailService.hashToken(rawToken);
+
+    // Invalidate any previously unredeemed tokens for this developer
+    await query(
+      `UPDATE developer_password_reset_tokens
+       SET redeemed_at = NOW()
+       WHERE developer_id = $1 AND redeemed_at IS NULL`,
+      [dev.id]
+    );
+
+    // Insert new single-use token (30 min lifetime)
+    await query(
+      `INSERT INTO developer_password_reset_tokens (developer_id, token_hash, expires_at)
+       VALUES ($1, $2, NOW() + INTERVAL '30 minutes')`,
+      [dev.id, tokenHash]
+    );
+
+    const origin = UrlUtil.resolveConsoleUrl(req);
+    const resetUrl = `${origin}/login?reset_token=${rawToken}`;
+
+    // Dynamically resolve verified sender address and display name
+    const { email: platformFromEmail, name: platformFromName } = await UrlUtil.resolvePlatformSender(req);
+
+    // Enqueue transactional email via durable Brevo outbox
+    await EmailService.enqueueEmail({
+      projectId: 'platform',
+      toEmail: dev.email,
+      fromEmail: platformFromEmail,
+      fromName: platformFromName,
+      subject: 'Reset your Syntrabase Developer Console password',
+      text: `Hello ${dev.displayName || 'Developer'},\n\nA request was made to reset your password for the Syntrabase Developer Console.\n\nClick the link below to set a new password:\n${resetUrl}\n\nThis single-use link is valid for 30 minutes. If you did not make this request, you can safely ignore this email.\n\nSyntrabase Security Team`,
+      html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:540px;margin:24px auto;padding:28px;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff;color:#0f172a;">
+        <h2 style="color:#2563eb;margin-top:0;font-size:20px;letter-spacing:-0.02em;">Syntrabase Security</h2>
+        <p style="font-size:14px;color:#334155;line-height:1.6;">Hello ${dev.displayName || 'Developer'},</p>
+        <p style="font-size:14px;color:#334155;line-height:1.6;">A request was made to reset your Developer Console password. Click the button below to set a new password:</p>
+        <div style="margin:24px 0;text-align:center;">
+          <a href="${resetUrl}" style="background-color:#2563eb;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;display:inline-block;">Reset Console Password</a>
+        </div>
+        <p style="font-size:12px;color:#64748b;line-height:1.5;">This link will expire in 30 minutes and can only be used once. If you did not request a password reset, no action is required.</p>
+        <div style="border-top:1px solid #f1f5f9;margin-top:24px;padding-top:14px;font-size:11px;color:#94a3b8;">
+          Syntrabase Identity Services • Multi-tenant Cloud Infrastructure
+        </div>
+      </div>`,
+      actionType: 'DEVELOPER_PASSWORD_RESET',
+    }).catch((err) => {
+      console.warn('[AUTH] Non-fatal developer reset email warning:', err.message);
+    });
+
+    await AuditService.log({
+      actorId: dev.id,
+      actorType: 'developer',
+      action: 'developer.password_reset_requested',
+      targetResource: `developer:${dev.id}`,
+      payload: { email: dev.email },
+    }).catch(() => {});
+
     return reply.send({
       success: true,
-      message: 'If an account exists with that email address, a password reset link has been dispatched to your inbox.'
+      message: 'Password reset link has been dispatched to your email address.'
     });
   });
 
@@ -402,8 +438,18 @@ export const authRoutes: FastifyPluginAsync = async (server: FastifyInstance) =>
     const environmentId = (req.headers['x-environment-id'] as string) || 'default';
     const { email } = req.body as { email: string };
 
-    const result = await AuthService.forgotPassword(projectId, environmentId, email);
-    return reply.send(result);
+    try {
+      const result = await AuthService.forgotPassword(projectId, environmentId, email);
+      return reply.send(result);
+    } catch (err: any) {
+      if (err.code === 'RATE_LIMITED' || err.statusCode === 429) {
+        return reply.status(429).send({ error: err.code || 'RATE_LIMITED', message: err.message });
+      }
+      if (err.code === 'USER_NOT_FOUND' || err.statusCode === 404) {
+        return reply.status(404).send({ error: err.code || 'USER_NOT_FOUND', message: err.message });
+      }
+      return reply.status(400).send({ error: err.message });
+    }
   });
 
   server.post('/api/v1/projects/:projectId/auth/reset-password', async (req, reply) => {
@@ -507,15 +553,47 @@ export const authRoutes: FastifyPluginAsync = async (server: FastifyInstance) =>
 
   server.post('/api/v1/projects/:projectId/auth/templates/:templateType/test', async (req, reply) => {
     const { projectId, templateType } = req.params as { projectId: string; templateType: EmailTemplateType };
-    const { testEmail } = req.body as { testEmail: string };
+    const { testEmail, recipientEmail } = (req.body as any) || {};
+    const targetEmail = testEmail || recipientEmail;
 
-    await TemplateService.sendTemplatedActionEmail(projectId, testEmail, templateType, {
-      appName: 'Syntrabase Test App',
-      displayName: 'Test Developer',
-      link: `https://${projectId}.syntrabase.internal/auth/action?mode=test&oobCode=demo_code_123`,
-    });
+    if (!targetEmail) {
+      return reply.status(400).send({ error: 'Recipient test email address is required' });
+    }
 
-    return reply.send({ success: true, message: `Test email dispatched to ${testEmail}` });
+    try {
+      await TemplateService.sendTemplatedActionEmail(projectId, targetEmail, templateType, {
+        appName: 'Syntrabase Test App',
+        displayName: 'Test Developer',
+        link: `https://${projectId}.syntrabase.internal/auth/action?mode=test&oobCode=demo_code_123`,
+      });
+
+      return reply.send({ success: true, message: `Test email dispatched to ${targetEmail}` });
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.message || 'Failed to dispatch test email' });
+    }
+  });
+
+  server.post('/api/v1/projects/:projectId/auth/templates/test-email', async (req, reply) => {
+    const { projectId } = req.params as { projectId: string };
+    const { templateType, recipientEmail, testEmail } = (req.body as any) || {};
+    const targetEmail = testEmail || recipientEmail;
+    const type: EmailTemplateType = templateType || 'verify_email';
+
+    if (!targetEmail) {
+      return reply.status(400).send({ error: 'Recipient test email address is required' });
+    }
+
+    try {
+      await TemplateService.sendTemplatedActionEmail(projectId, targetEmail, type, {
+        appName: 'Syntrabase Test App',
+        displayName: 'Test Developer',
+        link: `https://${projectId}.syntrabase.internal/auth/action?mode=test&oobCode=demo_code_123`,
+      });
+
+      return reply.send({ success: true, message: `Test email dispatched to ${targetEmail}` });
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.message || 'Failed to dispatch test email' });
+    }
   });
 
   // ---------------------------------------------------------------------------

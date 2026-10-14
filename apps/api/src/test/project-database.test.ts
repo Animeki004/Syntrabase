@@ -5,11 +5,35 @@ import { PlanService, PlanLimitError } from '../services/plan.service.js';
 import { DatabaseService } from '../services/database.service.js';
 import { ProjectService } from '../services/project.service.js';
 
+import jwt from 'jsonwebtoken';
+import { config } from '../config.js';
+import { query } from '../db/pool.js';
+
+test.before(async () => {
+  try {
+    await query(
+      `INSERT INTO auth_sessions (id, user_id, refresh_token_hash, expires_at)
+       VALUES ('00000000-0000-0000-0000-000000000099', '00000000-0000-0000-0000-000000000001', 'mock_refresh_hash_test', NOW() + INTERVAL '1 day')
+       ON CONFLICT (id) DO UPDATE SET revoked_at = NULL, expires_at = NOW() + INTERVAL '1 day'`
+    );
+  } catch (err) {
+    console.warn('Could not seed auth session in project-database test:', err);
+  }
+});
+
+const devToken = jwt.sign(
+  { uid: '00000000-0000-0000-0000-000000000001', email: 'dev@syntrabase.internal', isPlatformAdmin: true },
+  config.jwt.secret,
+  { expiresIn: 900 }
+);
+const authHeaders = { authorization: `Bearer ${devToken}` };
+
 test('Project & Database Management - List projects endpoint responds with project list and quotas', async () => {
   const server = await buildServer();
   const res = await server.inject({
     method: 'GET',
     url: '/api/v1/projects',
+    headers: authHeaders,
   });
 
   assert.equal(res.statusCode, 200);
@@ -26,6 +50,7 @@ test('Project & Database Management - Create project endpoint validates project 
   const res = await server.inject({
     method: 'POST',
     url: '/api/v1/projects',
+    headers: authHeaders,
     payload: {
       name: 'a', // invalid: min 2 chars
     },
@@ -41,6 +66,7 @@ test('Project & Database Management - List databases endpoint returns database l
   const res = await server.inject({
     method: 'GET',
     url: '/api/v1/projects/default-project/databases',
+    headers: authHeaders,
   });
 
   assert.equal(res.statusCode, 200);
@@ -57,6 +83,7 @@ test('Project & Database Management - Create database endpoint validates databas
   const res = await server.inject({
     method: 'POST',
     url: '/api/v1/projects/default-project/databases',
+    headers: authHeaders,
     payload: {
       databaseId: 'INVALID ID WITH SPACES!',
       name: 'Test Database',
@@ -73,6 +100,7 @@ test('Project & Database Management - Database deletion rejects deleting require
   const res = await server.inject({
     method: 'DELETE',
     url: '/api/v1/projects/default-project/databases/(default)',
+    headers: authHeaders,
   });
 
   assert.equal(res.statusCode, 400);

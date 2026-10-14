@@ -121,6 +121,7 @@ export default function GlobalEmailControlPage() {
   const [senderDomainId, setSenderDomainId] = useState('');
   const [senderDisplayName, setSenderDisplayName] = useState('');
   const [senderEmailPrefix, setSenderEmailPrefix] = useState('security');
+  const [senderScope, setSenderScope] = useState<'platform' | 'project'>('platform');
   const [isSubmittingSender, setIsSubmittingSender] = useState(false);
 
   const getAdminToken = () => {
@@ -388,7 +389,7 @@ export default function GlobalEmailControlPage() {
           domainId: domain.id,
           displayName: senderDisplayName.trim() || 'Syntrabase Security',
           emailAddress: fullEmail,
-          projectId: domain.projectId || 'platform',
+          projectId: senderScope === 'platform' ? 'platform' : (domain.projectId || 'platform'),
         }),
       });
 
@@ -399,6 +400,7 @@ export default function GlobalEmailControlPage() {
         setShowAddSenderModal(false);
         setSenderDisplayName('');
         setSenderEmailPrefix('security');
+        setSenderScope('platform');
       } else {
         const err = await res.json().catch(() => ({}));
         addToast(err.error || 'Failed to authorize sender identity in Brevo', 'error');
@@ -645,6 +647,10 @@ export default function GlobalEmailControlPage() {
     }
   };
 
+  const activeAccount = accounts.find((a) => a.status === 'healthy') || accounts[0];
+  const activeCredits = activeAccount?.providerPlanInfo?.credits !== undefined ? activeAccount.providerPlanInfo.credits : (accounts.length > 0 ? 300 : 0);
+  const activePlanType = (activeAccount?.providerPlanInfo?.planType || (accounts.length > 0 ? 'free' : 'disconnected')).toUpperCase();
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       {/* Header Banner */}
@@ -728,23 +734,24 @@ export default function GlobalEmailControlPage() {
           <div style={{ padding: '18px 20px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Brevo Credits
+                Active Provider Quota
               </span>
-              <Badge variant="outline" size="sm" style={{ fontSize: '10px', color: 'var(--success)', borderColor: 'var(--success)' }}>
-                Provider Verified
+              <Badge variant={activeAccount?.status === 'healthy' ? 'outline' : 'warning'} size="sm" style={{ fontSize: '10px', color: activeAccount?.status === 'healthy' ? 'var(--success)' : 'var(--warning)', borderColor: activeAccount?.status === 'healthy' ? 'var(--success)' : 'var(--warning)' }}>
+                {activeAccount?.accountName ? `${activeAccount.accountName} (${activeAccount.status})` : 'No Account Connected'}
               </Badge>
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
               <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
-                {accounts[0]?.providerPlanInfo?.credits !== undefined ? accounts[0].providerPlanInfo.credits : 300}
+                {activeCredits.toLocaleString()}
               </span>
               <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                / 300 daily
+                credits ({activePlanType} tier)
               </span>
             </div>
           </div>
-          <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            Quota resets every 24 hours ({accounts[0]?.providerPlanInfo?.planType || 'free'} tier)
+          <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+            <span>Today's Dispatched: <strong style={{ color: 'var(--text-primary)' }}>{activeAccount?.dailySentCount ?? 0}</strong></span>
+            <span>Monthly Total: <strong style={{ color: 'var(--text-primary)' }}>{activeAccount?.monthlySentCount ?? 0}</strong></span>
           </div>
         </Card>
 
@@ -1122,17 +1129,21 @@ export default function GlobalEmailControlPage() {
                     <TableRow key={item.id}>
                       <TableCell>
                         {item.status === 'sent' ? (
-                          <Badge variant="outline" style={{ color: 'var(--success)', borderColor: 'var(--success)' }}>
-                            Sent
+                          <Badge variant="outline" style={{ color: 'var(--success)', borderColor: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <CheckCircle2 size={11} /> Sent (Delivered)
                           </Badge>
                         ) : item.status === 'queued' ? (
-                          <Badge variant="neutral">Queued</Badge>
+                          <Badge variant="neutral" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <Clock size={11} /> Queued (Pending)
+                          </Badge>
                         ) : item.status === 'deferred' ? (
-                          <Badge variant="outline" style={{ color: 'var(--warning)', borderColor: 'var(--warning)' }}>
-                            Deferred (Retry)
+                          <Badge variant="outline" style={{ color: 'var(--warning)', borderColor: 'var(--warning)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <RefreshCw size={11} /> Deferred (Retry)
                           </Badge>
                         ) : (
-                          <Badge variant="danger">Failed</Badge>
+                          <Badge variant="danger" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <XCircle size={11} /> Failed
+                          </Badge>
                         )}
                       </TableCell>
                       <TableCell style={{ fontWeight: 500 }}>{item.recipientEmail}</TableCell>
@@ -1146,9 +1157,17 @@ export default function GlobalEmailControlPage() {
                         {item.attempts} / {item.maxAttempts}
                       </TableCell>
                       <TableCell>
-                        <code style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {item.providerMessageId || (item.errorMessage ? item.errorMessage.substring(0, 30) : 'Pending')}
-                        </code>
+                        {item.providerMessageId ? (
+                          <code style={{ fontSize: '0.72rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 6px', borderRadius: '4px', wordBreak: 'break-all' }} title={`Confirmed Provider ID: ${item.providerMessageId}`}>
+                            {item.providerMessageId.length > 28 ? `${item.providerMessageId.substring(0, 28)}...` : item.providerMessageId}
+                          </code>
+                        ) : item.errorMessage ? (
+                          <span style={{ fontSize: '0.74rem', color: 'var(--danger)', wordBreak: 'break-word' }} title={item.errorMessage}>
+                            {item.errorMessage.length > 35 ? `${item.errorMessage.substring(0, 35)}...` : item.errorMessage}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Pending Dispatch</span>
+                        )}
                       </TableCell>
                       <TableCell style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                         {new Date(item.createdAt).toLocaleTimeString()}
@@ -1462,7 +1481,7 @@ export default function GlobalEmailControlPage() {
           <div style={{ margin: '0 24px 20px 24px', padding: '12px 16px', borderRadius: '8px', background: 'var(--bg-subtle, rgba(255, 255, 255, 0.03))', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: '12px' }}>
             <ShieldCheck size={20} color="#10b981" style={{ flexShrink: 0 }} />
             <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-              <strong>Platform Default Fallback:</strong> If no authorized senders are registered, system emails (password resets, invitations) will fall back to your connected Brevo account owner email. Authorizing a sender here (such as <code style={{ color: 'var(--text-primary)' }}>security@originhub.me</code>) allows the platform to dispatch cleanly with branded sender headers.
+              <strong>Platform Default Fallback:</strong> If no authorized senders are registered, system emails (password resets, invitations) will fall back to your connected Brevo account owner email. Authorizing a sender here (such as <code style={{ color: 'var(--text-primary)' }}>security@example.com</code>) allows the platform to dispatch cleanly with branded sender headers.
             </div>
           </div>
 
@@ -1477,7 +1496,7 @@ export default function GlobalEmailControlPage() {
                 <Mail size={40} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
                 <h4 style={{ margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 600 }}>No Authorized Sender Identities</h4>
                 <p style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: '440px', marginLeft: 'auto', marginRight: 'auto' }}>
-                  Authorize a custom sender address on your verified domain (e.g. <code>security@originhub.me</code> or <code>noreply@originhub.me</code>) to dispatch production transactional emails.
+                  Authorize a custom sender address on your verified domain (e.g. <code>security@example.com</code> or <code>noreply@example.com</code>) to dispatch production transactional emails.
                 </p>
                 <Button
                   variant="primary"
@@ -1587,6 +1606,33 @@ export default function GlobalEmailControlPage() {
 
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                Sender Scope
+              </label>
+              <select
+                value={senderScope}
+                onChange={(e) => setSenderScope(e.target.value as 'platform' | 'project')}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  background: 'var(--bg-subtle, #1e293b)',
+                  border: '1px solid var(--border-default, #334155)',
+                  color: 'var(--text-primary, #ffffff)',
+                  fontSize: '0.85rem',
+                }}
+              >
+                <option value="platform">Super Admin Platform (Password Resets, Invitations, System Alerts)</option>
+                <option value="project">Tenant / Project Specific Sender</option>
+              </select>
+              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                {senderScope === 'platform'
+                  ? 'This sender will be used exclusively by the platform to dispatch Developer Console password reset emails, system invitations, and security alerts.'
+                  : 'This sender will be scoped to the tenant project owning the selected domain.'}
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
                 Sender Domain
               </label>
               {domains.length === 0 ? (
@@ -1610,10 +1656,11 @@ export default function GlobalEmailControlPage() {
                 >
                   {domains.map((dom) => {
                     const isVerified = dom.verificationStatus === 'verified' || dom.status === 'verified';
-                    const scopeLabel = dom.projectName ? ` — Project: ${dom.projectName}` : dom.projectId && dom.projectId !== 'platform' ? ` — Tenant: ${dom.projectId}` : ' — Platform';
+                    const isPlatform = dom.projectId === 'platform' || !dom.projectName;
+                    const scopeLabel = isPlatform ? '[Super Admin Platform]' : `[Project: ${dom.projectName || dom.projectId}]`;
                     return (
                       <option key={dom.id} value={dom.id}>
-                        {dom.domainName} ({isVerified ? 'Verified' : 'Pending DNS'}{scopeLabel})
+                        {scopeLabel} {dom.domainName} ({isVerified ? 'Verified' : 'Pending DNS'})
                       </option>
                     );
                   })}
@@ -1626,7 +1673,7 @@ export default function GlobalEmailControlPage() {
                 Sender Display Name
               </label>
               <Input
-                placeholder="e.g. Syntrabase Security or OriginHub Team"
+                placeholder="e.g. Syntrabase Security or Platform Team"
                 value={senderDisplayName}
                 onChange={(e) => setSenderDisplayName(e.target.value)}
                 required
@@ -1649,7 +1696,7 @@ export default function GlobalEmailControlPage() {
                   style={{ flex: 1 }}
                 />
                 <span style={{ fontSize: '0.88rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
-                  @{domains.find((d) => d.id === (senderDomainId || domains[0]?.id))?.domainName || 'domain.com'}
+                  @{domains.find((d) => d.id === (senderDomainId || domains[0]?.id))?.domainName || 'example.com'}
                 </span>
               </div>
             </div>
@@ -1661,7 +1708,7 @@ export default function GlobalEmailControlPage() {
                 {senderDisplayName.trim() || 'Syntrabase Security'}
               </strong>{' '}
               <code style={{ color: '#818cf8' }}>
-                &lt;{(senderEmailPrefix.trim() || 'security').replace(/@.*$/, '')}@{domains.find((d) => d.id === (senderDomainId || domains[0]?.id))?.domainName || 'originhub.me'}&gt;
+                &lt;{(senderEmailPrefix.trim() || 'security').replace(/@.*$/, '')}@{domains.find((d) => d.id === (senderDomainId || domains[0]?.id))?.domainName || 'example.com'}&gt;
               </code>
             </div>
 

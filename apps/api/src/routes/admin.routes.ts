@@ -840,18 +840,18 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
     }
 
     try {
-      let targetProjectId = projectId;
-      try {
-        const domRes = await query<{ project_id: string }>(
-          'SELECT project_id FROM custom_sender_domains WHERE id = $1',
-          [domainId]
-        );
-        if (domRes.rows[0]?.project_id) {
-          targetProjectId = domRes.rows[0].project_id;
-        }
-      } catch {}
-
-      if (!targetProjectId) {
+      let targetProjectId = projectId || 'platform';
+      if (projectId && projectId !== 'platform') {
+        try {
+          const domRes = await query<{ project_id: string }>(
+            'SELECT project_id FROM custom_sender_domains WHERE id = $1',
+            [domainId]
+          );
+          if (domRes.rows[0]?.project_id) {
+            targetProjectId = domRes.rows[0].project_id;
+          }
+        } catch {}
+      } else {
         targetProjectId = 'platform';
       }
 

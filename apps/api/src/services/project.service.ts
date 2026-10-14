@@ -178,7 +178,7 @@ export class ProjectService {
     } catch {
       // ignore
     }
-    return '00000000-0000-0000-0000-000000000020';
+    return cleanId;
   }
 
   /**

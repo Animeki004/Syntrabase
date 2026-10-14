@@ -538,22 +538,40 @@ export class AuthService {
     environmentId: string,
     email: string
   ): Promise<{ success: boolean; message: string }> {
+    const cleanEmail = email.toLowerCase().trim();
+    const cooldownKey = `pwdreset_${projectId}_${cleanEmail}`;
+    const now = Date.now();
+    const lastSent = this.resendCooldowns.get(cooldownKey);
+    if (lastSent && now - lastSent < 60_000) {
+      const waitSec = Math.ceil((60_000 - (now - lastSent)) / 1000);
+      const err: any = new Error(`Please wait ${waitSec}s before requesting another password reset.`);
+      err.code = 'RATE_LIMITED';
+      err.statusCode = 429;
+      throw err;
+    }
+
     const resolvedEnvId = await AuthService.resolveEnvironmentId(projectId, environmentId);
     const res = await query<{ id: string; display_name?: string }>(
       'SELECT id, display_name FROM app_users WHERE project_id = $1 AND environment_id = $2 AND email = $3',
-      [projectId, resolvedEnvId, email]
+      [projectId, resolvedEnvId, cleanEmail]
     );
 
     const user = res.rows[0];
-    if (user) {
-      const { rawToken } = await EmailService.createActionToken(projectId, resolvedEnvId, user.id, 'PASSWORD_RESET');
-      await TemplateService.sendTemplatedActionEmail(projectId, email, 'password_reset', {
-        displayName: user.display_name || 'User',
-        link: `https://${projectId}.syntrabase.internal/auth/action?mode=resetPassword&oobCode=${rawToken}`,
-      });
+    if (!user) {
+      const err: any = new Error(`No user account found with email '${cleanEmail}'. Please verify your email or sign up.`);
+      err.code = 'USER_NOT_FOUND';
+      err.statusCode = 404;
+      throw err;
     }
 
-    return { success: true, message: 'Password reset link sent if account exists.' };
+    this.resendCooldowns.set(cooldownKey, now);
+    const { rawToken } = await EmailService.createActionToken(projectId, resolvedEnvId, user.id, 'PASSWORD_RESET');
+    await TemplateService.sendTemplatedActionEmail(projectId, cleanEmail, 'password_reset', {
+      displayName: user.display_name || 'User',
+      link: `https://${projectId}.syntrabase.internal/auth/action?mode=resetPassword&oobCode=${rawToken}`,
+    });
+
+    return { success: true, message: 'Password reset link sent successfully.' };
   }
 
   /**

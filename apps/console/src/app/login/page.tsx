@@ -152,11 +152,11 @@ export default function LoginPage() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || 'Failed to dispatch password reset request');
+        throw new Error(data.message || data.error || 'Failed to dispatch password reset request');
       }
 
       setForgotSent(true);
-      addToast('Password reset link dispatched via secure Brevo outbox', 'success');
+      addToast(data.message || 'Password reset link dispatched via secure Brevo outbox', 'success');
     } catch (err: any) {
       setErrorMsg(err.message || 'Unable to submit password reset request');
       addToast(err.message || 'Password reset request failed', 'error');
@@ -512,7 +512,7 @@ export default function LoginPage() {
                         Reset Link Dispatched
                       </h3>
                       <p style={{ fontSize: '0.84rem', color: '#9ca3af', margin: 0, lineHeight: 1.5 }}>
-                        If an account exists for <strong style={{ color: '#ffffff' }}>{forgotEmail}</strong>, an email has been queued in our Brevo outbound dispatcher with instructions to reset your password.
+                        A password reset link has been dispatched to <strong style={{ color: '#ffffff' }}>{forgotEmail}</strong> via our secure Brevo outbound dispatcher with instructions to set your new password.
                       </p>
                     </div>
 

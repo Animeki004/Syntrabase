@@ -109,14 +109,14 @@ export default function SyntrabaseAuthPage() {
   // TAB 3: TEMPLATES STATE
   // ---------------------------------------------------------------------------
   const [activeTemplateType, setActiveTemplateType] = useState<
-    'verify_email' | 'password_reset' | 'email_change' | 'mfa_enrollment' | 'smtp_settings'
+    'verify_email' | 'password_reset' | 'email_change' | 'mfa_enrollment'
   >('verify_email');
   const [templateSenderName, setTemplateSenderName] = useState('Syntrabase App');
   const [templateFromEmail, setTemplateFromEmail] = useState('');
   const [templateReplyTo, setTemplateReplyTo] = useState('');
   const [templateSubject, setTemplateSubject] = useState('Verify your email for %APP_NAME%');
   const [templateBody, setTemplateBody] = useState(
-    'Hello %DISPLAY_NAME%,\n\nFollow this link to verify your email address.\n\nhttps://api.syntrabase.internal/__/auth/action?mode=action&oobCode=code\n\nIf you did not ask to verify this address, you can ignore this email.\n\nThanks,\nYour %APP_NAME% team'
+    'Hello %DISPLAY_NAME%,\n\nFollow this link to verify your email address.\n\n%LINK%\n\nIf you did not ask to verify this address, you can ignore this email.\n\nThanks,\nYour %APP_NAME% team'
   );
   const [isEditingTemplate, setIsEditingTemplate] = useState(false);
   const [showTestEmailModal, setShowTestEmailModal] = useState(false);
@@ -546,17 +546,17 @@ export default function SyntrabaseAuthPage() {
       if (type === 'verify_email') {
         setTemplateSubject('Verify your email for %APP_NAME%');
         setTemplateBody(
-          'Hello %DISPLAY_NAME%,\n\nFollow this link to verify your email address.\n\nhttps://api.syntrabase.internal/__/auth/action?mode=action&oobCode=code\n\nIf you did not ask to verify this address, you can ignore this email.\n\nThanks,\nYour %APP_NAME% team'
+          'Hello %DISPLAY_NAME%,\n\nFollow this link to verify your email address.\n\n%LINK%\n\nIf you did not ask to verify this address, you can ignore this email.\n\nThanks,\nYour %APP_NAME% team'
         );
       } else if (type === 'password_reset') {
         setTemplateSubject('Reset your password for %APP_NAME%');
         setTemplateBody(
-          'Hello %DISPLAY_NAME%,\n\nFollow this link to reset your %APP_NAME% password.\n\nhttps://api.syntrabase.internal/__/auth/action?mode=resetPassword&oobCode=code\n\nIf you did not request a password reset, you can safely ignore this email.\n\nThanks,\nYour %APP_NAME% team'
+          'Hello %DISPLAY_NAME%,\n\nFollow this link to reset your %APP_NAME% password.\n\n%LINK%\n\nIf you did not request a password reset, you can safely ignore this email.\n\nThanks,\nYour %APP_NAME% team'
         );
       } else if (type === 'email_change') {
         setTemplateSubject('Notice of email change for %APP_NAME%');
         setTemplateBody(
-          'Hello %DISPLAY_NAME%,\n\nYour email address for %APP_NAME% has been changed to %NEW_EMAIL%.\n\nIf you did not make this change, please follow this link to revert:\nhttps://api.syntrabase.internal/__/auth/action?mode=recoverEmail&oobCode=code\n\nThanks,\nYour %APP_NAME% team'
+          'Hello %DISPLAY_NAME%,\n\nYour email address for %APP_NAME% has been changed to %NEW_EMAIL%.\n\nIf you did not make this change, please follow this link to revert:\n%LINK%\n\nThanks,\nYour %APP_NAME% team'
         );
       } else if (type === 'mfa_enrollment') {
         setTemplateSubject('Two-Factor Authentication Enrolled for %APP_NAME%');
@@ -574,7 +574,6 @@ export default function SyntrabaseAuthPage() {
   };
 
   const handleSaveTemplate = async () => {
-    if (activeTemplateType === 'smtp_settings') return;
     if (!templateFromEmail) {
       addToast('An authorized sender email address is required', 'error');
       return;
@@ -617,15 +616,14 @@ export default function SyntrabaseAuthPage() {
     if (!testEmailAddress) return;
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/templates/test-email`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/templates/${activeTemplateType}/test`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          templateType: activeTemplateType,
-          recipientEmail: testEmailAddress.trim(),
+          testEmail: testEmailAddress.trim(),
         }),
       });
 
@@ -634,7 +632,8 @@ export default function SyntrabaseAuthPage() {
         setShowTestEmailModal(false);
         setTestEmailAddress('');
       } else {
-        addToast('Email gateway not configured. Set up SMTP in Super Admin.', 'warning');
+        const err = await res.json().catch(() => ({}));
+        addToast(err.message || err.error || 'Email gateway unconfigured. Set up an authorized sender in Project Email or Super Admin.', 'warning');
       }
     } catch {
       addToast('Error dispatching test email', 'error');

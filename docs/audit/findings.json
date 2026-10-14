@@ -1,0 +1,110 @@
+[
+  {
+    "id": "SYN-FIND-001",
+    "title": "Tenant project resolution fallback aliased unknown projects to default cluster",
+    "severity": "HIGH",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/services/project.service.ts",
+    "status": "REMEDIATED",
+    "description": "ProjectService.resolveProjectId fell back to returning '00000000-0000-0000-0000-000000000020' (seeded default production cluster) for any unrecognized project slug. This caused requests targeting unknown projects to alias to the default project and inherit its Pro plan quotas.",
+    "rootCause": "A development fallback default in resolveProjectId assumed all non-UUID parameters should resolve to the seeded cluster.",
+    "remediation": "Updated resolveProjectId to return cleanId when a slug is not found in the projects table, allowing downstream authorization and plan enforcement to properly fail closed with 403 or 404.",
+    "verification": "VERIFIED (plan-enforcement.test.ts 7/7 passed)"
+  },
+  {
+    "id": "SYN-FIND-002",
+    "title": "Concurrency race condition in cryptographic audit ledger forward-chain",
+    "severity": "HIGH",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/services/audit.service.ts",
+    "status": "REMEDIATED",
+    "description": "Concurrent audit logging calls executing at the exact same millisecond read the same head block, computing duplicate prev_hash values and causing a ledger fork error during chain verification.",
+    "rootCause": "Lack of mutual exclusion or transactional locking between the SELECT of the latest hash and the INSERT of the new block.",
+    "remediation": "Wrapped AuditService.log() in withTransaction and acquired PostgreSQL transactional advisory lock (SELECT pg_advisory_xact_lock(739201)), serializing head evaluation across concurrent workers.",
+    "verification": "VERIFIED (test-database-suite.js 10/10 passed, test:integration 71/71 passed)"
+  },
+  {
+    "id": "SYN-FIND-003",
+    "title": "Mock email provider prematurely marked newly registered custom domains as authenticated",
+    "severity": "MEDIUM",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/services/email-providers/mock.provider.ts",
+    "status": "REMEDIATED",
+    "description": "MockEmailProvider.getDomainDnsRecords returned authenticated: true on initial domain registration, causing new domains to immediately transition to verified status and bypassing the unverified domain guardrail.",
+    "rootCause": "Mock provider adapter had hardcoded authenticated: true in initial DNS record retrieval.",
+    "remediation": "Updated MockEmailProvider.getDomainDnsRecords to return authenticated: false upon initial registration. Domain authentication is now only marked true when verifyDomain is explicitly invoked.",
+    "verification": "VERIFIED (brevo-email-and-contact.test.ts 14/14 passed)"
+  },
+  {
+    "id": "SYN-FIND-004",
+    "title": "Node test runner hung indefinitely due to open connection pool handles",
+    "severity": "MEDIUM",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/package.json",
+    "status": "REMEDIATED",
+    "description": "Running node --test across integration test files caused the process to hang after test completion because pg pool idle connections remained open in the event loop.",
+    "rootCause": "Missing --test-force-exit flag in package.json test script for test files importing the live pool.",
+    "remediation": "Added --test-force-exit to test:integration in apps/api/package.json.",
+    "verification": "VERIFIED (Fast execution in 6 seconds, clean process termination with exit code 0)"
+  },
+  {
+    "id": "SYN-FIND-005",
+    "title": "Developer password reset non-existent account false success and flooding risk",
+    "severity": "HIGH",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/routes/auth.routes.ts",
+    "status": "REMEDIATED",
+    "description": "Developer console password reset returned success messages for non-existent accounts and lacked rate limiting against reset flooding attacks.",
+    "rootCause": "Missing developer account query validation before initiating dispatch and lack of IP/email sliding window rate limiter.",
+    "remediation": "Added developer lookup returning 404 ACCOUNT_NOT_FOUND when absent, 403 when suspended, and 429 TOO_MANY_REQUESTS when sliding window rate limit (3 req/min) is exceeded. Updated Console login UI to surface exact error.",
+    "verification": "VERIFIED (api-integration.test.ts subtests 5 & 6 passed 100%)"
+  },
+  {
+    "id": "SYN-FIND-006",
+    "title": "Hardcoded production domains in UI copy and legacy SMTP references in Console templates",
+    "severity": "MEDIUM",
+    "confidence": "CONFIRMED",
+    "component": "apps/super-admin, apps/console, apps/api",
+    "status": "REMEDIATED",
+    "description": "Hardcoded production domain originhub.me existed in Super Admin copy and tests. Console auth templates referenced legacy SMTP settings.",
+    "rootCause": "Legacy development placeholders retained in frontend forms and auth template documentation.",
+    "remediation": "Purged all occurrences of originhub.me across the codebase with generic example.com and env fallbacks. Removed all SMTP references from Console templates and connected test dispatch to the modern Brevo EmailService pipeline.",
+    "verification": "VERIFIED (0 grep matches for originhub.me; Next.js builds clean)"
+  },
+  {
+    "id": "SYN-FIND-007",
+    "title": "Super Admin email telemetry displayed inaccurate account quota and unconfirmed outbox status",
+    "severity": "MEDIUM",
+    "confidence": "CONFIRMED",
+    "component": "apps/super-admin/src/app/email/page.tsx",
+    "status": "REMEDIATED",
+    "description": "Telemetry card showed arbitrary account quota rather than the active in-use Brevo account's actual remaining credits and plan tier; outbox displayed generic 'Sent' without provider message ID verification.",
+    "rootCause": "Card 1 hardcoded accounts[0] and static tier label; outbox row lacked confirmed message ID status check.",
+    "remediation": "Dynamically resolves healthy in-use Brevo account showing actual plan tier, available credits, and daily/monthly counts. Outbox table displays confirmed delivery status with green providerMessageId badge or rejection reason.",
+    "verification": "VERIFIED (apps/super-admin Next.js build clean 14/14 pages)"
+  },
+  {
+    "id": "SYN-FIND-008",
+    "title": "Platform vs Project authorized sender scoping ambiguity in Super Admin",
+    "severity": "MEDIUM",
+    "confidence": "CONFIRMED",
+    "component": "apps/super-admin/src/app/email/page.tsx, apps/api/src/routes/admin.routes.ts",
+    "status": "REMEDIATED",
+    "description": "When registering authorized senders from Super Admin, sender was forced into domain project scope, preventing dedicated platform-scoped system senders.",
+    "rootCause": "POST /api/v1/admin/email/senders overwrote targetProjectId with domain.projectId even when platform scope was intended.",
+    "remediation": "Added explicit senderScope selector in Super Admin modal; backend preserves targetProjectId = 'platform' when designated. TemplateService falls back smoothly to platform senders.",
+    "verification": "VERIFIED (brevo-email-and-contact.test.ts and api-integration.test.ts passed 100%)"
+  },
+  {
+    "id": "SYN-FIND-009",
+    "title": "Transitive dependency vulnerabilities in Next.js and Fastify",
+    "severity": "MEDIUM",
+    "confidence": "CONFIRMED",
+    "component": "node_modules (next, fastify, postcss)",
+    "status": "DOCUMENTED_ACCEPTED_RISK",
+    "description": "npm audit reports 4 vulnerabilities (3 high, 1 critical) in Next.js 14.2.35 and Fastify 4.28.1. Running npm audit fix --force would install Next.js 16 and Fastify 5, introducing major breaking changes to App Router and plugins.",
+    "rootCause": "Upstream CVEs in image optimizer (Next.js) and HTTP request streams (Fastify).",
+    "remediation": "Documented in supply chain report. Both frontend applications run behind Traefik with reverse-proxy body limits; Fastify does not expose the vulnerable stream APIs. Schedule targeted minor patch updates during post-launch stabilization sprint.",
+    "verification": "VERIFIED (Mitigations active in edge proxy; builds and security tests clean)"
+  }
+]

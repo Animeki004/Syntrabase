@@ -92,9 +92,21 @@ export class TemplateService {
         senderName = activeSenders[0].displayName || rendered.senderName;
       }
     } else if (senderEmail.endsWith('.internal') || senderEmail.includes('noreply@syntrabase')) {
-      throw new Error(
-        `Cannot send '${templateType}' email: No verified authorized sender identity configured for project '${projectId}' or platform. Please configure a verified custom domain and authorized sender in Super Admin or Project Settings -> Email.`
-      );
+      const fallbackEmail = process.env.SYSTEM_FROM_EMAIL || process.env.DEFAULT_FROM_EMAIL;
+      if (fallbackEmail) {
+        senderEmail = fallbackEmail;
+      } else {
+        const accs = await EmailService.getProviderAccounts().catch(() => []);
+        const activeAcc = accs.find((a) => a.status === 'healthy' && a.accountEmail);
+        if (activeAcc?.accountEmail) {
+          senderEmail = activeAcc.accountEmail;
+          senderName = activeAcc.accountName || senderName;
+        } else {
+          throw new Error(
+            `Cannot send '${templateType}' email: No verified authorized sender identity configured for project '${projectId}' or platform. Please configure a verified custom domain and authorized sender in Super Admin or Project Settings -> Email.`
+          );
+        }
+      }
     }
 
     await EmailService.sendEmail({

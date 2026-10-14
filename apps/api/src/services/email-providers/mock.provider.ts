@@ -110,7 +110,7 @@ export class MockEmailProvider implements IEmailProviderAdapter {
   }> {
     return {
       domainId: 'mock_dom_123',
-      authenticated: true,
+      authenticated: false,
       dnsRecords: [
         {
           type: 'TXT',
