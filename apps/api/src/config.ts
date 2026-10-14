@@ -11,7 +11,7 @@ export const config = {
   platformDomain: process.env.PLATFORM_DOMAIN || 'localhost',
 
   db: {
-    host: process.env.DATABASE_HOST || '127.0.0.1',
+    host: process.env.DATABASE_HOST === 'postgres' ? 'syntrabase-db' : (process.env.DATABASE_HOST || (process.env.NODE_ENV === 'production' ? 'syntrabase-db' : '127.0.0.1')),
     port: parseInt(process.env.DATABASE_PORT || '5432', 10),
     name: process.env.DATABASE_NAME || 'syntrabase',
     user: process.env.DATABASE_USER || 'postgres',
