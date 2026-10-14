@@ -649,18 +649,23 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
   // Super Admin Custom Sender Domains Endpoints
   server.get('/api/v1/admin/email/domains', async (req, reply) => {
     await requireSuperAdmin(req);
-    const res = await query(
-      `SELECT d.id, d.project_id as "projectId", d.domain_name as "domainName",
-              d.provider_domain_id as "providerDomainId", d.verification_status as "verificationStatus",
-              d.dns_records as "dnsRecords", d.last_dns_check_at as "lastDnsCheckAt",
-              d.last_error as "lastError", d.created_at as "createdAt", d.verified_at as "verifiedAt",
-              d.provider_account_id as "providerAccountId",
-              p.name as "projectName"
-       FROM custom_sender_domains d
-       LEFT JOIN projects p ON p.id::text = d.project_id
-       ORDER BY d.created_at DESC`
-    );
-    return reply.send({ domains: res.rows });
+    try {
+      const res = await query(
+        `SELECT d.id, d.project_id as "projectId", d.domain_name as "domainName",
+                d.provider_domain_id as "providerDomainId", d.verification_status as "verificationStatus",
+                d.dns_records as "dnsRecords", d.last_dns_check_at as "lastDnsCheckAt",
+                d.last_error as "lastError", d.created_at as "createdAt", d.verified_at as "verifiedAt",
+                d.provider_account_id as "providerAccountId",
+                p.name as "projectName"
+         FROM custom_sender_domains d
+         LEFT JOIN projects p ON p.id::text = d.project_id
+         ORDER BY d.created_at DESC`
+      );
+      return reply.send({ domains: res.rows });
+    } catch {
+      const domains = await EmailService.getCustomDomains('all');
+      return reply.send({ domains });
+    }
   });
 
   server.post('/api/v1/admin/email/domains', async (req, reply) => {
@@ -803,22 +808,25 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
 
   // ===========================================================================
   // Super Admin: Authorized Sender Identities Management
-  // ===========================================================================
-
-  // List all authorized senders across platform & tenants
+  // ===========================================================================  // List all authorized senders across platform & tenants
   server.get('/api/v1/admin/email/senders', async (req, reply) => {
     await requireSuperAdmin(req);
-    const res = await query(
-      `SELECT s.id, s.project_id as "projectId", s.domain_id as "domainId",
-              s.display_name as "displayName", s.email_address as "emailAddress",
-              s.provider_sender_id as "providerSenderId", s.status, s.created_at as "createdAt",
-              d.domain_name as "domainName", p.name as "projectName"
-       FROM authorized_sender_identities s
-       LEFT JOIN custom_sender_domains d ON d.id = s.domain_id
-       LEFT JOIN projects p ON p.id::text = s.project_id
-       ORDER BY s.created_at DESC`
-    );
-    return reply.send({ senders: res.rows });
+    try {
+      const res = await query(
+        `SELECT s.id, s.project_id as "projectId", s.domain_id as "domainId",
+                s.display_name as "displayName", s.email_address as "emailAddress",
+                s.provider_sender_id as "providerSenderId", s.status, s.created_at as "createdAt",
+                d.domain_name as "domainName", p.name as "projectName"
+         FROM authorized_sender_identities s
+         LEFT JOIN custom_sender_domains d ON d.id = s.domain_id
+         LEFT JOIN projects p ON p.id::text = s.project_id
+         ORDER BY s.created_at DESC`
+      );
+      return reply.send({ senders: res.rows });
+    } catch {
+      const senders = await EmailService.getAuthorizedSenders('all');
+      return reply.send({ senders });
+    }
   });
 
   // Create authorized sender identity (for platform or specific tenant domain)
@@ -832,11 +840,20 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
     }
 
     try {
-      const domRes = await query<{ project_id: string }>(
-        'SELECT project_id FROM custom_sender_domains WHERE id = $1',
-        [domainId]
-      );
-      const targetProjectId = projectId || domRes.rows[0]?.project_id || 'platform';
+      let targetProjectId = projectId;
+      try {
+        const domRes = await query<{ project_id: string }>(
+          'SELECT project_id FROM custom_sender_domains WHERE id = $1',
+          [domainId]
+        );
+        if (domRes.rows[0]?.project_id) {
+          targetProjectId = domRes.rows[0].project_id;
+        }
+      } catch {}
+
+      if (!targetProjectId) {
+        targetProjectId = 'platform';
+      }
 
       const sender = await EmailService.addAuthorizedSender({
         projectId: targetProjectId,

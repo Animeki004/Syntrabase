@@ -708,22 +708,28 @@ export class EmailService {
     }
   }
 
-  public static async getCustomDomains(projectId: string): Promise<CustomSenderDomain[]> {
+  public static async getCustomDomains(projectId?: string): Promise<CustomSenderDomain[]> {
     try {
-      const res = await query<any>(
-        `SELECT id, project_id as "projectId", domain_name as "domainName",
+      let sql = `SELECT id, project_id as "projectId", domain_name as "domainName",
                 provider_domain_id as "providerDomainId", provider_account_id as "providerAccountId",
                 verification_status as "verificationStatus", dns_records as "dnsRecords",
                 last_dns_check_at as "lastDnsCheckAt", last_error as "lastError",
                 created_at as "createdAt", verified_at as "verifiedAt"
-         FROM custom_sender_domains
-         WHERE project_id = $1
-         ORDER BY created_at DESC`,
-        [projectId]
-      );
+         FROM custom_sender_domains`;
+      const params: any[] = [];
+      if (projectId && projectId !== 'all') {
+        sql += ` WHERE project_id = $1`;
+        params.push(projectId);
+      }
+      sql += ` ORDER BY created_at DESC`;
+      const res = await query<any>(sql, params);
       return res.rows;
     } catch {
-      return Array.from(inMemoryCustomDomains.values()).filter((d) => d.projectId === projectId);
+      let list = Array.from(inMemoryCustomDomains.values());
+      if (projectId && projectId !== 'all') {
+        list = list.filter((d) => d.projectId === projectId);
+      }
+      return list;
     }
   }
 
@@ -736,13 +742,32 @@ export class EmailService {
                 verification_status as "verificationStatus", dns_records as "dnsRecords",
                 created_at as "createdAt"
          FROM custom_sender_domains
-         WHERE id = $1 AND project_id = $2`,
+         WHERE id = $1 AND (project_id = $2 OR $2 = 'platform')`,
         [domainId, projectId]
       );
       if (res.rows.length === 0) throw new Error('Domain not found');
       domain = res.rows[0];
     } catch {
-      domain = Array.from(inMemoryCustomDomains.values()).find((d) => d.id === domainId && d.projectId === projectId) || null;
+      domain = Array.from(inMemoryCustomDomains.values()).find(
+        (d) => d.id === domainId && (d.projectId === projectId || projectId === 'platform')
+      ) || null;
+      if (!domain) {
+        try {
+          const anyRes = await query<any>(
+            `SELECT id, project_id as "projectId", domain_name as "domainName",
+                    provider_domain_id as "providerDomainId", provider_account_id as "providerAccountId",
+                    verification_status as "verificationStatus", dns_records as "dnsRecords",
+                    created_at as "createdAt"
+             FROM custom_sender_domains
+             WHERE id = $1`,
+            [domainId]
+          );
+          if (anyRes.rows.length > 0) domain = anyRes.rows[0];
+        } catch {}
+      }
+      if (!domain) {
+        domain = Array.from(inMemoryCustomDomains.values()).find((d) => d.id === domainId) || null;
+      }
       if (!domain) throw new Error('Domain not found');
     }
 
@@ -860,8 +885,29 @@ export class EmailService {
     }
 
     // 1. Fetch domain from DB
-    const domains = await this.getCustomDomains(projectId);
-    const domain = domains.find((d) => d.id === domainId);
+    let domain: CustomSenderDomain | undefined;
+    try {
+      const domRes = await query<any>(
+        `SELECT id, project_id as "projectId", domain_name as "domainName",
+                provider_domain_id as "providerDomainId", provider_account_id as "providerAccountId",
+                verification_status as "verificationStatus", dns_records as "dnsRecords",
+                created_at as "createdAt", verified_at as "verifiedAt"
+         FROM custom_sender_domains
+         WHERE id = $1 AND (project_id = $2 OR $2 = 'platform')`,
+        [domainId, projectId]
+      );
+      if (domRes.rows.length > 0) domain = domRes.rows[0];
+    } catch {}
+
+    if (!domain) {
+      const domains = await this.getCustomDomains(projectId);
+      domain = domains.find((d) => d.id === domainId);
+    }
+    if (!domain) {
+      domain = Array.from(inMemoryCustomDomains.values()).find(
+        (d) => d.id === domainId && (d.projectId === projectId || projectId === 'platform')
+      );
+    }
     if (!domain) {
       throw new Error('Custom domain not found for this project.');
     }
@@ -1041,7 +1087,7 @@ export class EmailService {
 
     // 7. Re-evaluate and authenticate domain
     await new Promise((resolve) => setTimeout(resolve, 2000));
-    const verifiedDomain = await this.verifyCustomDomain(projectId, domainId);
+    const verifiedDomain = await this.verifyCustomDomain(domain.projectId || projectId, domainId);
 
     return {
       success: true,
@@ -1062,7 +1108,7 @@ export class EmailService {
     const cleanEmail = params.emailAddress.toLowerCase().trim();
     const cleanName = params.displayName.trim();
 
-    // Verify domain exists, belongs to this project, and is verified
+    // Verify domain exists, belongs to this project (or platform/super-admin authorized), and is verified
     let domain: CustomSenderDomain | undefined;
     try {
       const domRes = await query<any>(
@@ -1071,7 +1117,7 @@ export class EmailService {
                 verification_status as "verificationStatus", dns_records as "dnsRecords",
                 created_at as "createdAt", verified_at as "verifiedAt"
          FROM custom_sender_domains
-         WHERE id = $1 AND project_id = $2`,
+         WHERE id = $1 AND (project_id = $2 OR $2 = 'platform' OR project_id = 'platform')`,
         [params.domainId, params.projectId]
       );
       if (domRes.rows.length > 0) {
@@ -1081,10 +1127,42 @@ export class EmailService {
 
     if (!domain) {
       const domains = await this.getCustomDomains(params.projectId);
-      domain = domains.find((d) => d.id === params.domainId && d.projectId === params.projectId);
+      domain = domains.find((d) => d.id === params.domainId);
     }
-    if (!domain || domain.projectId !== params.projectId) {
-      throw new Error(`Access denied: Domain is not registered for project "${params.projectId}".`);
+    if (!domain && params.projectId !== 'platform') {
+      const platformDomains = await this.getCustomDomains('platform');
+      domain = platformDomains.find((d) => d.id === params.domainId);
+    }
+    if (!domain) {
+      domain = Array.from(inMemoryCustomDomains.values()).find(
+        (d) => d.id === params.domainId && (d.projectId === params.projectId || params.projectId === 'platform' || d.projectId === 'platform')
+      );
+    }
+    if (!domain) {
+      try {
+        const anyDomRes = await query<any>(
+          `SELECT id, project_id as "projectId", domain_name as "domainName",
+                  provider_domain_id as "providerDomainId", provider_account_id as "providerAccountId",
+                  verification_status as "verificationStatus", dns_records as "dnsRecords",
+                  created_at as "createdAt", verified_at as "verifiedAt"
+           FROM custom_sender_domains
+           WHERE id = $1`,
+          [params.domainId]
+        );
+        if (anyDomRes.rows.length > 0) {
+          domain = anyDomRes.rows[0];
+        }
+      } catch {}
+    }
+    if (!domain) {
+      domain = Array.from(inMemoryCustomDomains.values()).find((d) => d.id === params.domainId);
+    }
+
+    if (!domain) {
+      throw new Error(`Access denied: Selected domain is not registered for project "${params.projectId}".`);
+    }
+    if (params.projectId !== 'platform' && domain.projectId !== params.projectId && domain.projectId !== 'platform') {
+      throw new Error(`Access denied: Selected domain is not registered for project "${params.projectId}".`);
     }
     if (domain.verificationStatus !== 'verified') {
       throw new Error(`Cannot authorize sender: Domain ${domain.domainName} is not yet verified.`);
@@ -1092,6 +1170,11 @@ export class EmailService {
     if (!cleanEmail.endsWith(`@${domain.domainName}`)) {
       throw new Error(`Sender email (${cleanEmail}) must match the domain @${domain.domainName}`);
     }
+
+    // Determine target project identity for this sender
+    const targetProjectId = (params.projectId === 'platform' && domain.projectId !== 'platform')
+      ? domain.projectId
+      : params.projectId;
 
     // Register with domain's associated provider account
     const accounts = await this.getProviderAccounts();
@@ -1127,13 +1210,13 @@ export class EmailService {
          RETURNING id, project_id as "projectId", domain_id as "domainId",
                    display_name as "displayName", email_address as "emailAddress",
                    provider_sender_id as "providerSenderId", status, created_at as "createdAt"`,
-        [id, params.projectId, params.domainId, cleanName, cleanEmail, senderId, now]
+        [id, targetProjectId, params.domainId, cleanName, cleanEmail, senderId, now]
       );
       return res.rows[0];
     } catch {
       const sender: AuthorizedSenderIdentity = {
         id,
-        projectId: params.projectId,
+        projectId: targetProjectId,
         domainId: params.domainId,
         displayName: cleanName,
         emailAddress: cleanEmail,
@@ -1141,25 +1224,31 @@ export class EmailService {
         status: 'active',
         createdAt: now,
       };
-      inMemoryAuthorizedSenders.set(`${params.projectId}_${cleanEmail}`, sender);
+      inMemoryAuthorizedSenders.set(`${targetProjectId}_${cleanEmail}`, sender);
       return sender;
     }
   }
 
-  public static async getAuthorizedSenders(projectId: string): Promise<AuthorizedSenderIdentity[]> {
+  public static async getAuthorizedSenders(projectId?: string): Promise<AuthorizedSenderIdentity[]> {
     try {
-      const res = await query<any>(
-        `SELECT id, project_id as "projectId", domain_id as "domainId",
+      let sql = `SELECT id, project_id as "projectId", domain_id as "domainId",
                 display_name as "displayName", email_address as "emailAddress",
                 provider_sender_id as "providerSenderId", status, created_at as "createdAt"
-         FROM authorized_sender_identities
-         WHERE project_id = $1
-         ORDER BY created_at DESC`,
-        [projectId]
-      );
+         FROM authorized_sender_identities`;
+      const params: any[] = [];
+      if (projectId && projectId !== 'all') {
+        sql += ` WHERE project_id = $1`;
+        params.push(projectId);
+      }
+      sql += ` ORDER BY created_at DESC`;
+      const res = await query<any>(sql, params);
       return res.rows;
     } catch {
-      return Array.from(inMemoryAuthorizedSenders.values()).filter((s) => s.projectId === projectId);
+      let list = Array.from(inMemoryAuthorizedSenders.values());
+      if (projectId && projectId !== 'all') {
+        list = list.filter((s) => s.projectId === projectId);
+      }
+      return list;
     }
   }
 
@@ -1386,14 +1475,14 @@ export class EmailService {
           `SELECT id, domain_name as "domainName", provider_account_id as "providerAccountId",
                   verification_status as "verificationStatus"
            FROM custom_sender_domains
-           WHERE project_id = $1 AND LOWER(domain_name) = $2
+           WHERE (project_id = $1 OR project_id = 'platform') AND LOWER(domain_name) = $2
            LIMIT 1`,
           [item.projectId, senderDomain]
         );
         if (domRes.rows.length > 0) domainRecord = domRes.rows[0];
       } catch {
         domainRecord = Array.from(inMemoryCustomDomains.values()).find(
-          (d) => d.projectId === item.projectId && d.domainName.toLowerCase() === senderDomain
+          (d) => (d.projectId === item.projectId || d.projectId === 'platform') && d.domainName.toLowerCase() === senderDomain
         ) || null;
       }
 

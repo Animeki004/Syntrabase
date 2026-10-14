@@ -68,7 +68,13 @@ export class TemplateService {
 
     // Authoritative Server-Side Sender Validation
     const authorizedSenders = await EmailService.getAuthorizedSenders(projectId).catch(() => []);
-    const activeSenders = authorizedSenders.filter((s) => s.status === 'active');
+    let activeSenders = authorizedSenders.filter((s) => s.status === 'active');
+
+    // If project has no active senders, fall back to platform-scoped authorized senders (configured by Super Admin)
+    if (activeSenders.length === 0) {
+      const platformSenders = await EmailService.getAuthorizedSenders('platform').catch(() => []);
+      activeSenders = platformSenders.filter((s) => s.status === 'active');
+    }
 
     let senderEmail = rendered.fromEmail;
     let senderName = rendered.senderName;
@@ -87,7 +93,7 @@ export class TemplateService {
       }
     } else if (senderEmail.endsWith('.internal') || senderEmail.includes('noreply@syntrabase')) {
       throw new Error(
-        `Cannot send '${templateType}' email: No verified authorized sender identity configured for project '${projectId}'. Please configure a verified custom domain and authorized sender in Project Settings -> Email.`
+        `Cannot send '${templateType}' email: No verified authorized sender identity configured for project '${projectId}' or platform. Please configure a verified custom domain and authorized sender in Super Admin or Project Settings -> Email.`
       );
     }
 

@@ -84,7 +84,19 @@ export class UrlUtil {
         return { email, name };
       }
 
-      // 2. Fallback to platform-scoped provider account (Super Admin Brevo account owner)
+      // 2. Check any active authorized sender across the platform if platform-specific not found
+      const anySenderRes = await query<{ email_address: string; display_name: string }>(
+        `SELECT email_address, display_name FROM authorized_sender_identities
+         WHERE status = 'active'
+         ORDER BY created_at DESC LIMIT 1`
+      );
+      if (anySenderRes.rows[0]?.email_address) {
+        email = anySenderRes.rows[0].email_address;
+        if (anySenderRes.rows[0].display_name) name = anySenderRes.rows[0].display_name;
+        return { email, name };
+      }
+
+      // 3. Fallback to platform-scoped provider account (Super Admin Brevo account owner)
       const accRes = await query<{ account_email: string }>(
         `SELECT account_email FROM email_provider_accounts
          WHERE (project_id = 'platform' OR project_id IS NULL)

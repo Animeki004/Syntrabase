@@ -358,9 +358,14 @@ export default function GlobalEmailControlPage() {
 
   const handleAddSender = async (e: React.FormEvent) => {
     e.preventDefault();
-    const domain = domains.find((d) => d.id === senderDomainId) || domains[0];
+    const domain = domains.find((d) => d.id === (senderDomainId || domains[0]?.id)) || domains[0];
     if (!domain) {
       addToast('Please register and verify a custom domain before authorizing a sender identity.', 'error');
+      return;
+    }
+
+    if (domain.verificationStatus !== 'verified' && domain.status !== 'verified') {
+      addToast(`Domain ${domain.domainName} is not yet verified. Please verify DNS records first.`, 'warning');
       return;
     }
 
@@ -383,7 +388,7 @@ export default function GlobalEmailControlPage() {
           domainId: domain.id,
           displayName: senderDisplayName.trim() || 'Syntrabase Security',
           emailAddress: fullEmail,
-          projectId: 'platform',
+          projectId: domain.projectId || 'platform',
         }),
       });
 
@@ -1603,11 +1608,15 @@ export default function GlobalEmailControlPage() {
                   }}
                   required
                 >
-                  {domains.map((dom) => (
-                    <option key={dom.id} value={dom.id}>
-                      {dom.domainName} ({dom.status === 'verified' ? 'Verified' : 'Pending DNS'})
-                    </option>
-                  ))}
+                  {domains.map((dom) => {
+                    const isVerified = dom.verificationStatus === 'verified' || dom.status === 'verified';
+                    const scopeLabel = dom.projectName ? ` — Project: ${dom.projectName}` : dom.projectId && dom.projectId !== 'platform' ? ` — Tenant: ${dom.projectId}` : ' — Platform';
+                    return (
+                      <option key={dom.id} value={dom.id}>
+                        {dom.domainName} ({isVerified ? 'Verified' : 'Pending DNS'}{scopeLabel})
+                      </option>
+                    );
+                  })}
                 </select>
               )}
             </div>
