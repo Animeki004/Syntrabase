@@ -37,18 +37,17 @@ services:
       POSTGRES_USER: ${DATABASE_USER:-postgres}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-syntrabase_db_secret_pass}
       POSTGRES_HOST_AUTH_METHOD: trust
-    command: postgres -c hba_file=/etc/postgresql/pg_hba.conf
     volumes:
       - syntrabase_db_data:/var/lib/postgresql/data
       - ./infrastructure/database/migrations:/docker-entrypoint-initdb.d:ro
-      - ./infrastructure/database/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     networks:
       - data-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-postgres}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-postgres} -d ${DATABASE_NAME:-syntrabase}"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
     deploy:
       resources:
         limits:
