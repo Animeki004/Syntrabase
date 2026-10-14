@@ -9,6 +9,7 @@ import {
 import { NotificationService } from './notification.service.js';
 import { EmailService } from './email.service.js';
 import { AuditService } from './audit.service.js';
+import { UrlUtil } from '../utils/url.util.js';
 
 // In-memory fallback for offline test environments
 const inMemoryContactSubmissions: ContactSubmission[] = [];
@@ -336,11 +337,12 @@ export class ContactService {
 
       // Add to inquiry messages thread
       const msgId = crypto.randomUUID();
+      const { email: platformFromEmail, name: platformFromName } = await UrlUtil.resolvePlatformSender();
       await query(
         `INSERT INTO contact_inquiry_messages (
            id, inquiry_id, sender_type, sender_name, sender_email, message, created_at
-         ) VALUES ($1, $2, 'operator', $3, 'support@syntrabase.app', $4, NOW())`,
-        [msgId, params.id, operator, cleanReply]
+         ) VALUES ($1, $2, 'operator', $3, $4, $5, NOW())`,
+        [msgId, params.id, operator, platformFromEmail, cleanReply]
       );
 
       const msgRes = await query<any>(
@@ -362,12 +364,13 @@ export class ContactService {
       memItem.repliedAt = nowIso;
       memItem.repliedBy = operator;
 
+      const { email: fallbackSenderEmail } = await UrlUtil.resolvePlatformSender();
       const newMsg: ContactInquiryMessage = {
         id: crypto.randomUUID(),
         inquiryId: params.id,
         senderType: 'operator',
         senderName: operator,
-        senderEmail: 'support@syntrabase.app',
+        senderEmail: fallbackSenderEmail,
         message: cleanReply,
         createdAt: nowIso,
       };
@@ -385,16 +388,15 @@ export class ContactService {
         .replace(/>/g, '&gt;')
         .replace(/\n/g, '<br/>');
 
-          const consoleBaseUrl = process.env.CONSOLE_DOMAIN
-            ? (process.env.CONSOLE_DOMAIN.startsWith('http') ? process.env.CONSOLE_DOMAIN : `https://${process.env.CONSOLE_DOMAIN}`)
-            : 'https://console.originhub.me';
+      const consoleBaseUrl = UrlUtil.resolveConsoleUrl();
+      const { email: platformFromEmail, name: platformFromName } = await UrlUtil.resolvePlatformSender();
 
-          EmailService.enqueueEmail({
-            projectId: submission.projectId,
-            toEmail: recipientEmail.trim(),
-            fromEmail: 'support@syntrabase.app',
-            fromName: 'Syntrabase Support Team',
-            subject: `[${submission.ticketReference}] Response to your support inquiry: ${submission.subject}`,
+      EmailService.enqueueEmail({
+        projectId: submission.projectId,
+        toEmail: recipientEmail.trim(),
+        fromEmail: platformFromEmail,
+        fromName: platformFromName || 'Syntrabase Support Team',
+        subject: `[${submission.ticketReference}] Response to your support inquiry: ${submission.subject}`,
             text: `Hello,\n\nAn official response has been posted to your support inquiry (${submission.ticketReference}):\n\n${cleanReply}\n\nStatus: ${nextStatus.toUpperCase()}\nReplied by: ${operator}\n\nYou can review your ticket status and follow up in the Syntrabase Developer Console at ${consoleBaseUrl}/contact.\n\nBest regards,\nSyntrabase Support Team`,
             html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:20px auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff;color:#0f172a;">
               <div style="margin-bottom:16px;">

@@ -8,6 +8,7 @@ import { EmailService } from '../services/email.service.js';
 import { ContactService } from '../services/contact.service.js';
 import { PlanService } from '../services/plan.service.js';
 import { CryptoUtil } from '../utils/crypto.js';
+import { UrlUtil } from '../utils/url.util.js';
 import { CreateDatabaseSchema, FollowUpContactMessageSchema } from '@syntrabase/schemas';
 import { z } from 'zod';
 
@@ -598,10 +599,11 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     }
 
     try {
+      const dynamicSender = senderAddress?.trim() || (await UrlUtil.resolvePlatformSender(req)).email;
       const queueItem = await EmailService.enqueueEmail({
         projectId,
         toEmail: recipientEmail.trim(),
-        fromEmail: senderAddress ? senderAddress.trim() : 'notifications@syntrabase.app',
+        fromEmail: dynamicSender,
         fromName: 'Syntrabase Test',
         subject: subject?.trim() || 'Syntrabase Transactional Delivery Test',
         text: `This is an authorized test email dispatched from your Syntrabase Developer Console project (${projectId}).\n\nIf you are reading this, your outbound transactional gateway is healthy and actively routing messages.`,

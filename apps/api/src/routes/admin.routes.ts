@@ -14,6 +14,7 @@ import { NotificationService } from '../services/notification.service.js';
 import { ContactService } from '../services/contact.service.js';
 import { ProjectService } from '../services/project.service.js';
 import { CryptoUtil } from '../utils/crypto.js';
+import { UrlUtil } from '../utils/url.util.js';
 import { CreatePlanSchema, UpdatePlanSchema, AssignProjectPlanSchema, ReplyContactInquirySchema } from '@syntrabase/schemas';
 import { TokenPayload } from '@syntrabase/shared-types';
 
@@ -316,16 +317,15 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
     let mailDispatched = false;
     let mailError: string | null = null;
     try {
-      const consoleBaseUrl = process.env.CONSOLE_DOMAIN
-        ? (process.env.CONSOLE_DOMAIN.startsWith('http') ? process.env.CONSOLE_DOMAIN : `https://${process.env.CONSOLE_DOMAIN}`)
-        : 'https://console.originhub.me';
+      const consoleBaseUrl = UrlUtil.resolveConsoleUrl(req);
       const loginUrl = `${consoleBaseUrl}/login`;
+      const { email: platformFromEmail, name: platformFromName } = await UrlUtil.resolvePlatformSender(req);
 
       await EmailService.sendEmail({
         projectId: 'platform',
         to: dev.email,
-        from: 'security@syntrabase.app',
-        fromName: 'Syntrabase Cloud Security',
+        from: platformFromEmail,
+        fromName: platformFromName || 'Syntrabase Cloud Security',
         subject: 'Syntrabase Console — Your Password Has Been Reset',
         text: `An administrator has initiated a secure credentials reset for your developer console account (${dev.email}). Temporary password: ${generatedTempPassword}\n\nPlease sign in to the developer console at ${loginUrl} using this temporary password.`,
         html: `

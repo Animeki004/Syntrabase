@@ -10,6 +10,7 @@ import { ProjectService } from '../services/project.service.js';
 import { EmailService } from '../services/email.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { CryptoUtil } from '../utils/crypto.js';
+import { UrlUtil } from '../utils/url.util.js';
 import {
   RegisterDeveloperSchema,
   LoginDeveloperSchema,
@@ -94,43 +95,11 @@ export const authRoutes: FastifyPluginAsync = async (server: FastifyInstance) =>
         [dev.id, tokenHash]
       );
 
-      const origin =
-        (req.headers.origin as string) ||
-        (req.headers.referer ? new URL(req.headers.referer).origin : null) ||
-        (process.env.CONSOLE_DOMAIN ? `https://${process.env.CONSOLE_DOMAIN}` : 'https://console.originhub.me');
+      const origin = UrlUtil.resolveConsoleUrl(req);
       const resetUrl = `${origin}/login?reset_token=${rawToken}`;
 
       // Dynamically resolve verified sender address and display name
-      let platformFromEmail = 'security@syntrabase.app';
-      let platformFromName = 'Syntrabase Security';
-      try {
-        const senderRes = await query<{ email_address: string; display_name: string }>(
-          `SELECT email_address, display_name FROM authorized_sender_identities WHERE (project_id = 'platform' OR project_id = 'default') AND status = 'active' ORDER BY created_at DESC LIMIT 1`
-        );
-        if (senderRes.rows[0]?.email_address) {
-          platformFromEmail = senderRes.rows[0].email_address;
-          if (senderRes.rows[0].display_name) {
-            platformFromName = senderRes.rows[0].display_name;
-          }
-        } else {
-          const anySenderRes = await query<{ email_address: string; display_name: string }>(
-            `SELECT email_address, display_name FROM authorized_sender_identities WHERE status = 'active' ORDER BY created_at DESC LIMIT 1`
-          );
-          if (anySenderRes.rows[0]?.email_address) {
-            platformFromEmail = anySenderRes.rows[0].email_address;
-            if (anySenderRes.rows[0].display_name) {
-              platformFromName = anySenderRes.rows[0].display_name;
-            }
-          } else {
-            const accRes = await query<{ account_email: string }>(
-              `SELECT account_email FROM email_provider_accounts WHERE is_enabled = TRUE AND status = 'healthy' AND account_email IS NOT NULL LIMIT 1`
-            );
-            if (accRes.rows[0]?.account_email) {
-              platformFromEmail = accRes.rows[0].account_email;
-            }
-          }
-        }
-      } catch {}
+      const { email: platformFromEmail, name: platformFromName } = await UrlUtil.resolvePlatformSender(req);
 
       // Enqueue transactional email via durable Brevo outbox
       await EmailService.enqueueEmail({

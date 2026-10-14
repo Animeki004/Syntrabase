@@ -14,6 +14,7 @@ import {
 } from '@syntrabase/shared-types';
 import { EmailProviderRegistry } from './email-providers/provider-registry.js';
 import { NotificationService } from './notification.service.js';
+import { UrlUtil } from '../utils/url.util.js';
 
 export class EmailDeliveryError extends Error {
   public statusCode = 502;
@@ -1791,7 +1792,8 @@ export class EmailService {
     actionType: EmailActionType,
     rawToken: string
   ): Promise<{ success: boolean; messageId: string }> {
-    const actionUrl = `https://syntrabase.app/action?mode=${actionType === 'VERIFY_EMAIL' ? 'verifyEmail' : 'resetPassword'}&oobCode=${rawToken}&apiKey=${projectId}`;
+    const consoleBaseUrl = UrlUtil.resolveConsoleUrl();
+    const actionUrl = `${consoleBaseUrl}/action?mode=${actionType === 'VERIFY_EMAIL' ? 'verifyEmail' : 'resetPassword'}&oobCode=${rawToken}&apiKey=${projectId}`;
     const subject = actionType === 'VERIFY_EMAIL' ? 'Verify your Syntrabase account email' : 'Reset your Syntrabase account password';
     const textBody = `Follow this secure link to complete your request:\n\n${actionUrl}\n\nIf you did not request this, please ignore this email.`;
     const htmlBody = `
@@ -1805,13 +1807,17 @@ export class EmailService {
 
     // Fetch authorized sender for project if configured, else default noreply
     let fromEmail = 'noreply@syntrabase.internal';
-    let fromName = 'Syntrabase App';
+    let fromName = 'Syntrabase Security';
 
     try {
       const senders = await this.getAuthorizedSenders(projectId);
       if (senders.length > 0 && senders[0].status === 'active') {
         fromEmail = senders[0].emailAddress;
         fromName = senders[0].displayName;
+      } else {
+        const platformSender = await UrlUtil.resolvePlatformSender();
+        fromEmail = platformSender.email;
+        fromName = platformSender.name || 'Syntrabase Security';
       }
     } catch {
       // Fallback
