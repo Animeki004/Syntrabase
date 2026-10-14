@@ -12,6 +12,22 @@ export class UrlUtil {
    * 5. Local development fallback
    */
   public static resolveConsoleUrl(req?: FastifyRequest | any): string {
+    // 1. Explicitly configured environment variables from .env
+    if (process.env.CONSOLE_URL) {
+      return process.env.CONSOLE_URL.replace(/\/$/, '');
+    }
+
+    if (process.env.CONSOLE_DOMAIN) {
+      const d = process.env.CONSOLE_DOMAIN.trim();
+      return (d.startsWith('http://') || d.startsWith('https://') ? d : `https://${d}`).replace(/\/$/, '');
+    }
+
+    if (process.env.FRONTEND_URL) {
+      const d = process.env.FRONTEND_URL.trim();
+      return (d.startsWith('http://') || d.startsWith('https://') ? d : `https://${d}`).replace(/\/$/, '');
+    }
+
+    // 2. Dynamic resolution from incoming HTTP request headers
     if (req) {
       const origin = req.headers?.origin as string;
       if (origin && typeof origin === 'string' && origin.startsWith('http')) {
@@ -24,18 +40,7 @@ export class UrlUtil {
           return new URL(referer).origin.replace(/\/$/, '');
         } catch {}
       }
-    }
 
-    if (process.env.CONSOLE_URL) {
-      return process.env.CONSOLE_URL.replace(/\/$/, '');
-    }
-
-    if (process.env.CONSOLE_DOMAIN) {
-      const d = process.env.CONSOLE_DOMAIN.trim();
-      return (d.startsWith('http://') || d.startsWith('https://') ? d : `https://${d}`).replace(/\/$/, '');
-    }
-
-    if (req) {
       const proto = (req.headers?.['x-forwarded-proto'] as string) || req.protocol || 'https';
       const host = (req.headers?.['x-forwarded-host'] as string) || req.headers?.host;
       if (host && typeof host === 'string') {
@@ -44,10 +49,7 @@ export class UrlUtil {
       }
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      return 'https://console.originhub.me';
-    }
-
+    // 3. Fallback for local development
     return 'http://localhost:3000';
   }
 
