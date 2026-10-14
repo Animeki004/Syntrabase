@@ -799,6 +799,90 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
     }
   });
 
+  // ===========================================================================
+  // Super Admin: Authorized Sender Identities Management
+  // ===========================================================================
+
+  // List all authorized senders across platform & tenants
+  server.get('/api/v1/admin/email/senders', async (req, reply) => {
+    await requireSuperAdmin(req);
+    const res = await query(
+      `SELECT s.id, s.project_id as "projectId", s.domain_id as "domainId",
+              s.display_name as "displayName", s.email_address as "emailAddress",
+              s.provider_sender_id as "providerSenderId", s.status, s.created_at as "createdAt",
+              d.domain_name as "domainName", p.name as "projectName"
+       FROM authorized_sender_identities s
+       LEFT JOIN custom_sender_domains d ON d.id = s.domain_id
+       LEFT JOIN projects p ON p.id::text = s.project_id
+       ORDER BY s.created_at DESC`
+    );
+    return reply.send({ senders: res.rows });
+  });
+
+  // Create authorized sender identity (for platform or specific tenant domain)
+  server.post('/api/v1/admin/email/senders', async (req, reply) => {
+    const admin = await requireSuperAdmin(req);
+    const body = (req.body as any) || {};
+    const { domainId, displayName, emailAddress, projectId } = body;
+
+    if (!domainId || !displayName || !emailAddress) {
+      return reply.status(400).send({ error: 'domainId, displayName, and emailAddress are required' });
+    }
+
+    try {
+      const domRes = await query<{ project_id: string }>(
+        'SELECT project_id FROM custom_sender_domains WHERE id = $1',
+        [domainId]
+      );
+      const targetProjectId = projectId || domRes.rows[0]?.project_id || 'platform';
+
+      const sender = await EmailService.addAuthorizedSender({
+        projectId: targetProjectId,
+        domainId,
+        displayName: displayName.trim(),
+        emailAddress: emailAddress.trim().toLowerCase(),
+      });
+
+      await AuditService.log({
+        actorId: admin.uid,
+        actorType: 'developer',
+        action: 'admin.email_sender_created',
+        targetResource: `sender:${sender.id}`,
+        payload: { emailAddress, displayName, domainId, projectId: targetProjectId },
+      });
+
+      return reply.status(201).send({ sender });
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
+  // Delete authorized sender identity
+  server.delete('/api/v1/admin/email/senders/:senderId', async (req, reply) => {
+    const admin = await requireSuperAdmin(req);
+    const { senderId } = req.params as { senderId: string };
+
+    try {
+      const sendRes = await query<{ project_id: string }>(
+        'SELECT project_id FROM authorized_sender_identities WHERE id = $1',
+        [senderId]
+      );
+      const projId = sendRes.rows[0]?.project_id || 'platform';
+      await EmailService.deleteAuthorizedSender(projId, senderId);
+
+      await AuditService.log({
+        actorId: admin.uid,
+        actorType: 'developer',
+        action: 'admin.email_sender_deleted',
+        targetResource: `sender:${senderId}`,
+      });
+
+      return reply.send({ success: true, message: 'Sender deleted successfully.' });
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
   // ---------------------------------------------------------------------------
   // Super Admin: Plan & Limits Management
   // ---------------------------------------------------------------------------

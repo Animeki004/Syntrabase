@@ -795,7 +795,7 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
 
     // Revoke previous publishable keys
     await query(
-      `UPDATE api_credentials SET revoked = TRUE, updated_at = NOW() WHERE project_id = $1 AND type = 'publishable'`,
+      `UPDATE api_credentials SET revoked = TRUE WHERE project_id = $1 AND type = 'publishable'`,
       [projectId]
     );
 
@@ -855,16 +855,26 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
       payload: { name: cleanName, keyIdentifier },
     });
 
+    const keyPayload = {
+      id: res.rows[0].id,
+      name: cleanName,
+      prefix: 'sk_live_',
+      secretKeyPlain: fullSecretKey,
+      createdAt: new Date(res.rows[0].created_at).toLocaleDateString(),
+      lastUsedAt: 'Never',
+    };
+
     return reply.status(201).send({
       success: true,
-      key: {
+      credential: {
         id: res.rows[0].id,
         name: cleanName,
         prefix: 'sk_live_',
-        secretKeyPlain: fullSecretKey,
         createdAt: new Date(res.rows[0].created_at).toLocaleDateString(),
         lastUsedAt: 'Never',
       },
+      rawKey: fullSecretKey,
+      key: keyPayload,
     });
   });
 
@@ -876,7 +886,7 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     await ProjectService.assertProjectAccess(devId, projectId);
 
     await query(
-      `UPDATE api_credentials SET revoked = TRUE, updated_at = NOW() WHERE id = $1 AND project_id = $2`,
+      `UPDATE api_credentials SET revoked = TRUE WHERE id = $1 AND project_id = $2`,
       [credentialId, projectId]
     );
 
@@ -889,6 +899,154 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     });
 
     return reply.send({ success: true, message: 'Credential revoked successfully.' });
+  });
+
+  // Emergency Revoke All Credentials & Active Sessions
+  server.post('/api/v1/projects/:projectId/credentials/emergency-revoke', async (req, reply) => {
+    const devId = await requireDeveloperId(req);
+    const { projectId: rawId } = req.params as { projectId: string };
+    const projectId = await ProjectService.resolveProjectId(rawId);
+    await ProjectService.assertProjectAccess(devId, projectId);
+
+    // Revoke all existing credentials
+    await query(
+      `UPDATE api_credentials SET revoked = TRUE WHERE project_id = $1`,
+      [projectId]
+    );
+
+    // Generate a fresh publishable key so project continues functioning
+    const newPk = `pk_live_${CryptoUtil.generateSecureToken(16)}`;
+    await query(
+      `INSERT INTO api_credentials (project_id, name, type, key_prefix, key_identifier, scopes)
+       VALUES ($1, 'Primary Client Key (Emergency Reset)', 'publishable', 'pk_live_', $2, '{"read", "write"}')`,
+      [projectId, newPk]
+    );
+
+    // Invalidate all end-user active sessions for this project
+    await query(
+      `UPDATE app_users SET sessions_revoked_at = NOW() WHERE project_id = $1`,
+      [projectId]
+    ).catch(() => {});
+
+    await AuditService.log({
+      actorId: devId,
+      actorType: 'developer',
+      action: 'credential.emergency_revocation',
+      targetResource: `project:${projectId}`,
+      projectId,
+      payload: { newPublishableKey: newPk },
+    });
+
+    return reply.send({
+      success: true,
+      newPublishableKey: newPk,
+      message: 'All API keys and end-user sessions revoked successfully.',
+    });
+  });
+
+  // ===========================================================================
+  // Composite Indexes Management
+  // ===========================================================================
+
+  // List Composite Indexes
+  server.get('/api/v1/projects/:projectId/databases/:databaseId/indexes', async (req, reply) => {
+    const devId = await requireDeveloperId(req);
+    const { projectId: rawId, databaseId } = req.params as { projectId: string; databaseId: string };
+    const projectId = await ProjectService.resolveProjectId(rawId);
+    await ProjectService.assertProjectAccess(devId, projectId);
+
+    try {
+      const res = await query<any>(
+        `SELECT id, collection_path as "collectionPath", fields, query_scope as "queryScope",
+                status, created_at as "createdAt"
+         FROM composite_indexes
+         WHERE project_id = $1 AND database_id = $2
+         ORDER BY created_at DESC`,
+        [projectId, databaseId || '(default)']
+      );
+      return reply.send({ indexes: res.rows });
+    } catch {
+      return reply.send({ indexes: [] });
+    }
+  });
+
+  // Create Composite Index
+  server.post('/api/v1/projects/:projectId/databases/:databaseId/indexes', async (req, reply) => {
+    const devId = await requireDeveloperId(req);
+    const { projectId: rawId, databaseId } = req.params as { projectId: string; databaseId: string };
+    const projectId = await ProjectService.resolveProjectId(rawId);
+    await ProjectService.assertProjectAccess(devId, projectId);
+    const { collectionPath, fields, queryScope } = (req.body as any) || {};
+
+    if (!collectionPath) {
+      return reply.status(400).send({ error: 'collectionPath is required' });
+    }
+
+    try {
+      const res = await query<any>(
+        `INSERT INTO composite_indexes (project_id, database_id, collection_path, fields, query_scope, status)
+         VALUES ($1, $2, $3, $4, $5, 'Enabled')
+         RETURNING id, collection_path as "collectionPath", fields, query_scope as "queryScope",
+                   status, created_at as "createdAt"`,
+        [projectId, databaseId || '(default)', collectionPath.trim(), JSON.stringify(fields || []), queryScope || 'Collection']
+      );
+
+      await AuditService.log({
+        actorId: devId,
+        actorType: 'developer',
+        action: 'database.index_created',
+        targetResource: `index:${res.rows[0].id}`,
+        projectId,
+        payload: { collectionPath, queryScope },
+      });
+
+      return reply.status(201).send({ index: res.rows[0] });
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
+  // Delete Composite Index
+  server.delete('/api/v1/projects/:projectId/databases/:databaseId/indexes/:indexId', async (req, reply) => {
+    const devId = await requireDeveloperId(req);
+    const { projectId: rawId, databaseId, indexId } = req.params as { projectId: string; databaseId: string; indexId: string };
+    const projectId = await ProjectService.resolveProjectId(rawId);
+    await ProjectService.assertProjectAccess(devId, projectId);
+
+    await query(
+      `DELETE FROM composite_indexes WHERE id = $1 AND project_id = $2 AND database_id = $3`,
+      [indexId, projectId, databaseId || '(default)']
+    );
+
+    await AuditService.log({
+      actorId: devId,
+      actorType: 'developer',
+      action: 'database.index_deleted',
+      targetResource: `index:${indexId}`,
+      projectId,
+    });
+
+    return reply.send({ success: true });
+  });
+
+  // Global Contact / Upgrade Request endpoint
+  server.post('/api/v1/contact', async (req, reply) => {
+    const body = (req.body as any) || {};
+    const rawProjectId = body.projectId || 'platform';
+    const projectId = await ProjectService.resolveProjectId(rawProjectId).catch(() => rawProjectId);
+
+    const userEmail = body.email || body.replyEmail || 'developer@syntrabase.io';
+    const submission = await ContactService.submitInquiry({
+      projectId,
+      userEmail,
+      replyEmail: userEmail,
+      subject: body.subject || 'Support Inquiry',
+      category: (body.category as any) || 'general',
+      message: body.message || 'No details provided',
+      clientIp: req.ip,
+    });
+
+    return reply.status(201).send({ success: true, submission });
   });
 };
 

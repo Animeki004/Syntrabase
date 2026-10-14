@@ -345,6 +345,28 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     return reply.status(204).send();
   });
 
+  // Delete entire collection
+  server.delete('/api/v1/projects/:projectId/databases/:databaseId/collections/:collectionPath', async (req, reply) => {
+    const { projectId: rawId, collectionPath } = req.params as {
+      projectId: string;
+      databaseId: string;
+      collectionPath: string;
+    };
+    const { ProjectService } = await import('../services/project.service.js');
+    const projectId = await ProjectService.resolveProjectId(rawId);
+
+    try {
+      await query(
+        `DELETE FROM documents 
+         WHERE project_id = $1 AND (collection_path = $2 OR collection_path LIKE $2 || '/%')`,
+        [projectId, collectionPath]
+      );
+    } catch {
+      // ignore
+    }
+    return reply.status(204).send();
+  });
+
   // Query collection
   server.post('/api/v1/projects/:projectId/databases/:databaseId/query', async (req, reply) => {
     const { projectId } = req.params as { projectId: string; databaseId: string };

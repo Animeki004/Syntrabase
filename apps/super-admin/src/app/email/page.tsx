@@ -114,11 +114,18 @@ export default function GlobalEmailControlPage() {
   const [selectedDomainIds, setSelectedDomainIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
+  const getAdminToken = () => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('super_admin_token') || 'admin-token';
+    }
+    return 'admin-token';
+  };
+
   // Fetch Accounts
   const fetchAccounts = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/email/accounts`, {
-        headers: { Authorization: `Bearer admin-token` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       if (res.ok) {
         const data = await res.json();
@@ -135,7 +142,7 @@ export default function GlobalEmailControlPage() {
   const fetchPolicy = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/email/policy`, {
-        headers: { Authorization: `Bearer admin-token` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       if (res.ok) {
         const data = await res.json();
@@ -150,7 +157,7 @@ export default function GlobalEmailControlPage() {
   const fetchQueue = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/email/queue`, {
-        headers: { Authorization: `Bearer admin-token` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       if (res.ok) {
         const data = await res.json();
@@ -167,7 +174,7 @@ export default function GlobalEmailControlPage() {
     setIsLoadingDomains(true);
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/email/domains`, {
-        headers: { Authorization: `Bearer admin-token` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       if (res.ok) {
         const data = await res.json();
@@ -189,7 +196,7 @@ export default function GlobalEmailControlPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer admin-token`,
+          Authorization: `Bearer ${getAdminToken()}`,
         },
         body: JSON.stringify({
           domainName: newDomainName.trim(),
@@ -218,7 +225,7 @@ export default function GlobalEmailControlPage() {
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/email/domains/${domainId}/verify`, {
         method: 'POST',
-        headers: { Authorization: `Bearer admin-token` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       const data = await res.json();
       if (!res.ok) {
@@ -343,7 +350,7 @@ export default function GlobalEmailControlPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer admin-token`,
+          Authorization: `Bearer ${getAdminToken()}`,
         },
         body: JSON.stringify({
           providerType: 'brevo',
@@ -383,7 +390,7 @@ export default function GlobalEmailControlPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer admin-token`,
+          Authorization: `Bearer ${getAdminToken()}`,
         },
         body: JSON.stringify({
           accountName: editAccountName.trim() || undefined,
@@ -414,7 +421,7 @@ export default function GlobalEmailControlPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer admin-token`,
+          Authorization: `Bearer ${getAdminToken()}`,
         },
         body: JSON.stringify({ isEnabled: !currentEnabled }),
       });
@@ -432,7 +439,7 @@ export default function GlobalEmailControlPage() {
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/email/accounts/${id}/test`, {
         method: 'POST',
-        headers: { Authorization: `Bearer admin-token` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       const data = await res.json();
       if (res.ok && data.account.status === 'healthy') {
@@ -451,7 +458,7 @@ export default function GlobalEmailControlPage() {
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/email/accounts/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer admin-token` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       if (res.ok) {
         addToast('Provider account removed', 'info');
@@ -470,7 +477,7 @@ export default function GlobalEmailControlPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer admin-token`,
+          Authorization: `Bearer ${getAdminToken()}`,
         },
         body: JSON.stringify(updates),
       });
@@ -492,7 +499,7 @@ export default function GlobalEmailControlPage() {
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/email/queue/flush`, {
         method: 'POST',
-        headers: { Authorization: `Bearer admin-token` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       const data = await res.json();
       if (res.ok) {
@@ -521,7 +528,7 @@ export default function GlobalEmailControlPage() {
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/email/queue/prune`, {
         method: 'POST',
-        headers: { Authorization: `Bearer admin-token` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       if (res.ok) {
         const data = await res.json();

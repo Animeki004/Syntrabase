@@ -217,14 +217,16 @@ export default function SettingsPage() {
         body: JSON.stringify({ name }),
       });
       const data = await res.json();
-      if (res.ok && data.credential && data.rawKey) {
-        setKeys([data.credential, ...keys]);
+      const rawKey = data.rawKey || data.key?.secretKeyPlain;
+      const credential = data.credential || data.key;
+      if (res.ok && rawKey && credential) {
+        setKeys([credential, ...keys]);
         setKeyNameInput('');
         setShowGenerateModal(false);
-        setNewKeyModal({ rawKey: data.rawKey, name: data.credential.name });
+        setNewKeyModal({ rawKey, name: credential.name });
         addToast(`Generated secret key '${name}'`, 'success');
       } else {
-        addToast(data.message || 'Failed to generate secret key', 'error');
+        addToast(data.message || data.error || 'Failed to generate secret key', 'error');
       }
     } catch (err: any) {
       addToast(err.message || 'Failed to generate secret key', 'error');
@@ -263,7 +265,7 @@ export default function SettingsPage() {
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       const targetLabel = upgradeTargetPlan === 'enterprise' ? 'Enterprise Dedicated Tier' : 'Pro Tier';
-      const res = await fetch(`${API_BASE_URL}/api/v1/contact`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/contact`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -280,7 +282,8 @@ export default function SettingsPage() {
         setShowUpgradeModal(false);
         setUpgradeNotes('');
       } else {
-        addToast('Failed to submit upgrade inquiry. Please try again.', 'error');
+        const errData = await res.json().catch(() => ({}));
+        addToast(errData.message || errData.error || 'Failed to submit upgrade inquiry. Please try again.', 'error');
       }
     } catch (err: any) {
       addToast(err.message || 'Failed to submit upgrade request', 'error');
@@ -289,9 +292,31 @@ export default function SettingsPage() {
     }
   };
 
-  const handleConfirmEmergencyRevocation = () => {
-    setShowEmergencyModal(false);
-    addToast('Emergency revocation executed. All active tokens invalidated.', 'warning');
+  const handleConfirmEmergencyRevocation = async () => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/credentials/emergency-revoke`, {
+        method: 'POST',
+        headers,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.newPublishableKey) setPublishableKey(data.newPublishableKey);
+        setKeys([]);
+        addToast('Emergency revocation executed! All existing API keys and user sessions invalidated.', 'warning');
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        addToast(errData.error || 'Emergency revocation failed on server', 'error');
+      }
+    } catch (err: any) {
+      addToast(err.message || 'Emergency revocation network failure', 'error');
+    } finally {
+      setShowEmergencyModal(false);
+    }
   };
 
   const handleCreateTrigger = async () => {
