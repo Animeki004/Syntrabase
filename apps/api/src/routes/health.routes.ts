@@ -12,6 +12,7 @@ export const healthRoutes: FastifyPluginAsync = async (server: FastifyInstance) 
       return reply.status(503).send({
         status: 'not_ready',
         database: 'disconnected',
+        error: dbHealth.error,
         timestamp: new Date().toISOString(),
       });
     }

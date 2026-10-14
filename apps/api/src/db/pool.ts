@@ -55,12 +55,12 @@ export async function withTransaction<T>(
   }
 }
 
-export async function checkDatabaseHealth(): Promise<{ connected: boolean; latencyMs: number }> {
+export async function checkDatabaseHealth(): Promise<{ connected: boolean; latencyMs: number; error?: string }> {
   const start = Date.now();
   try {
     await pool.query('SELECT 1');
     return { connected: true, latencyMs: Date.now() - start };
-  } catch {
-    return { connected: false, latencyMs: -1 };
+  } catch (err: any) {
+    return { connected: false, latencyMs: -1, error: err.message };
   }
 }
