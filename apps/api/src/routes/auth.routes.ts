@@ -100,20 +100,34 @@ export const authRoutes: FastifyPluginAsync = async (server: FastifyInstance) =>
         (process.env.CONSOLE_DOMAIN ? `https://${process.env.CONSOLE_DOMAIN}` : 'https://console.originhub.me');
       const resetUrl = `${origin}/login?reset_token=${rawToken}`;
 
-      // Dynamically resolve verified sender address
+      // Dynamically resolve verified sender address and display name
       let platformFromEmail = 'security@syntrabase.app';
+      let platformFromName = 'Syntrabase Security';
       try {
-        const senderRes = await query<{ email_address: string }>(
-          `SELECT email_address FROM authorized_sender_identities WHERE (project_id = 'platform' OR project_id = 'default') AND status = 'active' LIMIT 1`
+        const senderRes = await query<{ email_address: string; display_name: string }>(
+          `SELECT email_address, display_name FROM authorized_sender_identities WHERE (project_id = 'platform' OR project_id = 'default') AND status = 'active' ORDER BY created_at DESC LIMIT 1`
         );
         if (senderRes.rows[0]?.email_address) {
           platformFromEmail = senderRes.rows[0].email_address;
+          if (senderRes.rows[0].display_name) {
+            platformFromName = senderRes.rows[0].display_name;
+          }
         } else {
-          const accRes = await query<{ account_email: string }>(
-            `SELECT account_email FROM email_provider_accounts WHERE is_enabled = TRUE AND status = 'healthy' AND account_email IS NOT NULL LIMIT 1`
+          const anySenderRes = await query<{ email_address: string; display_name: string }>(
+            `SELECT email_address, display_name FROM authorized_sender_identities WHERE status = 'active' ORDER BY created_at DESC LIMIT 1`
           );
-          if (accRes.rows[0]?.account_email) {
-            platformFromEmail = accRes.rows[0].account_email;
+          if (anySenderRes.rows[0]?.email_address) {
+            platformFromEmail = anySenderRes.rows[0].email_address;
+            if (anySenderRes.rows[0].display_name) {
+              platformFromName = anySenderRes.rows[0].display_name;
+            }
+          } else {
+            const accRes = await query<{ account_email: string }>(
+              `SELECT account_email FROM email_provider_accounts WHERE is_enabled = TRUE AND status = 'healthy' AND account_email IS NOT NULL LIMIT 1`
+            );
+            if (accRes.rows[0]?.account_email) {
+              platformFromEmail = accRes.rows[0].account_email;
+            }
           }
         }
       } catch {}
@@ -123,7 +137,7 @@ export const authRoutes: FastifyPluginAsync = async (server: FastifyInstance) =>
         projectId: 'platform',
         toEmail: dev.email,
         fromEmail: platformFromEmail,
-        fromName: 'Syntrabase Security',
+        fromName: platformFromName,
         subject: 'Reset your Syntrabase Developer Console password',
         text: `Hello ${dev.displayName || 'Developer'},\n\nA request was made to reset your password for the Syntrabase Developer Console.\n\nClick the link below to set a new password:\n${resetUrl}\n\nThis single-use link is valid for 30 minutes. If you did not make this request, you can safely ignore this email.\n\nSyntrabase Security Team`,
         html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:540px;margin:24px auto;padding:28px;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff;color:#0f172a;">

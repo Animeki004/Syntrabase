@@ -42,13 +42,13 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 export default function GlobalEmailControlPage() {
   const { addToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'accounts' | 'queue' | 'policy' | 'domains'>('accounts');
+  const [activeTab, setActiveTab] = useState<'accounts' | 'queue' | 'policy' | 'domains' | 'senders'>('accounts');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get('tab');
-      if (tabParam && ['accounts', 'queue', 'policy', 'domains'].includes(tabParam)) {
+      if (tabParam && ['accounts', 'queue', 'policy', 'domains', 'senders'].includes(tabParam)) {
         setActiveTab(tabParam as any);
       }
     }
@@ -113,6 +113,15 @@ export default function GlobalEmailControlPage() {
   const [selectedDomainForCloudflare, setSelectedDomainForCloudflare] = useState<any>(null);
   const [selectedDomainIds, setSelectedDomainIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
+  // Authorized Sender Identities State
+  const [senders, setSenders] = useState<any[]>([]);
+  const [isLoadingSenders, setIsLoadingSenders] = useState(false);
+  const [showAddSenderModal, setShowAddSenderModal] = useState(false);
+  const [senderDomainId, setSenderDomainId] = useState('');
+  const [senderDisplayName, setSenderDisplayName] = useState('');
+  const [senderEmailPrefix, setSenderEmailPrefix] = useState('security');
+  const [isSubmittingSender, setIsSubmittingSender] = useState(false);
 
   const getAdminToken = () => {
     if (typeof window !== 'undefined') {
@@ -184,6 +193,24 @@ export default function GlobalEmailControlPage() {
       // Fallback
     } finally {
       setIsLoadingDomains(false);
+    }
+  }, []);
+
+  // Fetch Authorized Senders
+  const fetchSenders = useCallback(async () => {
+    setIsLoadingSenders(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/admin/email/senders`, {
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSenders(data.senders || []);
+      }
+    } catch {
+      // Fallback
+    } finally {
+      setIsLoadingSenders(false);
     }
   }, []);
 
@@ -329,12 +356,81 @@ export default function GlobalEmailControlPage() {
     }
   };
 
+  const handleAddSender = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const domain = domains.find((d) => d.id === senderDomainId) || domains[0];
+    if (!domain) {
+      addToast('Please register and verify a custom domain before authorizing a sender identity.', 'error');
+      return;
+    }
+
+    const cleanPrefix = senderEmailPrefix.trim().toLowerCase().replace(/@.*$/, '');
+    if (!cleanPrefix) {
+      addToast('Email prefix is required (e.g. security or noreply)', 'error');
+      return;
+    }
+
+    const fullEmail = `${cleanPrefix}@${domain.domainName}`;
+    setIsSubmittingSender(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/admin/email/senders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getAdminToken()}`,
+        },
+        body: JSON.stringify({
+          domainId: domain.id,
+          displayName: senderDisplayName.trim() || 'Syntrabase Security',
+          emailAddress: fullEmail,
+          projectId: 'platform',
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setSenders((prev) => [data.sender, ...prev.filter((s) => s.id !== data.sender?.id)]);
+        addToast(`Sender identity ${fullEmail} authorized in Brevo successfully!`, 'success');
+        setShowAddSenderModal(false);
+        setSenderDisplayName('');
+        setSenderEmailPrefix('security');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        addToast(err.error || 'Failed to authorize sender identity in Brevo', 'error');
+      }
+    } catch (err: any) {
+      addToast(err.message || 'Network error authorizing sender', 'error');
+    } finally {
+      setIsSubmittingSender(false);
+    }
+  };
+
+  const handleDeleteSender = async (senderId: string, address: string) => {
+    if (!confirm(`Are you sure you want to remove authorized sender ${address}?`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/admin/email/senders/${senderId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
+      });
+      if (res.ok) {
+        setSenders((prev) => prev.filter((s) => s.id !== senderId));
+        addToast(`Sender ${address} removed successfully.`, 'info');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        addToast(err.error || 'Failed to remove sender', 'error');
+      }
+    } catch (err: any) {
+      addToast(err.message || 'Error deleting sender', 'error');
+    }
+  };
+
   useEffect(() => {
     fetchAccounts();
     fetchPolicy();
     fetchQueue();
     fetchDomains();
-  }, [fetchAccounts, fetchPolicy, fetchQueue, fetchDomains]);
+    fetchSenders();
+  }, [fetchAccounts, fetchPolicy, fetchQueue, fetchDomains, fetchSenders]);
 
   // Handle Add Account
   const handleAddAccount = async (e: React.FormEvent) => {
@@ -752,6 +848,13 @@ export default function GlobalEmailControlPage() {
           onClick={() => setActiveTab('domains')}
         >
           <Globe size={15} style={{ marginRight: '6px' }} /> Custom Sender Domains ({domains.length})
+        </Button>
+        <Button
+          id="email-tab-senders"
+          variant={activeTab === 'senders' ? 'primary' : 'ghost'}
+          onClick={() => setActiveTab('senders')}
+        >
+          <Send size={15} style={{ marginRight: '6px' }} /> Authorized Senders ({senders.length})
         </Button>
       </div>
 
@@ -1315,6 +1418,266 @@ export default function GlobalEmailControlPage() {
             )}
           </div>
         </Card>
+      )}
+
+      {/* TAB 5: AUTHORIZED SENDER IDENTITIES */}
+      {activeTab === 'senders' && (
+        <Card>
+          <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexDirection: 'row' }}>
+            <div>
+              <CardTitle>Platform &amp; Tenant Authorized Senders</CardTitle>
+              <CardDescription>
+                Cryptographically registered outbound identities with Brevo. Transactional emails, password resets, and verification messages dispatch from these addresses.
+              </CardDescription>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={fetchSenders}
+                disabled={isLoadingSenders}
+                id="btn-refresh-senders"
+              >
+                <RefreshCw size={14} className={isLoadingSenders ? 'animate-spin' : ''} style={{ marginRight: '6px' }} />
+                Refresh
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setShowAddSenderModal(true)}
+                id="btn-authorize-sender"
+              >
+                <Plus size={14} style={{ marginRight: '6px' }} />
+                Authorize Sender Identity
+              </Button>
+            </div>
+          </CardHeader>
+
+          {/* Quick Notice Card */}
+          <div style={{ margin: '0 24px 20px 24px', padding: '12px 16px', borderRadius: '8px', background: 'var(--bg-subtle, rgba(255, 255, 255, 0.03))', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <ShieldCheck size={20} color="#10b981" style={{ flexShrink: 0 }} />
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+              <strong>Platform Default Fallback:</strong> If no authorized senders are registered, system emails (password resets, invitations) will fall back to your connected Brevo account owner email. Authorizing a sender here (such as <code style={{ color: 'var(--text-primary)' }}>security@originhub.me</code>) allows the platform to dispatch cleanly with branded sender headers.
+            </div>
+          </div>
+
+          <div style={{ padding: '0 24px 24px 24px' }}>
+            {isLoadingSenders ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 12px' }} />
+                Loading authorized senders...
+              </div>
+            ) : senders.length === 0 ? (
+              <div style={{ padding: '48px 24px', textAlign: 'center', border: '1px dashed var(--border-default)', borderRadius: '12px' }}>
+                <Mail size={40} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
+                <h4 style={{ margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 600 }}>No Authorized Sender Identities</h4>
+                <p style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: '440px', marginLeft: 'auto', marginRight: 'auto' }}>
+                  Authorize a custom sender address on your verified domain (e.g. <code>security@originhub.me</code> or <code>noreply@originhub.me</code>) to dispatch production transactional emails.
+                </p>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setShowAddSenderModal(true)}
+                >
+                  <Plus size={14} style={{ marginRight: '6px' }} />
+                  Authorize First Sender
+                </Button>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Sender Identity</TableHead>
+                    <TableHead>Domain &amp; Scope</TableHead>
+                    <TableHead>Brevo Sender ID</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead style={{ textAlign: 'right' }}>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {senders.map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '8px',
+                            background: 'rgba(99, 102, 241, 0.12)',
+                            color: '#818cf8',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0
+                          }}>
+                            <Send size={15} />
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem' }}>
+                              {s.displayName || s.display_name}
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                              {s.emailAddress || s.email_address}
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Globe size={13} color="var(--text-muted)" />
+                          <span style={{ fontSize: '0.82rem', fontFamily: 'var(--font-mono)' }}>
+                            {(s.emailAddress || s.email_address || '').split('@')[1] || 'Domain'}
+                          </span>
+                          <Badge variant="outline" size="sm">
+                            {(s.projectId || s.project_id) === 'platform' || !(s.projectId || s.project_id) ? 'Platform' : `Project: ${(s.projectId || s.project_id).slice(0, 8)}`}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <code style={{ fontSize: '0.78rem', padding: '2px 6px', background: 'var(--bg-subtle)', borderRadius: '4px' }}>
+                          {s.brevoSenderId || s.brevo_sender_id || 'Registered'}
+                        </code>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="success" size="sm">
+                          <CheckCircle2 size={12} style={{ marginRight: '4px' }} />
+                          {s.status || 'Active'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        {new Date(s.createdAt || s.created_at || Date.now()).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell style={{ textAlign: 'right' }}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          style={{ color: '#ef4444' }}
+                          onClick={() => handleDeleteSender(s.id, s.emailAddress || s.email_address)}
+                          title="Remove authorized sender"
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* AUTHORIZE SENDER IDENTITY MODAL */}
+      {showAddSenderModal && (
+        <Modal
+          isOpen={true}
+          onClose={() => setShowAddSenderModal(false)}
+          title="Authorize New Sender Identity"
+        >
+          <form onSubmit={handleAddSender} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+              Register a verified outbound email address with Brevo. Password reset tokens, notifications, and customer emails will dispatch from this address.
+            </p>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                Sender Domain
+              </label>
+              {domains.length === 0 ? (
+                <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', fontSize: '0.82rem' }}>
+                  No custom sender domains registered yet. Please register a domain in the <strong>Custom Sender Domains</strong> tab first.
+                </div>
+              ) : (
+                <select
+                  value={senderDomainId || domains[0]?.id || ''}
+                  onChange={(e) => setSenderDomainId(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: 'var(--bg-subtle, #1e293b)',
+                    border: '1px solid var(--border-default, #334155)',
+                    color: 'var(--text-primary, #ffffff)',
+                    fontSize: '0.85rem',
+                  }}
+                  required
+                >
+                  {domains.map((dom) => (
+                    <option key={dom.id} value={dom.id}>
+                      {dom.domainName} ({dom.status === 'verified' ? 'Verified' : 'Pending DNS'})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                Sender Display Name
+              </label>
+              <Input
+                placeholder="e.g. Syntrabase Security or OriginHub Team"
+                value={senderDisplayName}
+                onChange={(e) => setSenderDisplayName(e.target.value)}
+                required
+              />
+              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                The human-readable sender name recipients see in their inbox.
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                Sender Email Prefix
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Input
+                  placeholder="e.g. security or noreply"
+                  value={senderEmailPrefix}
+                  onChange={(e) => setSenderEmailPrefix(e.target.value)}
+                  required
+                  style={{ flex: 1 }}
+                />
+                <span style={{ fontSize: '0.88rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                  @{domains.find((d) => d.id === (senderDomainId || domains[0]?.id))?.domainName || 'domain.com'}
+                </span>
+              </div>
+            </div>
+
+            {/* Live Preview Box */}
+            <div style={{ padding: '10px 14px', borderRadius: '8px', background: 'var(--bg-subtle, rgba(255, 255, 255, 0.03))', border: '1px solid var(--border-default)', fontSize: '0.8rem' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Preview in email client: </span>
+              <strong style={{ color: 'var(--text-primary)' }}>
+                {senderDisplayName.trim() || 'Syntrabase Security'}
+              </strong>{' '}
+              <code style={{ color: '#818cf8' }}>
+                &lt;{(senderEmailPrefix.trim() || 'security').replace(/@.*$/, '')}@{domains.find((d) => d.id === (senderDomainId || domains[0]?.id))?.domainName || 'originhub.me'}&gt;
+              </code>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={isSubmittingSender}
+                onClick={() => setShowAddSenderModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={isSubmittingSender || domains.length === 0}
+              >
+                <Send size={13} style={{ marginRight: '4px' }} />
+                {isSubmittingSender ? 'Authorizing in Brevo...' : 'Authorize Sender'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* REGISTER CUSTOM DOMAIN MODAL */}

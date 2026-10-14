@@ -496,6 +496,8 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
     const durationMs = Math.round(performance.now() - start);
     return reply.send({
       ...verification,
+      checkedCount: verification.totalChecked,
+      totalChecked: verification.totalChecked,
       durationMs,
       verifiedAt: new Date().toISOString(),
       status: verification.valid ? 'VERIFIED' : 'TAMPERED',

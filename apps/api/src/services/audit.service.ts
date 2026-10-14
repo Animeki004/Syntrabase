@@ -9,6 +9,19 @@ const GENESIS_HASH = '0000000000000000000000000000000000000000000000000000000000
 
 export class AuditService {
   /**
+   * Generates a deterministic canonical JSON string with recursively sorted keys.
+   */
+  public static canonicalStringify(obj: any): string {
+    if (obj === null || obj === undefined) return '{}';
+    if (typeof obj !== 'object') return JSON.stringify(obj);
+    if (Array.isArray(obj)) {
+      return '[' + obj.map((item) => this.canonicalStringify(item)).join(',') + ']';
+    }
+    const keys = Object.keys(obj).sort();
+    return '{' + keys.map((k) => `${JSON.stringify(k)}:${this.canonicalStringify(obj[k])}`).join(',') + '}';
+  }
+
+  /**
    * Logs a tamper-evident audit record using cryptographic HMAC-SHA256 chaining.
    */
   public static async log(params: {
@@ -31,7 +44,7 @@ export class AuditService {
     const prevHash = lastRow.rows[0]?.current_hash || GENESIS_HASH;
 
     // 2. Compute current hash = HMAC-SHA256(prevHash || timestamp || actorId || action || payload)
-    const payloadString = JSON.stringify(payload);
+    const payloadString = this.canonicalStringify(payload);
     const message = `${prevHash}|${timestamp}|${params.actorId}|${params.action}|${params.targetResource}|${payloadString}`;
     const currentHash = CryptoUtil.hmacSha256(message);
 
@@ -103,27 +116,54 @@ export class AuditService {
    * Verifies the cryptographic continuity of the entire audit chain.
    */
   public static async verifyChainIntegrity(): Promise<{ valid: boolean; totalChecked: number; brokenSequenceId?: string }> {
-    const rows = await query<AuditEntry>(
-      'SELECT sequence_id, prev_hash, current_hash, actor_id, action, target_resource, payload, created_at as timestamp FROM audit_ledger ORDER BY sequence_id ASC'
+    const rows = await query<any>(
+      `SELECT sequence_id as "sequenceId", prev_hash as "prevHash", current_hash as "currentHash",
+              actor_id as "actorId", action, target_resource as "targetResource", payload,
+              created_at as "timestamp"
+       FROM audit_ledger
+       ORDER BY sequence_id ASC`
     );
 
     let expectedPrevHash = GENESIS_HASH;
     let totalChecked = 0;
 
     for (const row of rows.rows) {
-      if (row.prevHash !== expectedPrevHash) {
-        return { valid: false, totalChecked, brokenSequenceId: row.sequenceId };
+      const prevHash = row.prevHash || row.prev_hash;
+      const currentHash = row.currentHash || row.current_hash;
+      const sequenceId = row.sequenceId || row.sequence_id;
+      const actorId = row.actorId || row.actor_id;
+      const action = row.action;
+      const targetResource = row.targetResource || row.target_resource;
+      const timestamp = row.timestamp || row.created_at;
+
+      // 1. Verify chain continuity
+      if (prevHash !== expectedPrevHash) {
+        return { valid: false, totalChecked, brokenSequenceId: String(sequenceId) };
       }
 
-      const payloadString = JSON.stringify(row.payload || {});
-      const message = `${row.prevHash}|${new Date(row.timestamp).toISOString()}|${row.actorId}|${row.action}|${row.targetResource}|${payloadString}`;
-      const recomputedHash = CryptoUtil.hmacSha256(message);
+      // 2. Verify cryptographic HMAC signature
+      const isoTime = new Date(timestamp).toISOString();
+      const payloadCanonical = this.canonicalStringify(row.payload || {});
+      const message1 = `${prevHash}|${isoTime}|${actorId}|${action}|${targetResource}|${payloadCanonical}`;
+      let isValidHash = CryptoUtil.hmacSha256(message1) === currentHash;
 
-      if (recomputedHash !== row.currentHash) {
-        return { valid: false, totalChecked, brokenSequenceId: row.sequenceId };
+      if (!isValidHash) {
+        const payloadLegacy = JSON.stringify(row.payload || {});
+        const message2 = `${prevHash}|${isoTime}|${actorId}|${action}|${targetResource}|${payloadLegacy}`;
+        isValidHash = CryptoUtil.hmacSha256(message2) === currentHash;
       }
 
-      expectedPrevHash = row.currentHash;
+      if (!isValidHash) {
+        const rawTimeStr = typeof timestamp === 'string' ? timestamp : String(timestamp);
+        const message3 = `${prevHash}|${rawTimeStr}|${actorId}|${action}|${targetResource}|${payloadCanonical}`;
+        isValidHash = CryptoUtil.hmacSha256(message3) === currentHash;
+      }
+
+      if (!isValidHash) {
+        return { valid: false, totalChecked, brokenSequenceId: String(sequenceId) };
+      }
+
+      expectedPrevHash = currentHash;
       totalChecked++;
     }
 

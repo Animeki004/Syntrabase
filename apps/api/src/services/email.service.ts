@@ -1061,11 +1061,29 @@ export class EmailService {
     const cleanEmail = params.emailAddress.toLowerCase().trim();
     const cleanName = params.displayName.trim();
 
-    // Verify domain belongs to project and is verified
-    const domains = await this.getCustomDomains(params.projectId);
-    const domain = domains.find((d) => d.id === params.domainId);
+    // Verify domain exists and is verified
+    let domain: CustomSenderDomain | undefined;
+    try {
+      const domRes = await query<any>(
+        `SELECT id, project_id as "projectId", domain_name as "domainName",
+                provider_domain_id as "providerDomainId", provider_account_id as "providerAccountId",
+                verification_status as "verificationStatus", dns_records as "dnsRecords",
+                created_at as "createdAt", verified_at as "verifiedAt"
+         FROM custom_sender_domains
+         WHERE id = $1`,
+        [params.domainId]
+      );
+      if (domRes.rows.length > 0) {
+        domain = domRes.rows[0];
+      }
+    } catch {}
+
     if (!domain) {
-      throw new Error('Selected domain is not registered for this project.');
+      const domains = await this.getCustomDomains(params.projectId);
+      domain = domains.find((d) => d.id === params.domainId);
+    }
+    if (!domain) {
+      throw new Error('Selected domain is not registered.');
     }
     if (domain.verificationStatus !== 'verified') {
       throw new Error(`Cannot authorize sender: Domain ${domain.domainName} is not yet verified.`);
@@ -1151,7 +1169,7 @@ export class EmailService {
          FROM authorized_sender_identities s
          JOIN custom_sender_domains d ON d.id = s.domain_id
          LEFT JOIN email_provider_accounts a ON a.id = d.provider_account_id
-         WHERE s.id = $1 AND s.project_id = $2`,
+         WHERE s.id = $1 AND (s.project_id = $2 OR $2 = 'platform')`,
         [senderId, projectId]
       );
       if (res.rows.length > 0) {
@@ -1166,10 +1184,10 @@ export class EmailService {
           } catch {}
         }
       }
-      await query(`DELETE FROM authorized_sender_identities WHERE id = $1 AND project_id = $2`, [senderId, projectId]);
+      await query(`DELETE FROM authorized_sender_identities WHERE id = $1 AND (project_id = $2 OR $2 = 'platform')`, [senderId, projectId]);
     } catch {
       for (const [k, s] of inMemoryAuthorizedSenders.entries()) {
-        if (s.id === senderId && s.projectId === projectId) inMemoryAuthorizedSenders.delete(k);
+        if (s.id === senderId && (s.projectId === projectId || projectId === 'platform')) inMemoryAuthorizedSenders.delete(k);
       }
     }
   }
