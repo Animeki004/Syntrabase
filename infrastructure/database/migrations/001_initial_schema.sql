@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS projects (
   name VARCHAR(100) NOT NULL,
   slug VARCHAR(100) NOT NULL,
   status VARCHAR(20) DEFAULT 'active', -- active, suspended, archived
+  dedicated_brevo_enabled BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (organization_id, slug)

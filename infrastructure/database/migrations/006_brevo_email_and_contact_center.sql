@@ -8,6 +8,7 @@ BEGIN;
 -- 1. Email Provider Accounts (Stores AES-256-GCM Encrypted Credentials)
 CREATE TABLE IF NOT EXISTS email_provider_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id VARCHAR(255),
     provider_type VARCHAR(50) NOT NULL DEFAULT 'brevo', -- 'brevo', 'smtp', 'resend', 'mock'
     account_name VARCHAR(255) NOT NULL,
     encrypted_credentials JSONB NOT NULL DEFAULT '{}'::jsonb, -- {"iv": "...", "authTag": "...", "ciphertext": "..."}

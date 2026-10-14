@@ -39,6 +39,9 @@ ENV NODE_ENV=production
 # Install curl for healthcheck
 RUN apk add --no-cache curl
 
+# Create audit log and storage directories with node permissions
+RUN mkdir -p /var/log/audit /var/data/storage && chown -R node:node /var/log/audit /var/data/storage
+
 # Run as non-root user
 USER node
 
