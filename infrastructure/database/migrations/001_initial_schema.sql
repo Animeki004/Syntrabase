@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS developers (
   display_name VARCHAR(100),
   email_verified BOOLEAN DEFAULT FALSE,
   is_platform_admin BOOLEAN DEFAULT FALSE,
+  status VARCHAR(50) DEFAULT 'active',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
