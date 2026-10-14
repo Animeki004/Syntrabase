@@ -17,9 +17,10 @@ COPY apps/api/package.json ./apps/api/
 
 RUN npm install --include=dev
 
-# Copy source files
+# Copy source files and migrations
 COPY packages ./packages
 COPY apps/api ./apps/api
+COPY infrastructure/database/migrations ./infrastructure/database/migrations
 
 # Ensure production flags for compilation
 ENV NODE_ENV=production

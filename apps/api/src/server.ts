@@ -17,6 +17,7 @@ import { functionRoutes } from './routes/function.routes.js';
 import { projectRoutes } from './routes/project.routes.js';
 import { ProjectService } from './services/project.service.js';
 import { AuthService } from './services/auth.service.js';
+import { runMigrations } from './db/migrate.js';
 
 export async function buildServer() {
   validateConfig();
@@ -184,6 +185,13 @@ export async function buildServer() {
 async function start() {
   try {
     const server = await buildServer();
+
+    // Run database migrations on startup to ensure all tables exist
+    try {
+      await runMigrations();
+    } catch (migErr) {
+      console.warn('[MIGRATIONS] Auto-migration notice:', (migErr as Error).message);
+    }
 
     // Start background listeners and bootstrap platform admin
     await RealtimeService.startListener();
