@@ -29,10 +29,14 @@ services:
     image: postgres:16-alpine
     container_name: syntrabase-postgres
     restart: unless-stopped
+    env_file:
+      - path: ./.env
+        required: false
     environment:
       POSTGRES_DB: ${DATABASE_NAME:-syntrabase}
       POSTGRES_USER: ${DATABASE_USER:-postgres}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-syntrabase_db_secret_pass}
+      POSTGRES_HOST_AUTH_METHOD: trust
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ../database/migrations:/docker-entrypoint-initdb.d:ro
