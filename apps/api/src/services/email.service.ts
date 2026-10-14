@@ -1062,7 +1062,7 @@ export class EmailService {
     const cleanEmail = params.emailAddress.toLowerCase().trim();
     const cleanName = params.displayName.trim();
 
-    // Verify domain exists and is verified
+    // Verify domain exists, belongs to this project, and is verified
     let domain: CustomSenderDomain | undefined;
     try {
       const domRes = await query<any>(
@@ -1071,8 +1071,8 @@ export class EmailService {
                 verification_status as "verificationStatus", dns_records as "dnsRecords",
                 created_at as "createdAt", verified_at as "verifiedAt"
          FROM custom_sender_domains
-         WHERE id = $1`,
-        [params.domainId]
+         WHERE id = $1 AND project_id = $2`,
+        [params.domainId, params.projectId]
       );
       if (domRes.rows.length > 0) {
         domain = domRes.rows[0];
@@ -1081,10 +1081,10 @@ export class EmailService {
 
     if (!domain) {
       const domains = await this.getCustomDomains(params.projectId);
-      domain = domains.find((d) => d.id === params.domainId);
+      domain = domains.find((d) => d.id === params.domainId && d.projectId === params.projectId);
     }
-    if (!domain) {
-      throw new Error('Selected domain is not registered.');
+    if (!domain || domain.projectId !== params.projectId) {
+      throw new Error(`Access denied: Domain is not registered for project "${params.projectId}".`);
     }
     if (domain.verificationStatus !== 'verified') {
       throw new Error(`Cannot authorize sender: Domain ${domain.domainName} is not yet verified.`);
@@ -1459,21 +1459,22 @@ export class EmailService {
           effectiveSenderEmail.endsWith('@localhost');
 
         if (isPlaceholder || (domainRecord && domainRecord.verificationStatus !== 'verified')) {
-          // Check for active authorized sender identity for this project or platform
+          // Strictly resolve within this item's scope: platform items use 'platform', projects use their own project_id
           try {
             const senderRes = await query<{ email_address: string }>(
               `SELECT email_address FROM authorized_sender_identities
-               WHERE (project_id = $1 OR project_id = 'platform') AND status = 'active'
+               WHERE project_id = $1 AND status = 'active'
                LIMIT 1`,
               [item.projectId]
             );
             if (senderRes.rows.length > 0 && senderRes.rows[0].email_address) {
               effectiveSenderEmail = senderRes.rows[0].email_address;
-            } else if (account.accountEmail) {
+            } else if (item.projectId === 'platform' && account.accountEmail) {
+              // Super Admin platform fallback to Brevo account owner email
               effectiveSenderEmail = account.accountEmail;
             }
           } catch {
-            if (account.accountEmail) {
+            if (item.projectId === 'platform' && account.accountEmail) {
               effectiveSenderEmail = account.accountEmail;
             }
           }
@@ -1494,7 +1495,14 @@ export class EmailService {
         });
 
         // Failover: If provider rejects unverified custom domain / sender, retry immediately with account owner email
-        if (!result.success && result.status === 'DOMAIN_ERROR' && account.accountEmail && effectiveSenderEmail !== account.accountEmail) {
+        // ONLY for platform communications! A tenant project must NOT failover to Super Admin's account email.
+        if (
+          !result.success &&
+          result.status === 'DOMAIN_ERROR' &&
+          item.projectId === 'platform' &&
+          account.accountEmail &&
+          effectiveSenderEmail !== account.accountEmail
+        ) {
           result = await adapter.sendEmail(apiKey, {
             projectId: item.projectId,
             toEmail: item.recipientEmail,

@@ -55,22 +55,27 @@ export class UrlUtil {
 
   /**
    * Dynamically resolves the platform sender identity (email & display name)
-   * without hardcoding any static domain.
+   * strictly for platform/super-admin communications (password resets, invitations).
+   * Console users' tenant senders are NEVER queried here.
    * Priority:
    * 1. SYSTEM_FROM_EMAIL / SYSTEM_FROM_NAME environment variables
-   * 2. Active authorized sender identity in database (platform / default)
-   * 3. Any active authorized sender identity in database
-   * 4. Active connected email provider account email (Brevo/Postmark)
-   * 5. Inferred dynamically from request host (e.g. security@yourdomain.com)
+   * 2. Platform-authorized sender identity in database (project_id = 'platform')
+   * 3. Platform connected email provider account email (Brevo/Postmark)
+   * 4. Inferred dynamically from request host (e.g. security@yourdomain.com)
    */
   public static async resolvePlatformSender(req?: FastifyRequest | any): Promise<{ email: string; name: string }> {
     let email = process.env.SYSTEM_FROM_EMAIL || process.env.DEFAULT_FROM_EMAIL || '';
     let name = process.env.SYSTEM_FROM_NAME || 'Platform Security';
 
+    if (email) {
+      return { email, name };
+    }
+
     try {
+      // 1. Strictly look up platform-scoped authorized senders (Super Admin configured)
       const senderRes = await query<{ email_address: string; display_name: string }>(
         `SELECT email_address, display_name FROM authorized_sender_identities
-         WHERE (project_id = 'platform' OR project_id = 'default') AND status = 'active'
+         WHERE project_id = 'platform' AND status = 'active'
          ORDER BY created_at DESC LIMIT 1`
       );
       if (senderRes.rows[0]?.email_address) {
@@ -79,20 +84,11 @@ export class UrlUtil {
         return { email, name };
       }
 
-      const anySenderRes = await query<{ email_address: string; display_name: string }>(
-        `SELECT email_address, display_name FROM authorized_sender_identities
-         WHERE status = 'active'
-         ORDER BY created_at DESC LIMIT 1`
-      );
-      if (anySenderRes.rows[0]?.email_address) {
-        email = anySenderRes.rows[0].email_address;
-        if (anySenderRes.rows[0].display_name) name = anySenderRes.rows[0].display_name;
-        return { email, name };
-      }
-
+      // 2. Fallback to platform-scoped provider account (Super Admin Brevo account owner)
       const accRes = await query<{ account_email: string }>(
         `SELECT account_email FROM email_provider_accounts
-         WHERE is_enabled = TRUE AND status = 'healthy' AND account_email IS NOT NULL
+         WHERE (project_id = 'platform' OR project_id IS NULL)
+           AND is_enabled = TRUE AND status = 'healthy' AND account_email IS NOT NULL
          ORDER BY is_primary DESC, created_at DESC LIMIT 1`
       );
       if (accRes.rows[0]?.account_email) {
@@ -114,5 +110,54 @@ export class UrlUtil {
     }
 
     return { email, name };
+  }
+
+  /**
+   * Resolves and verifies the authorized sender identity for a specific tenant/project.
+   * Completely isolated: A project can NEVER use platform senders or another tenant's senders.
+   */
+  public static async resolveProjectSender(
+    projectId: string,
+    requestedSender?: string
+  ): Promise<{ email: string; name: string }> {
+    if (requestedSender) {
+      const cleanRequested = requestedSender.trim().toLowerCase();
+      const checkRes = await query<{ email_address: string; display_name: string }>(
+        `SELECT email_address, display_name FROM authorized_sender_identities
+         WHERE project_id = $1 AND LOWER(email_address) = $2 AND status = 'active'
+         LIMIT 1`,
+        [projectId, cleanRequested]
+      );
+
+      if (checkRes.rows.length === 0) {
+        throw new Error(
+          `Sender address "${cleanRequested}" is not an active authorized sender for project "${projectId}". Register and verify your sender domain in Developer Console -> Email & Domains first.`
+        );
+      }
+
+      return {
+        email: checkRes.rows[0].email_address,
+        name: checkRes.rows[0].display_name || 'Project Team',
+      };
+    }
+
+    // Default to the project's first active authorized sender
+    const senderRes = await query<{ email_address: string; display_name: string }>(
+      `SELECT email_address, display_name FROM authorized_sender_identities
+       WHERE project_id = $1 AND status = 'active'
+       ORDER BY created_at ASC LIMIT 1`,
+      [projectId]
+    );
+
+    if (senderRes.rows.length === 0) {
+      throw new Error(
+        `No active authorized sender configured for project "${projectId}". Please register and verify a custom sender domain in Developer Console -> Email & Domains.`
+      );
+    }
+
+    return {
+      email: senderRes.rows[0].email_address,
+      name: senderRes.rows[0].display_name || 'Project Team',
+    };
   }
 }
