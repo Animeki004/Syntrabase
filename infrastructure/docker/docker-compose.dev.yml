@@ -1,0 +1,30 @@
+# ==============================================================================
+# SYNTRABASE — LOCAL DEVELOPMENT DATABASE TOPOLOGY
+# Designed for lightweight offline testing on your local PC alongside dev servers.
+# Disk Footprint: ~420 MB total | RAM Usage: ~45 MB
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: syntrabase-dev-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: syntrabase
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ../database/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_dev_data:

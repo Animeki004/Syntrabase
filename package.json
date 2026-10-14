@@ -1,0 +1,41 @@
+{
+  "name": "syntrabase-monorepo",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Syntrabase: Self-hosted, multi-tenant Firebase-compatible platform on PostgreSQL JSONB, Fastify, Next.js, and Caddy",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "start": "node scripts/start-production.js",
+    "start:api": "npm run start --workspace=apps/api",
+    "start:console": "npm run start --workspace=apps/console",
+    "start:admin": "npm run start --workspace=apps/super-admin",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:console": "npm run dev --workspace=apps/console",
+    "dev:admin": "npm run dev --workspace=apps/super-admin",
+    "test": "npm run test:unit && npm run test:integration && npm run test:security",
+    "test:unit": "npm run test:unit --workspaces --if-present",
+    "test:integration": "npm run test:integration --workspaces --if-present",
+    "test:security": "npm run test:security --workspaces --if-present",
+    "test:backup": "node infrastructure/database/scripts/test-backup-restore.js",
+    "test:db": "node infrastructure/database/scripts/test-database-suite.js",
+    "lint": "npm run lint --workspaces --if-present",
+    "db:migrate": "npm run db:migrate --workspace=apps/api",
+    "db:seed": "npm run db:seed --workspace=apps/api",
+    "docker:local:up": "docker compose -f infrastructure/docker/docker-compose.local.yml up -d",
+    "docker:local:down": "docker compose -f infrastructure/docker/docker-compose.local.yml down",
+    "docker:local:build": "docker compose -f infrastructure/docker/docker-compose.local.yml build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

@@ -1,0 +1,47 @@
+# ==============================================================================
+# DEVELOPER CONSOLE CONTAINER (Next.js App Router, Non-Root)
+# ==============================================================================
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+ENV NODE_ENV=development
+
+COPY package.json tsconfig.base.json ./
+COPY packages/shared-types/package.json ./packages/shared-types/
+COPY packages/schemas/package.json ./packages/schemas/
+COPY packages/rules-engine/package.json ./packages/rules-engine/
+COPY packages/client-sdk/package.json ./packages/client-sdk/
+COPY packages/admin-sdk/package.json ./packages/admin-sdk/
+COPY apps/console/package.json ./apps/console/
+
+RUN npm install --include=dev
+
+COPY packages ./packages
+COPY apps/console ./apps/console
+
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
+# Next.js build requires NODE_ENV=production to avoid mixing dev/prod runtimes
+ENV NODE_ENV=production
+
+RUN npm run build --workspace=packages/shared-types
+RUN npm run build --workspace=packages/client-sdk
+RUN npm run build --workspace=apps/console
+
+# ------------------------------------------------------------------------------
+# Production Runner
+# ------------------------------------------------------------------------------
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3000
+
+USER node
+
+COPY --chown=node:node --from=builder /app ./
+
+EXPOSE 3000
+
+CMD ["npm", "run", "start", "--workspace=apps/console"]

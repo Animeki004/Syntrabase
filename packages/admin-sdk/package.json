@@ -1,0 +1,20 @@
+{
+  "name": "@syntrabase/admin-sdk",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Privileged server-side Admin SDK for trusted Syntrabase backend integrations",
+  "main": "dist/admin-sdk/src/index.js",
+  "types": "dist/admin-sdk/src/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test:unit": "node --test dist/admin-sdk/src/test/admin-sdk.test.js",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@syntrabase/shared-types": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "typescript": "^5.6.3"
+  }
+}

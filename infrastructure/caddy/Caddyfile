@@ -1,0 +1,92 @@
+{
+  # Global options
+  email admin@{$PLATFORM_DOMAIN:example.com}
+  admin off # Disable administrative API endpoint for security
+}
+
+# ------------------------------------------------------------------------------
+# 1. API Gateway & WebSocket Service (api.example.com)
+# ------------------------------------------------------------------------------
+api.{$PLATFORM_DOMAIN:example.com} {
+  encode zstd gzip
+
+  # Strict security headers
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    -Server
+  }
+
+  # Reverse proxy all API and WebSocket requests to internal Fastify container
+  reverse_proxy api:4000 {
+    header_up X-Real-IP {remote_host}
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+  }
+
+  log {
+    output stdout
+    format json
+  }
+}
+
+# ------------------------------------------------------------------------------
+# 2. Developer Console (console.example.com)
+# ------------------------------------------------------------------------------
+console.{$PLATFORM_DOMAIN:example.com} {
+  encode zstd gzip
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "SAMEORIGIN"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    -Server
+  }
+
+  reverse_proxy console:3000 {
+    header_up X-Real-IP {remote_host}
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+  }
+
+  log {
+    output stdout
+    format json
+  }
+}
+
+# ------------------------------------------------------------------------------
+# 3. Super Admin Console (admin.example.com)
+# ------------------------------------------------------------------------------
+admin.{$PLATFORM_DOMAIN:example.com} {
+  encode zstd gzip
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    -Server
+  }
+
+  reverse_proxy super-admin:3001 {
+    header_up X-Real-IP {remote_host}
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+  }
+
+  log {
+    output stdout
+    format json
+  }
+}
+
+# ------------------------------------------------------------------------------
+# 4. Default Deny for unknown hostnames
+# ------------------------------------------------------------------------------
+:80 {
+  respond "Access Denied: Unrecognized Host" 403
+}

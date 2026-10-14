@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@syntrabase/shared-types": ["packages/shared-types/src/index.ts"],
+      "@syntrabase/shared-types/*": ["packages/shared-types/src/*"],
+      "@syntrabase/schemas": ["packages/schemas/src/index.ts"],
+      "@syntrabase/schemas/*": ["packages/schemas/src/*"],
+      "@syntrabase/rules-engine": ["packages/rules-engine/src/index.ts"],
+      "@syntrabase/rules-engine/*": ["packages/rules-engine/src/*"],
+      "@syntrabase/client-sdk": ["packages/client-sdk/src/index.ts"],
+      "@syntrabase/client-sdk/*": ["packages/client-sdk/src/*"],
+      "@syntrabase/admin-sdk": ["packages/admin-sdk/src/index.ts"],
+      "@syntrabase/admin-sdk/*": ["packages/admin-sdk/src/*"],
+      "@platform/shared-types": ["packages/shared-types/src/index.ts"],
+      "@platform/shared-types/*": ["packages/shared-types/src/*"],
+      "@platform/schemas": ["packages/schemas/src/index.ts"],
+      "@platform/schemas/*": ["packages/schemas/src/*"],
+      "@platform/rules-engine": ["packages/rules-engine/src/index.ts"],
+      "@platform/rules-engine/*": ["packages/rules-engine/src/*"],
+      "@platform/client-sdk": ["packages/client-sdk/src/index.ts"],
+      "@platform/client-sdk/*": ["packages/client-sdk/src/*"],
+      "@platform/admin-sdk": ["packages/admin-sdk/src/index.ts"],
+      "@platform/admin-sdk/*": ["packages/admin-sdk/src/*"]
+    }
+  }
+}

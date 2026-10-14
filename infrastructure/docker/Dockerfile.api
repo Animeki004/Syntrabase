@@ -1,0 +1,51 @@
+# ==============================================================================
+# FASTIFY BACKEND API CONTAINER (NON-ROOT USER, HARDENED)
+# ==============================================================================
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+ENV NODE_ENV=development
+
+# Copy root configs and package manifests
+COPY package.json tsconfig.base.json ./
+COPY packages/shared-types/package.json ./packages/shared-types/
+COPY packages/schemas/package.json ./packages/schemas/
+COPY packages/rules-engine/package.json ./packages/rules-engine/
+COPY packages/client-sdk/package.json ./packages/client-sdk/
+COPY packages/admin-sdk/package.json ./packages/admin-sdk/
+COPY apps/api/package.json ./apps/api/
+
+RUN npm install --include=dev
+
+# Copy source files
+COPY packages ./packages
+COPY apps/api ./apps/api
+
+# Ensure production flags for compilation
+ENV NODE_ENV=production
+
+# Build all packages and the API
+RUN npm run build
+
+# ------------------------------------------------------------------------------
+# Production Image
+# ------------------------------------------------------------------------------
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Install curl for healthcheck
+RUN apk add --no-cache curl
+
+# Run as non-root user
+USER node
+
+COPY --chown=node:node --from=builder /app ./
+
+EXPOSE 4000
+
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
+  CMD curl -f http://localhost:4000/health || exit 1
+
+CMD ["node", "apps/api/dist/apps/api/src/server.js"]

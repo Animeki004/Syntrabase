@@ -1,0 +1,20 @@
+{
+  "name": "@syntrabase/client-sdk",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Public Syntrabase client SDK with modular v9/v10 syntax",
+  "main": "dist/client-sdk/src/index.js",
+  "types": "dist/client-sdk/src/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test:security": "node --test dist/client-sdk/src/test/client-bundle.test.js",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@syntrabase/shared-types": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "typescript": "^5.6.3"
+  }
+}

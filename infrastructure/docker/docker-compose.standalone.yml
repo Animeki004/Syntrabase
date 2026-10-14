@@ -1,0 +1,152 @@
+# ==============================================================================
+# SYNTRABASE — STANDALONE VPS TOPOLOGY (WITH CADDY TERMINATION)
+# Use this when running on a standalone server without an existing reverse proxy.
+# For existing Coolify VPS environments, use docker-compose.yml instead.
+# ==============================================================================
+
+networks:
+  edge-net:
+    driver: bridge
+  app-net:
+    driver: bridge
+  data-net:
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres_data:
+  storage_data:
+  caddy_data:
+  caddy_config:
+  audit_logs:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: syntrabase-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-syntrabase}
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-syntrabase_db_secret_pass}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../database/migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - data-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+          cpus: '2.0'
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.api
+    container_name: syntrabase-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-localhost}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ${DATABASE_NAME:-syntrabase}
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-syntrabase_db_secret_pass}
+      PORT: 4000
+      HOST: 0.0.0.0
+      JWT_ACTIVE_KID: ${JWT_ACTIVE_KID:-key_2026_v1}
+      JWT_SECRET: ${JWT_SECRET:-syntrabase_jwt_secret_64chars_long_production_key_2026}
+      PASSWORD_PEPPER: ${PASSWORD_PEPPER:-syntrabase_password_pepper_32c}
+      AUDIT_HMAC_SECRET: ${AUDIT_HMAC_SECRET:-syntrabase_audit_hmac_secret_64chars}
+      AUDIT_LOG_FILE_PATH: ${AUDIT_LOG_FILE_PATH:-/var/log/audit/tamper_evident.log}
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-syntrabase-default-credential-key-32b}
+      PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:-admin@syntrabase.app}
+      PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD:-syntrabaseAdmin2026!}
+    volumes:
+      - storage_data:/var/data/storage
+      - audit_logs:/var/log/audit
+    networks:
+      - app-net
+      - data-net
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+          cpus: '1.5'
+
+  console:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.console
+    container_name: syntrabase-console
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      PORT: 3000
+      API_INTERNAL_URL: http://api:4000
+      NEXT_PUBLIC_API_URL: https://${API_DOMAIN:-api.yourdomain.com}
+    networks:
+      - app-net
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: '1.0'
+
+  super-admin:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.super-admin
+    container_name: syntrabase-super-admin
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      PORT: 3001
+      API_INTERNAL_URL: http://api:4000
+      NEXT_PUBLIC_API_URL: https://${API_DOMAIN:-api.yourdomain.com}
+    networks:
+      - app-net
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: '1.0'
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: syntrabase-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge-net
+      - app-net
+    depends_on:
+      - api
+      - console
+      - super-admin
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'

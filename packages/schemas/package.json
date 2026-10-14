@@ -1,0 +1,18 @@
+{
+  "name": "@syntrabase/schemas",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Zod runtime validation schemas for the Syntrabase platform",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}
