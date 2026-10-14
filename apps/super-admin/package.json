@@ -1,0 +1,26 @@
+{
+  "name": "@syntrabase/super-admin",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Next.js Super Admin Console for Syntrabase platform operators",
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@syntrabase/admin-sdk": "*",
+    "@syntrabase/shared-types": "*",
+    "lucide-react": "^1.55.0",
+    "next": "^14.2.15",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "typescript": "^5.6.3"
+  }
+}

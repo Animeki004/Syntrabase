@@ -1,0 +1,180 @@
+# ==============================================================================
+# SYNTRABASE — PRODUCTION DOCKER COMPOSE TOPOLOGY (COOLIFY COMPATIBLE)
+# Designed for deployment on an existing Coolify VPS.
+# - ZERO host port bindings for 80/443 (delegates to Coolify Traefik reverse proxy)
+# - Public routing handled via Traefik container labels and the 'coolify' network
+# - PostgreSQL 16 isolated on internal 'data-net' with ZERO public exposure
+# ==============================================================================
+
+networks:
+  coolify:
+    external: true # Connects to the existing Coolify Traefik proxy network
+  app-net:
+    driver: bridge
+  data-net:
+    driver: bridge
+    internal: true # STRICT: PostgreSQL isolated from public internet and Coolify edge
+
+volumes:
+  postgres_data:
+  storage_data:
+  audit_logs:
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. POSTGRESQL 16 (Authoritative Database, JSONB Store & Durable Outbox)
+  # ZERO HOST PORTS PUBLISHED - Accessible ONLY from data-net
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: syntrabase-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-syntrabase}
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-syntrabase_db_secret_pass}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../database/migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - data-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+          cpus: '2.0'
+
+  # ----------------------------------------------------------------------------
+  # 2. FASTIFY BACKEND API GATEWAY & REALTIME ENGINE
+  # Routes traffic via Coolify Traefik labels - zero host ports published
+  # ----------------------------------------------------------------------------
+  api:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.api
+    container_name: syntrabase-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-localhost}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ${DATABASE_NAME:-syntrabase}
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-syntrabase_db_secret_pass}
+      PORT: 4000
+      HOST: 0.0.0.0
+      JWT_ACTIVE_KID: ${JWT_ACTIVE_KID:-key_2026_v1}
+      JWT_SECRET: ${JWT_SECRET:-syntrabase_jwt_secret_64chars_long_production_key_2026}
+      PASSWORD_PEPPER: ${PASSWORD_PEPPER:-syntrabase_password_pepper_32c}
+      AUDIT_HMAC_SECRET: ${AUDIT_HMAC_SECRET:-syntrabase_audit_hmac_secret_64chars}
+      AUDIT_LOG_FILE_PATH: ${AUDIT_LOG_FILE_PATH:-/var/log/audit/tamper_evident.log}
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-syntrabase-default-credential-key-32b}
+      PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:-admin@syntrabase.app}
+      PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD:-syntrabaseAdmin2026!}
+    volumes:
+      - storage_data:/var/data/storage
+      - audit_logs:/var/log/audit
+    networks:
+      - coolify
+      - app-net
+      - data-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=coolify"
+      - "traefik.http.routers.syntrabase-api.rule=Host(`${API_DOMAIN:-api.yourdomain.com}`)"
+      - "traefik.http.routers.syntrabase-api.entrypoints=websecure"
+      - "traefik.http.routers.syntrabase-api.tls=true"
+      - "traefik.http.routers.syntrabase-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.syntrabase-api.loadbalancer.server.port=4000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+          cpus: '1.5'
+
+  # ----------------------------------------------------------------------------
+  # 3. DEVELOPER CONSOLE (Next.js 14 App Router)
+  # Routes traffic via Coolify Traefik labels - zero host ports published
+  # ----------------------------------------------------------------------------
+  console:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.console
+      args:
+        NEXT_PUBLIC_API_URL: https://${API_DOMAIN:-api.yourdomain.com}
+    container_name: syntrabase-console
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      PORT: 3000
+      API_INTERNAL_URL: http://api:4000
+      NEXT_PUBLIC_API_URL: https://${API_DOMAIN:-api.yourdomain.com}
+    networks:
+      - coolify
+      - app-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=coolify"
+      - "traefik.http.routers.syntrabase-console.rule=Host(`${CONSOLE_DOMAIN:-console.yourdomain.com}`)"
+      - "traefik.http.routers.syntrabase-console.entrypoints=websecure"
+      - "traefik.http.routers.syntrabase-console.tls=true"
+      - "traefik.http.routers.syntrabase-console.tls.certresolver=letsencrypt"
+      - "traefik.http.services.syntrabase-console.loadbalancer.server.port=3000"
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: '1.0'
+
+  # ----------------------------------------------------------------------------
+  # 4. SUPER ADMIN CONSOLE (Next.js 14 App Router)
+  # Routes traffic via Coolify Traefik labels - zero host ports published
+  # ----------------------------------------------------------------------------
+  super-admin:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.super-admin
+      args:
+        NEXT_PUBLIC_API_URL: https://${API_DOMAIN:-api.yourdomain.com}
+    container_name: syntrabase-super-admin
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      PORT: 3001
+      API_INTERNAL_URL: http://api:4000
+      NEXT_PUBLIC_API_URL: https://${API_DOMAIN:-api.yourdomain.com}
+    networks:
+      - coolify
+      - app-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=coolify"
+      - "traefik.http.routers.syntrabase-admin.rule=Host(`${ADMIN_DOMAIN:-admin.yourdomain.com}`)"
+      - "traefik.http.routers.syntrabase-admin.entrypoints=websecure"
+      - "traefik.http.routers.syntrabase-admin.tls=true"
+      - "traefik.http.routers.syntrabase-admin.tls.certresolver=letsencrypt"
+      - "traefik.http.services.syntrabase-admin.loadbalancer.server.port=3001"
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: '1.0'

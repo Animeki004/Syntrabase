@@ -1,0 +1,37 @@
+{
+  "name": "@syntrabase/api",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Fastify Backend API Gateway & Realtime Engine for the Syntrabase platform",
+  "main": "dist/apps/api/src/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/apps/api/src/server.js",
+    "dev": "node --watch dist/apps/api/src/server.js",
+    "db:migrate": "node dist/apps/api/src/db/migrate.js",
+    "db:seed": "node dist/apps/api/src/db/seed.js",
+    "test:integration": "node --test dist/apps/api/src/test/api-integration.test.js dist/apps/api/src/test/security-adversarial.test.js dist/apps/api/src/test/realtime-correctness.test.js dist/apps/api/src/test/plan-enforcement.test.js dist/apps/api/src/test/syntrabase-features.test.js dist/apps/api/src/test/auth-engine.test.js dist/apps/api/src/test/project-database.test.js dist/apps/api/src/test/brevo-email-and-contact.test.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@fastify/helmet": "^11.1.1",
+    "@fastify/rate-limit": "^9.1.0",
+    "@fastify/websocket": "^10.0.1",
+    "@syntrabase/rules-engine": "*",
+    "@syntrabase/schemas": "*",
+    "@syntrabase/shared-types": "*",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.28.1",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.0",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^20.17.0",
+    "@types/pg": "^8.11.10",
+    "@types/ws": "^8.5.12",
+    "typescript": "^5.6.3"
+  }
+}

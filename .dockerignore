@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+.git
+**/.git
+*.log
+.tempmediaStorage
+.gemini
+infrastructure/docker/storage_data
+storage_data
+postgres_data

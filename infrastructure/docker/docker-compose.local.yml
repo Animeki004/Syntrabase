@@ -1,0 +1,119 @@
+# ==============================================================================
+# SYNTRABASE — FULL STACK LOCAL DOCKER COMPOSE TOPOLOGY
+# Runs the complete production-identical containerized stack locally:
+# - PostgreSQL 16 (Authoritative Database & Durable Outbox)
+# - Fastify API Gateway (Port 4000)
+# - Developer Console (Port 3000)
+# - Super Admin Console (Port 3001)
+# ==============================================================================
+
+networks:
+  syntrabase-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  storage_data:
+  audit_logs:
+
+services:
+  # 1. Authoritative PostgreSQL 16
+  postgres:
+    image: postgres:16-alpine
+    container_name: syntrabase-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-syntrabase}
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../database/migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - syntrabase-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # 2. Fastify API Gateway & Realtime Engine
+  api:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.api
+    container_name: syntrabase-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-localhost}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ${DATABASE_NAME:-syntrabase}
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+      PORT: 4000
+      HOST: 0.0.0.0
+      JWT_ACTIVE_KID: ${JWT_ACTIVE_KID:-key_dev_v1}
+      JWT_SECRET: ${JWT_SECRET:-dev_secret_must_be_changed_in_prod_1234567890123456}
+      PASSWORD_PEPPER: ${PASSWORD_PEPPER:-dev_pepper_default_secret_32bytes!}
+      AUDIT_HMAC_SECRET: ${AUDIT_HMAC_SECRET:-dev_audit_secret_64bytes_hex_key_for_hmac!}
+      AUDIT_LOG_FILE_PATH: /var/log/audit/tamper_evident.log
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-syntrabase-default-credential-key-32b}
+      PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:-admin@syntrabase.app}
+      PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD:-syntrabaseAdmin2026!}
+    volumes:
+      - storage_data:/var/data/storage
+      - audit_logs:/var/log/audit
+    networks:
+      - syntrabase-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # 3. Developer Console (Next.js 14)
+  console:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.console
+    container_name: syntrabase-console
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      API_INTERNAL_URL: http://api:4000
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+    networks:
+      - syntrabase-net
+
+  # 4. Super Admin Console (Next.js 14)
+  super-admin:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.super-admin
+    container_name: syntrabase-super-admin
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      API_INTERNAL_URL: http://api:4000
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+    networks:
+      - syntrabase-net

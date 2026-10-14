@@ -1,0 +1,46 @@
+{
+  "name": "@syntrabase/client-sdk",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Public Syntrabase client SDK with modular v9/v10 syntax",
+  "main": "dist/client-sdk/src/index.js",
+  "types": "dist/client-sdk/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/client-sdk/src/index.d.ts",
+      "default": "./dist/client-sdk/src/index.js"
+    },
+    "./app": {
+      "types": "./dist/client-sdk/src/app.d.ts",
+      "default": "./dist/client-sdk/src/app.js"
+    },
+    "./auth": {
+      "types": "./dist/client-sdk/src/auth.d.ts",
+      "default": "./dist/client-sdk/src/auth.js"
+    },
+    "./firestore": {
+      "types": "./dist/client-sdk/src/firestore.d.ts",
+      "default": "./dist/client-sdk/src/firestore.js"
+    },
+    "./realtime": {
+      "types": "./dist/client-sdk/src/realtime.d.ts",
+      "default": "./dist/client-sdk/src/realtime.js"
+    },
+    "./storage": {
+      "types": "./dist/client-sdk/src/storage.d.ts",
+      "default": "./dist/client-sdk/src/storage.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test:security": "node --test dist/client-sdk/src/test/client-bundle.test.js",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@syntrabase/shared-types": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "typescript": "^5.6.3"
+  }
+}
