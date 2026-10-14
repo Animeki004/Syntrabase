@@ -16,7 +16,7 @@ networks:
     internal: true # STRICT: PostgreSQL isolated from public internet and Coolify edge
 
 volumes:
-  postgres_data:
+  syntrabase_db_data:
   storage_data:
   audit_logs:
 
@@ -39,7 +39,7 @@ services:
       POSTGRES_HOST_AUTH_METHOD: trust
     command: postgres -c hba_file=/etc/postgresql/pg_hba.conf
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - syntrabase_db_data:/var/lib/postgresql/data
       - ./infrastructure/database/migrations:/docker-entrypoint-initdb.d:ro
       - ./infrastructure/database/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     networks:
