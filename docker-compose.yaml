@@ -37,6 +37,8 @@ services:
       POSTGRES_USER: ${DATABASE_USER:-postgres}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-syntrabase_db_secret_pass}
       POSTGRES_HOST_AUTH_METHOD: trust
+    command: >
+      sh -c "if [ -f /var/lib/postgresql/data/pg_hba.conf ]; then sed -i 's/scram-sha-256/trust/g; s/md5/trust/g' /var/lib/postgresql/data/pg_hba.conf; fi && exec docker-entrypoint.sh postgres"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infrastructure/database/migrations:/docker-entrypoint-initdb.d:ro
