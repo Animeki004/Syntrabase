@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS app_users (
 
 CREATE TABLE IF NOT EXISTS auth_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES app_users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL, -- References app_users(id) or developers(id)
   refresh_token_hash VARCHAR(255) NOT NULL,
   family_id UUID DEFAULT gen_random_uuid(),
   user_agent TEXT,
