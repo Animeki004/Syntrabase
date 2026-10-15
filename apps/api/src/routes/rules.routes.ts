@@ -73,6 +73,14 @@ export const rulesRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
 
   // Simulate security rules against test context
   server.post('/api/v1/projects/:projectId/rules/simulate', async (req, reply) => {
+    const { projectId: rawId } = req.params as { projectId: string };
+    const projectId = await ProjectService.resolveProjectId(rawId).catch(() => rawId);
+
+    // Enforce developer authentication & project authorization
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+
     const body = SimulateRuleSchema.parse(req.body);
 
     let ast;

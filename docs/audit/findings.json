@@ -358,5 +358,17 @@
     "rootCause": "Unfiltered key traversal in recursive document transformation logic.",
     "remediation": "Enforced strict filtering skipping __proto__, constructor, and prototype keys.",
     "verification": "VERIFIED (security-assessment-verification.test.ts 99/99 passed)"
+  },
+  {
+    "id": "SYN-P5-001",
+    "title": "Unauthenticated Security Rules AST Simulation & Computation Abuse",
+    "severity": "MEDIUM",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/routes/rules.routes.ts:75-80",
+    "status": "REMEDIATED",
+    "description": "POST /api/v1/projects/:projectId/rules/simulate allowed unauthenticated remote callers to submit arbitrary rule scripts for AST compilation and evaluation without project authorization, and lacked a maximum payload size restriction on SimulateRuleSchema.",
+    "rootCause": "Missing developer authentication middleware on rules simulation route and unbounded sourceCode schema definition.",
+    "remediation": "Enforced AuthService.requireProjectAccess(req, projectId) in production and staging, and bounded SimulateRuleSchema.sourceCode to 100KB.",
+    "verification": "VERIFIED (security-assessment-verification.test.ts 100/100 passed: HTTP 401 returned)"
   }
 ]

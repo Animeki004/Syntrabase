@@ -142,7 +142,7 @@ export const PublishSecurityRulesSchema = z.object({
 });
 
 export const SimulateRuleSchema = z.object({
-  sourceCode: z.string().min(1),
+  sourceCode: z.string().min(1).max(100000), // Max 100 KB rule source
   path: z.string().min(1),
   method: z.enum(['get', 'list', 'create', 'update', 'delete']),
   auth: z

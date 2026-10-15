@@ -787,4 +787,24 @@ test('CloudFunctionService SSRF validation blocks Carrier-Grade NAT and benchmar
   );
 });
 
+test('SYN-P5-001: Rules simulation endpoint rejects unauthenticated requests in production', async () => {
+  await withSimulatedProduction(async () => {
+    const server = await buildServer();
+    const targetProject = '00000000-0000-0000-0000-000000000001';
+
+    const res = await server.inject({
+      method: 'POST',
+      url: `/api/v1/projects/${targetProject}/rules/simulate`,
+      payload: {
+        sourceCode: 'rules_version = "2"; service cloud.firestore { match /{document=**} { allow read, write: if true; } }',
+        path: '/users/alice',
+        method: 'get',
+        auth: null,
+      },
+    });
+
+    assert.equal(res.statusCode, 401, 'POST /rules/simulate without authorization in production must return 401');
+  });
+});
+
 

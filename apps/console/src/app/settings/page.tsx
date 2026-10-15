@@ -271,7 +271,7 @@ export default function SettingsPage() {
         body: JSON.stringify({
           projectId,
           name: devData?.displayName || activeProject.name,
-          email: devData?.email || 'developer@syntrabase.io',
+          email: devData?.email || 'developer@example.com',
           subject: `Plan Upgrade Request: ${targetLabel} (${activeProject.name})`,
           category: 'Billing Inquiry',
           message: `Developer requested an authoritative tier upgrade to ${targetLabel} for project ${activeProject.name} (${projectId}). Notes: ${upgradeNotes.trim() || 'Standard quota expansion requested.'}`,

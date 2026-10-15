@@ -1060,7 +1060,7 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     const rawProjectId = body.projectId || 'platform';
     const projectId = await ProjectService.resolveProjectId(rawProjectId).catch(() => rawProjectId);
 
-    const userEmail = body.email || body.replyEmail || 'developer@syntrabase.io';
+    const userEmail = body.email || body.replyEmail || 'developer@example.com';
     const submission = await ContactService.submitInquiry({
       projectId,
       userEmail,

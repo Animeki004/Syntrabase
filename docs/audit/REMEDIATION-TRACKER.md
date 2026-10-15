@@ -65,7 +65,15 @@
 
 ---
 
-## 5. Test Suite Alignment & Assertion Fixes
+## 5. Phase 5 Remediation Track (API Defense & Boundary Hardening)
+
+| ID | Title | Severity | CVSS | Component | Root Cause | Exploit Mechanics / Verification | Fix Implemented | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **SYN-P5-001** | Unauthenticated Security Rules Simulation & AST Computation Abuse | **MEDIUM** | 5.3 | `apps/api/src/routes/rules.routes.ts:75-80` | Route lacked developer auth checks and sourceCode lacked maximum length constraint. | Unauthenticated caller spams arbitrary rule scripts causing server AST compilation and CPU starvation. | Enforced `AuthService.requireProjectAccess(req, projectId)` in production/staging; added 100KB limit to `SimulateRuleSchema`. | **REMEDIATED & VERIFIED** |
+
+---
+
+## 6. Test Suite Alignment & Assertion Fixes
 
 | ID | Title | Category | Component | Description & Remediation | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |

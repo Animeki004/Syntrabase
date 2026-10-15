@@ -390,12 +390,24 @@ Syntrabase underwent an authorized security assessment combining:
 
 ---
 
+### SYN-P5-001: Unauthenticated Security Rules AST Simulation & Computation Abuse
+- **Severity / Score:** **MEDIUM** / CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L (5.3)
+- **CWE:** CWE-400 (Uncontrolled Resource Consumption), CWE-284 (Improper Access Control)
+- **Affected Component:** `apps/api/src/routes/rules.routes.ts:75-80`, `packages/schemas/src/index.ts:144`
+- **Root Cause:**
+  `/api/v1/projects/:projectId/rules/simulate` omitted developer authentication checks in production and allowed unbounded source code strings without payload limits.
+- **Impact:** Anonymous callers could submit arbitrarily large scripts for AST compilation and evaluation, causing CPU starvation and denial of service.
+- **Remediation:** Enforced `AuthService.requireProjectAccess(req, projectId)` in production and staging environments, and capped `SimulateRuleSchema.sourceCode` at 100KB.
+- **Verification:** Verified via `security-assessment-verification.test.ts` (Subtest 26: 100/100 passed: HTTP 401 returned).
+
+---
+
 ## 4. Test Suite Execution & Verification Summary
 
 The complete integration test suite was executed against the remediated codebase:
-- **Total Tests:** 99
-- **Passed:** 99
+- **Total Tests:** 100
+- **Passed:** 100
 - **Failed:** 0
 - **Skipped:** 0
-- **Regression Suite:** `apps/api/src/test/security-assessment-verification.test.ts` (all 25 security subtests passed).
+- **Regression Suite:** `apps/api/src/test/security-assessment-verification.test.ts` (all 26 security subtests passed).
 
