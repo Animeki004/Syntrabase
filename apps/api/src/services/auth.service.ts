@@ -1125,6 +1125,25 @@ export class AuthService {
       return { callerId: apiKey, type: 'apikey' };
     }
 
+    const authHeader = req.headers?.authorization as string;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const payload = this.verifyAccessToken(authHeader.slice(7));
+        const { ProjectService } = await import('./project.service.js');
+        const resolvedId = await ProjectService.resolveProjectId(projectId).catch(() => projectId);
+        if (
+          payload.projectId === resolvedId ||
+          payload.projectId === projectId ||
+          payload.isPlatformAdmin ||
+          payload.projectId === 'platform'
+        ) {
+          return { callerId: payload.uid, type: payload.isPlatformAdmin ? 'developer' : 'apikey' };
+        }
+      } catch {
+        // Fallback to developer check
+      }
+    }
+
     const devId = await this.requireDeveloper(req);
     const { ProjectService } = await import('./project.service.js');
     await ProjectService.assertProjectAccess(devId, projectId);

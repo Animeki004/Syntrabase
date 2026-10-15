@@ -59,7 +59,10 @@ export async function createUserWithEmailAndPassword(
     throw new Error(errorData.error || `Auth error: ${res.statusText}`);
   }
 
-  const data = (await res.json()) as { user: AppUser };
+  const data = (await res.json()) as { user: AppUser; accessToken?: string; refreshToken?: string };
+  if (data.accessToken && data.refreshToken) {
+    auth.setSession(data.user, data.accessToken, data.refreshToken);
+  }
   return { user: data.user };
 }
 

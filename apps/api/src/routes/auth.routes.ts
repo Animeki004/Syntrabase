@@ -402,8 +402,16 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
     try {
       const user = await AuthService.registerAppUser(projectId, environmentId, body.email, body.password, body.displayName);
       const authConfig = await AuthConfigService.getProjectAuthConfig(projectId).catch(() => ({ requireEmailVerification: false }));
+      
+      let session = null;
+      if (!authConfig.requireEmailVerification) {
+        session = await AuthService.loginAppUser(projectId, environmentId, body.email, body.password).catch(() => null);
+      }
+
       return reply.status(201).send({
         user,
+        accessToken: session?.accessToken,
+        refreshToken: session?.refreshToken,
         verificationRequired: Boolean(authConfig.requireEmailVerification && !user.emailVerified),
       });
     } catch (err: any) {

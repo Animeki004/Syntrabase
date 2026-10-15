@@ -35,7 +35,10 @@ export class RulesEvaluator {
   constructor(private ast: RulesRootNode) {}
 
   public evaluate(path: string, context: EvaluationContext): EvaluationResult {
-    const normalizedPath = this.normalizePath(path);
+    let normalizedPath = this.normalizePath(path);
+    if (!normalizedPath.startsWith('/databases/')) {
+      normalizedPath = this.normalizePath(`/databases/(default)/documents/${normalizedPath}`);
+    }
     const method = context.request.method;
 
     try {

@@ -17,12 +17,14 @@ import { TokenPayload, QueryFilter } from '@syntrabase/shared-types';
 import { ProjectService } from '../services/project.service.js';
 
 export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance) => {
-  // Canonicalize any :projectId parameter to a valid UUID before hitting database handlers
+  // Canonicalize any :projectId parameter and x-environment-id to valid UUIDs before hitting database handlers
   server.addHook('preHandler', async (req) => {
     if (req.params && typeof req.params === 'object' && 'projectId' in req.params) {
       const p = req.params as { projectId?: string };
       if (p.projectId) {
         p.projectId = await ProjectService.resolveProjectId(p.projectId);
+        const rawEnv = req.headers['x-environment-id'] as string;
+        req.headers['x-environment-id'] = await AuthService.resolveEnvironmentId(p.projectId, rawEnv);
       }
     }
   });
@@ -95,8 +97,9 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
       return;
     }
 
+    const canonicalPath = path.startsWith('/databases/') ? path : `/databases/(default)/documents${path.startsWith('/') ? path : '/' + path}`;
     const ast = compileRules(rulesSource);
-    const evalResult = evaluateRules(ast, path, {
+    const evalResult = evaluateRules(ast, canonicalPath, {
       request: {
         auth: authUser,
         time: new Date().toISOString(),

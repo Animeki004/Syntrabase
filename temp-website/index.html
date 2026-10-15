@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Syntrabase SDK Test Bench & Verification Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <div class="logo-badge">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <div>
+          <h1>Syntrabase SDK Studio</h1>
+          <p class="subtitle">Live Client & Admin SDK Verification Bench (v1.1.0)</p>
+        </div>
+      </div>
+      <div class="header-status">
+        <div class="status-indicator online">
+          <span class="status-dot"></span>
+          <span id="sdk-status-text">Client SDK Ready</span>
+        </div>
+        <div class="auth-pill" id="current-user-pill">
+          <span class="user-avatar" id="header-avatar">?</span>
+          <span class="user-email" id="header-user-email">Unauthenticated</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Global Connection Config Bar -->
+    <div class="config-bar glass-card">
+      <div class="config-group">
+        <label for="cfg-api-url">API URL</label>
+        <input type="text" id="cfg-api-url" value="http://localhost:4000">
+      </div>
+      <div class="config-group">
+        <label for="cfg-project-id">Project ID / Slug</label>
+        <input type="text" id="cfg-project-id" value="default-project">
+      </div>
+      <div class="config-group">
+        <label for="cfg-api-key">API Key (pk_live / demo)</label>
+        <input type="text" id="cfg-api-key" value="pk_live_syntrabase_demo_key_12345">
+      </div>
+      <div class="config-group">
+        <label for="cfg-env-id">Environment</label>
+        <select id="cfg-env-id">
+          <option value="default" selected>default</option>
+          <option value="development">development</option>
+          <option value="staging">staging</option>
+          <option value="production">production</option>
+        </select>
+      </div>
+      <button id="btn-reinit-sdk" class="btn btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+        Initialize App
+      </button>
+    </div>
+
+    <!-- Main Workspace -->
+    <main class="main-layout">
+      <!-- Left Column: Interactive Feature Modules -->
+      <div class="feature-pane">
+        <!-- Navigation Tabs -->
+        <nav class="feature-nav glass-card">
+          <button class="nav-tab active" data-tab="tab-automated">🧪 Client Suite</button>
+          <button class="nav-tab" data-tab="tab-admin">⚡ Admin SDK</button>
+          <button class="nav-tab" data-tab="tab-auth">🔐 Auth</button>
+          <button class="nav-tab" data-tab="tab-firestore">🗄️ Firestore</button>
+          <button class="nav-tab" data-tab="tab-realtime">⚡ Realtime</button>
+          <button class="nav-tab" data-tab="tab-storage">📦 Storage</button>
+        </nav>
+
+        <!-- Tab 1: Automated Client Test Suite -->
+        <section id="tab-automated" class="tab-content active glass-card">
+          <div class="tab-header">
+            <div>
+              <h2>Client SDK 1-Click Automated Verification</h2>
+              <p>Sequentially runs 10 deep verification steps testing Auth, CRUD, Transforms, Batch, Transactions & Storage in the browser.</p>
+            </div>
+            <button id="btn-run-all-tests" class="btn btn-primary pulse-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run Full Automated Test
+            </button>
+          </div>
+
+          <div class="test-progress-bar-wrap">
+            <div id="test-progress-bar" class="test-progress-bar" style="width: 0%"></div>
+          </div>
+
+          <div class="test-suite-list" id="auto-test-list">
+            <!-- Dynamically populated test step cards -->
+          </div>
+        </section>
+
+        <!-- Tab: Admin SDK Privileged Verification -->
+        <section id="tab-admin" class="tab-content glass-card">
+          <div class="tab-header">
+            <div>
+              <h2>Admin SDK Privileged Verification (v1.1.0)</h2>
+              <p>Server-side execution with privileged <code>sk_live_...</code> master secret key. Validates Firestore bypass, Auth quotas, Storage signed URLs & Security Rules publishing.</p>
+            </div>
+            <button id="btn-run-admin-tests" class="btn btn-primary pulse-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run Admin SDK Suite
+            </button>
+          </div>
+
+          <div class="test-progress-bar-wrap">
+            <div id="admin-test-progress-bar" class="test-progress-bar" style="width: 0%"></div>
+          </div>
+
+          <div class="test-suite-list" id="admin-test-list">
+            <!-- Dynamically populated Admin test cards -->
+          </div>
+        </section>
+
+        <!-- Tab 2: Auth Testing -->
+        <section id="tab-auth" class="tab-content glass-card">
+          <div class="tab-header">
+            <h2>Authentication Testing</h2>
+            <p>Test user creation, session sign-in, anonymous auth, email verification, and TOTP 2FA.</p>
+          </div>
+
+          <div class="form-grid">
+            <div class="input-field">
+              <label for="auth-email">Email Address</label>
+              <input type="email" id="auth-email" placeholder="testuser@example.com" value="user@example.com">
+            </div>
+            <div class="input-field">
+              <label for="auth-password">Password</label>
+              <input type="password" id="auth-password" value="SyntrabasePass123!">
+            </div>
+          </div>
+
+          <div class="button-wrap">
+            <button id="btn-auth-signup" class="btn btn-primary">Sign Up</button>
+            <button id="btn-auth-signin" class="btn btn-secondary">Sign In</button>
+            <button id="btn-auth-anonymous" class="btn btn-outline">Sign In Anonymously</button>
+            <button id="btn-auth-signout" class="btn btn-danger">Sign Out</button>
+          </div>
+
+          <div class="divider"></div>
+
+          <h3>MFA & Account Recovery</h3>
+          <div class="button-wrap">
+            <button id="btn-auth-send-reset" class="btn btn-outline">Send Password Reset</button>
+            <button id="btn-auth-mfa-enroll" class="btn btn-outline">Enroll TOTP MFA</button>
+          </div>
+          <div class="inline-action-row" id="mfa-verify-row" style="display: none; margin-top: 12px;">
+            <input type="text" id="mfa-token-input" placeholder="Enter 6-digit TOTP code" maxlength="6">
+            <button id="btn-auth-mfa-verify" class="btn btn-primary">Verify MFA</button>
+          </div>
+        </section>
+
+        <!-- Tab 3: Firestore Testing -->
+        <section id="tab-firestore" class="tab-content glass-card">
+          <div class="tab-header">
+            <h2>Firestore Document & Query Testing</h2>
+            <p>Test modular v9/v10 CRUD, queries, atomic field transforms, write batch, and transactions.</p>
+          </div>
+
+          <div class="form-grid">
+            <div class="input-field">
+              <label for="fs-collection">Collection Path</label>
+              <input type="text" id="fs-collection" value="notes">
+            </div>
+            <div class="input-field">
+              <label for="fs-doc-id">Document ID (leave blank for auto-id via addDoc)</label>
+              <input type="text" id="fs-doc-id" placeholder="auto-generated or note_1">
+            </div>
+          </div>
+
+          <div class="input-field">
+            <label for="fs-data-payload">Document JSON Data</label>
+            <textarea id="fs-data-payload" rows="4">{
+  "title": "Syntrabase Architecture Note",
+  "priority": 1,
+  "tags": ["cloud", "database", "fastify"],
+  "likes": 10
+}</textarea>
+          </div>
+
+          <div class="button-wrap">
+            <button id="btn-fs-add" class="btn btn-primary">addDoc (Auto-ID)</button>
+            <button id="btn-fs-set" class="btn btn-secondary">setDoc</button>
+            <button id="btn-fs-get" class="btn btn-outline">getDoc</button>
+            <button id="btn-fs-update" class="btn btn-outline">updateDoc</button>
+            <button id="btn-fs-delete" class="btn btn-danger">deleteDoc</button>
+          </div>
+
+          <div class="divider"></div>
+
+          <h3>Advanced Capabilities</h3>
+          <div class="button-wrap">
+            <button id="btn-fs-query" class="btn btn-outline">Query (where + limit)</button>
+            <button id="btn-fs-batch" class="btn btn-outline">WriteBatch (3 Atomic Ops)</button>
+            <button id="btn-fs-transaction" class="btn btn-outline">runTransaction (Atomic Math)</button>
+            <button id="btn-fs-transforms" class="btn btn-outline">Transforms (serverTimestamp + increment)</button>
+          </div>
+        </section>
+
+        <!-- Tab 4: Realtime Testing -->
+        <section id="tab-realtime" class="tab-content glass-card">
+          <div class="tab-header">
+            <h2>Realtime WebSocket Listener (onSnapshot)</h2>
+            <p>Establish real-time WebSocket subscription to instantly receive document update broadcasts.</p>
+          </div>
+
+          <div class="form-grid">
+            <div class="input-field">
+              <label for="rt-path">Target Document / Collection Path</label>
+              <input type="text" id="rt-path" value="live_feed/broadcast_doc">
+            </div>
+          </div>
+
+          <div class="button-wrap">
+            <button id="btn-rt-subscribe" class="btn btn-primary">Start onSnapshot Listener</button>
+            <button id="btn-rt-unsubscribe" class="btn btn-secondary" disabled>Unsubscribe Listener</button>
+            <button id="btn-rt-trigger-update" class="btn btn-outline">Trigger Remote Change</button>
+          </div>
+
+          <div class="realtime-status-card" id="rt-live-box">
+            <div class="live-pulse"></div>
+            <div>
+              <strong>Listener Status:</strong> <span id="rt-listener-status">Idle (Not Connected)</span>
+              <p id="rt-last-payload" style="margin-top: 6px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-muted);">Awaiting subscription...</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 5: Storage Testing -->
+        <section id="tab-storage" class="tab-content glass-card">
+          <div class="tab-header">
+            <h2>Storage Object Testing</h2>
+            <p>Test isomorphic uploadBytes with File / Blob, getDownloadURL signed tokens, listAll, and deleteObject.</p>
+          </div>
+
+          <div class="form-grid">
+            <div class="input-field">
+              <label for="st-file-input">Choose Local File</label>
+              <input type="file" id="st-file-input">
+            </div>
+            <div class="input-field">
+              <label for="st-object-path">Remote Storage Path</label>
+              <input type="text" id="st-object-path" value="uploads/test_sample.txt">
+            </div>
+          </div>
+
+          <div class="button-wrap">
+            <button id="btn-st-upload" class="btn btn-primary">uploadBytes</button>
+            <button id="btn-st-download-url" class="btn btn-secondary">getDownloadURL</button>
+            <button id="btn-st-list" class="btn btn-outline">listAll Objects</button>
+            <button id="btn-st-delete" class="btn btn-danger">deleteObject</button>
+          </div>
+
+          <div id="storage-preview-container" style="display: none; margin-top: 16px;" class="preview-box">
+            <strong>Download Preview:</strong>
+            <a id="storage-preview-link" href="#" target="_blank" rel="noopener">Open Signed URL</a>
+          </div>
+        </section>
+      </div>
+
+      <!-- Right Column: Interactive Terminal & State Inspector -->
+      <div class="terminal-pane glass-card">
+        <div class="terminal-header">
+          <div class="terminal-dots">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+          </div>
+          <span class="terminal-title">SYNTRABASE CLIENT SDK CONSOLE & STREAM</span>
+          <button id="btn-clear-terminal" class="btn-icon" title="Clear Logs">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>
+        <div class="terminal-body" id="terminal-output">
+          <div class="log-line info"><span class="log-tag">[INIT]</span> Syntrabase Client SDK Studio loaded. Ready to test.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="app.js?t=1"></script>
+</body>
+</html>
