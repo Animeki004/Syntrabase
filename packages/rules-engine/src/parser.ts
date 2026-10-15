@@ -46,8 +46,13 @@ export class RulesParser {
         let str = '';
         i++;
         while (i < s.length && s[i] !== quote) {
-          str += s[i];
-          i++;
+          if (s[i] === '\\' && i + 1 < s.length) {
+            str += s[i + 1];
+            i += 2;
+          } else {
+            str += s[i];
+            i++;
+          }
         }
         i++; // skip closing quote
         this.tokens.push({ type: 'STRING', value: str });
@@ -123,8 +128,8 @@ export class RulesParser {
         continue;
       }
 
-      // Punctuations: { } ( ) , ; . / :
-      if (/[{}();,.:/]/.test(c)) {
+      // Punctuations: { } ( ) , ; . / : *
+      if (/[{}();,.:/*]/.test(c)) {
         this.tokens.push({ type: 'PUNCT', value: c });
         i++;
         continue;

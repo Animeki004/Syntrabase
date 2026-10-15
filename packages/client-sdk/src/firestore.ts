@@ -48,14 +48,15 @@ export class CollectionReference {
 }
 
 export function doc(db: Firestore, pathOrColl: string | CollectionReference, id?: string): DocumentReference {
+  const generateAutoId = () => `auto_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   if (typeof pathOrColl === 'string') {
     const fullPath = id ? `${pathOrColl}/${id}` : pathOrColl;
     const parts = fullPath.replace(/^\/+|\/+$/g, '').split('/');
     const docId = parts[parts.length - 1];
     return new DocumentReference(db, fullPath, docId);
   }
-  const fullPath = id ? `${pathOrColl.path}/${id}` : `${pathOrColl.path}/auto_${Date.now()}`;
-  const docId = id || `auto_${Date.now()}`;
+  const docId = id || generateAutoId();
+  const fullPath = `${pathOrColl.path}/${docId}`;
   return new DocumentReference(db, fullPath, docId);
 }
 
@@ -240,6 +241,15 @@ export async function deleteDoc(docRef: DocumentReference): Promise<void> {
   if (docRef.firestore._persistenceEnabled) {
     docRef.firestore._cache.delete(docRef.path);
   }
+}
+
+export async function addDoc(
+  collectionRef: CollectionReference,
+  data: DocumentData
+): Promise<DocumentReference> {
+  const autoDocRef = doc(collectionRef.firestore, collectionRef);
+  await setDoc(autoDocRef, data);
+  return autoDocRef;
 }
 
 // -----------------------------------------------------------------------------

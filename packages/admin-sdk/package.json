@@ -29,6 +29,10 @@
     "./audit": {
       "types": "./dist/admin-sdk/src/audit.d.ts",
       "default": "./dist/admin-sdk/src/audit.js"
+    },
+    "./storage": {
+      "types": "./dist/admin-sdk/src/storage.d.ts",
+      "default": "./dist/admin-sdk/src/storage.js"
     }
   },
   "scripts": {

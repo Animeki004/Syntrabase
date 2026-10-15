@@ -84,4 +84,29 @@ test('Client SDK API Surface - Exposes standard Firebase v9/v10 functions', () =
   assert.equal(typeof ClientSDK.runTransaction, 'function');
   assert.equal(typeof ClientSDK.collectionGroup, 'function');
   assert.equal(typeof ClientSDK.enableIndexedDbPersistence, 'function');
+  assert.equal(typeof ClientSDK.addDoc, 'function');
+  assert.equal(typeof ClientSDK.deleteObject, 'function');
+  assert.equal(typeof ClientSDK.listAll, 'function');
+});
+
+test('Client SDK Storage - toBase64 handles Uint8Array and Buffer correctly', async () => {
+  const sampleString = 'Hello Syntrabase Storage!';
+  const expectedBase64 = Buffer.from(sampleString, 'utf8').toString('base64');
+
+  // Test Buffer
+  const buf = Buffer.from(sampleString, 'utf8');
+  const b64FromBuf = await ClientSDK.toBase64(buf);
+  assert.equal(b64FromBuf, expectedBase64);
+
+  // Test Uint8Array
+  const uint8 = new Uint8Array(Buffer.from(sampleString, 'utf8'));
+  const b64FromUint8 = await ClientSDK.toBase64(uint8);
+  assert.equal(b64FromUint8, expectedBase64);
+
+  // Test Blob (simulated browser or node Blob)
+  if (typeof Blob !== 'undefined') {
+    const blob = new Blob([sampleString], { type: 'text/plain' });
+    const b64FromBlob = await ClientSDK.toBase64(blob);
+    assert.equal(b64FromBlob, expectedBase64);
+  }
 });

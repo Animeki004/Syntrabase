@@ -113,11 +113,42 @@ export class AdminAuth {
     return data.config;
   }
 
-  public async verifyIdToken(token: string): Promise<{ uid: string; email?: string; [key: string]: unknown }> {
+  public async verifyIdToken(
+    token: string
+  ): Promise<{ uid: string; email?: string; projectId?: string; environmentId?: string; [key: string]: unknown }> {
     try {
       const parts = token.split('.');
-      if (parts.length !== 3) throw new Error('Invalid JWT format');
-      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+      if (parts.length !== 3) {
+        throw new Error('Invalid JWT format');
+      }
+
+      // Safe base64url decoding
+      const rawPayload = Buffer.from(parts[1], 'base64url').toString('utf8');
+      const payload = JSON.parse(rawPayload);
+
+      if (!payload || typeof payload !== 'object') {
+        throw new Error('Malformed token payload');
+      }
+
+      if (!payload.uid && !payload.sub) {
+        throw new Error('Token payload missing user identifier (uid or sub)');
+      }
+
+      // Enforce token expiration
+      if (payload.exp && typeof payload.exp === 'number') {
+        const nowInSeconds = Math.floor(Date.now() / 1000);
+        if (nowInSeconds >= payload.exp) {
+          throw new Error('Firebase ID token has expired');
+        }
+      }
+
+      // Tenant isolation: if payload specifies a projectId, ensure it matches the Admin SDK's project
+      if (payload.projectId && payload.projectId !== this.app.options.projectId) {
+        throw new Error(
+          `Token projectId mismatch: token issued for '${payload.projectId}' but Admin SDK configured for '${this.app.options.projectId}'`
+        );
+      }
+
       return payload;
     } catch (err: any) {
       throw new Error(`Invalid token: ${err.message}`);

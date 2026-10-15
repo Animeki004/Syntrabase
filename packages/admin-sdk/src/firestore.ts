@@ -72,6 +72,20 @@ export class AdminFirestore {
     return (await res.json()) as DocumentSnapshot;
   }
 
+  public async updateDoc(collectionPath: string, documentId: string, data: DocumentData): Promise<DocumentSnapshot> {
+    const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/databases/(default)/documents/${collectionPath}/${documentId}`;
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(err.error || `Admin updateDoc failed: ${res.statusText}`);
+    }
+    return (await res.json()) as DocumentSnapshot;
+  }
+
   public async deleteDoc(collectionPath: string, documentId: string): Promise<void> {
     const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/databases/(default)/documents/${collectionPath}/${documentId}`;
     const res = await fetch(url, { method: 'DELETE', headers: this.getHeaders() });

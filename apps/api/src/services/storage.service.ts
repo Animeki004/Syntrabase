@@ -186,7 +186,7 @@ export class StorageService {
    */
   public static async deleteObject(projectId: string, objectId: string): Promise<void> {
     const res = await query<{ id: string; bucket_id: string; size_bytes: string }>(
-      'SELECT id, bucket_id, size_bytes FROM storage_objects WHERE id = $1 AND project_id = $2',
+      'SELECT id, bucket_id, size_bytes FROM storage_objects WHERE (id::text = $1 OR object_path = $1) AND project_id = $2',
       [objectId, projectId]
     );
 
@@ -198,7 +198,7 @@ export class StorageService {
     const size = parseInt(obj.size_bytes, 10);
 
     await withTransaction(async (client) => {
-      await client.query('DELETE FROM storage_objects WHERE id = $1', [objectId]);
+      await client.query('DELETE FROM storage_objects WHERE id = $1', [obj.id]);
       await client.query('UPDATE storage_buckets SET used_bytes = GREATEST(0, used_bytes - $1) WHERE id = $2', [
         size,
         obj.bucket_id,

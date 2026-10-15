@@ -123,3 +123,90 @@ test('Rules Engine - Unmatched collection fails closed by default', () => {
   assert.equal(result.allowed, false);
   assert.equal(result.reason, 'No rule permitted this operation');
 });
+
+test('Rules Engine - Handles escaped quotes in string literals', () => {
+  const rules = `
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /quotes/{quoteId} {
+      allow read: if resource.data.quote == "He said \\"Hello\\"";
+    }
+  }
+}
+`;
+  const ast = compileRules(rules);
+  const result = evaluateRules(ast, '/databases/(default)/documents/quotes/q1', {
+    request: {
+      auth: null,
+      time: new Date().toISOString(),
+      method: 'get',
+    },
+    resource: {
+      data: { quote: 'He said "Hello"' },
+    },
+    params: {},
+  });
+
+  assert.equal(result.allowed, true);
+});
+
+test('Rules Engine - Supports recursive wildcard match {document=**}', () => {
+  const rules = `
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /public/{document=**} {
+      allow read: if true;
+    }
+  }
+}
+`;
+  const ast = compileRules(rules);
+  const result = evaluateRules(ast, '/databases/(default)/documents/public/categories/tech/articles/123', {
+    request: {
+      auth: null,
+      time: new Date().toISOString(),
+      method: 'get',
+    },
+    params: {},
+  });
+
+  assert.equal(result.allowed, true);
+});
+
+test('Rules Engine - Resolves custom claims via request.auth.token', () => {
+  const rules = `
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /internal/{docId} {
+      allow read, write: if request.auth != null && request.auth.token.role == 'superadmin';
+    }
+  }
+}
+`;
+  const ast = compileRules(rules);
+
+  // Admin user allowed
+  const adminRes = evaluateRules(ast, '/databases/(default)/documents/internal/config', {
+    request: {
+      auth: { uid: 'u1', token: { role: 'superadmin' } },
+      time: new Date().toISOString(),
+      method: 'get',
+    },
+    params: {},
+  });
+  assert.equal(adminRes.allowed, true);
+
+  // Non-admin user denied
+  const userRes = evaluateRules(ast, '/databases/(default)/documents/internal/config', {
+    request: {
+      auth: { uid: 'u2', token: { role: 'standard' } },
+      time: new Date().toISOString(),
+      method: 'get',
+    },
+    params: {},
+  });
+  assert.equal(userRes.allowed, false);
+});

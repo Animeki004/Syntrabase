@@ -28,31 +28,55 @@ export function ref(storage: FirebaseStorage, path: string): StorageReference {
   return new StorageReference(storage, path.replace(/^\/+/, ''), 'default');
 }
 
+function getStorageHeaders(storage: FirebaseStorage): Record<string, string> {
+  const auth = getAuth(storage.app);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-api-key': storage.app.options.apiKey,
+    'x-environment-id': storage.app.options.environmentId || 'default',
+  };
+  if (auth.accessToken) {
+    headers['Authorization'] = `Bearer ${auth.accessToken}`;
+  }
+  return headers;
+}
+
+export async function toBase64(data: Buffer | Uint8Array | Blob): Promise<string> {
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(data)) {
+    return data.toString('base64');
+  }
+
+  let bytes: Uint8Array;
+  if (data instanceof Uint8Array) {
+    bytes = data;
+  } else {
+    // Blob in browser or Node Blob
+    const arrayBuffer = await (data as Blob).arrayBuffer();
+    bytes = new Uint8Array(arrayBuffer);
+  }
+
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('base64');
+  }
+
+  // Pure browser environment without Buffer polyfill
+  let binary = '';
+  const len = bytes.byteLength;
+  const CHUNK_SIZE = 8192;
+  for (let i = 0; i < len; i += CHUNK_SIZE) {
+    const chunk = bytes.subarray(i, Math.min(i + CHUNK_SIZE, len));
+    binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+  }
+  return btoa(binary);
+}
+
 export async function uploadBytes(
   storageRef: StorageReference,
   data: Buffer | Uint8Array | Blob,
   metadata?: { contentType?: string; customMetadata?: Record<string, string> }
 ): Promise<{ ref: StorageReference; metadata: Record<string, unknown> }> {
-  let base64Data: string;
-
-  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(data)) {
-    base64Data = data.toString('base64');
-  } else if (data instanceof Uint8Array) {
-    base64Data = Buffer.from(data).toString('base64');
-  } else {
-    // Blob in browser
-    const arrayBuffer = await (data as Blob).arrayBuffer();
-    base64Data = Buffer.from(arrayBuffer).toString('base64');
-  }
-
-  const auth = getAuth(storageRef.storage.app);
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'x-api-key': storageRef.storage.app.options.apiKey,
-  };
-  if (auth.accessToken) {
-    headers['Authorization'] = `Bearer ${auth.accessToken}`;
-  }
+  const base64Data = await toBase64(data);
+  const headers = getStorageHeaders(storageRef.storage);
 
   const url = `${storageRef.storage.app.options.apiUrl}/api/v1/storage/${storageRef.storage.app.options.projectId}/upload`;
   const res = await fetch(url, {
@@ -81,10 +105,7 @@ export async function getDownloadURL(storageRef: StorageReference): Promise<stri
   const url = `${storageRef.storage.app.options.apiUrl}/api/v1/storage/${storageRef.storage.app.options.projectId}/signed-url`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': storageRef.storage.app.options.apiKey,
-    },
+    headers: getStorageHeaders(storageRef.storage),
     body: JSON.stringify({
       bucketName: storageRef.bucket,
       objectPath: storageRef.fullPath,
@@ -99,4 +120,45 @@ export async function getDownloadURL(storageRef: StorageReference): Promise<stri
 
   const data = (await res.json()) as { signedUrl: string };
   return `${storageRef.storage.app.options.apiUrl}${data.signedUrl}`;
+}
+
+export async function deleteObject(storageRef: StorageReference): Promise<void> {
+  const url = `${storageRef.storage.app.options.apiUrl}/api/v1/storage/${storageRef.storage.app.options.projectId}/objects/${encodeURIComponent(storageRef.fullPath)}`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: getStorageHeaders(storageRef.storage),
+  });
+
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error || `Delete object failed: ${res.statusText}`);
+  }
+}
+
+export async function listAll(
+  storageRef: StorageReference
+): Promise<{ items: StorageReference[]; prefixes: StorageReference[] }> {
+  const url = `${storageRef.storage.app.options.apiUrl}/api/v1/storage/${storageRef.storage.app.options.projectId}/objects`;
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: getStorageHeaders(storageRef.storage),
+  });
+
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error || `List objects failed: ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as { objects?: Array<{ path: string }> };
+  const prefix = storageRef.fullPath ? (storageRef.fullPath.endsWith('/') ? storageRef.fullPath : `${storageRef.fullPath}/`) : '';
+
+  const items: StorageReference[] = [];
+
+  for (const obj of data.objects || []) {
+    if (!prefix || obj.path.startsWith(prefix)) {
+      items.push(new StorageReference(storageRef.storage, obj.path, storageRef.bucket));
+    }
+  }
+
+  return { items, prefixes: [] };
 }
