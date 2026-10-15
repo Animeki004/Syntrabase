@@ -765,83 +765,91 @@ export default function GlobalEmailControlPage() {
       {/* Top Telemetry Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', alignItems: 'stretch' }}>
         {/* Card 1: Provider Plan & Dynamic Credits Countdown */}
-        <Card style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '150px' }}>
-          <div style={{ padding: '16px 20px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Active Provider Quota
+        <Card style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '140px' }}>
+          <div style={{ padding: '18px 20px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+                Active Quota
               </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flexShrink: 0 }}>
                 {accounts.length > 1 && (
                   <select
                     value={activeAccount?.id || ''}
                     onChange={(e) => setSelectedAccountId(e.target.value)}
                     style={{
                       fontSize: '11px',
-                      padding: '2px 8px',
+                      padding: '2px 6px',
                       borderRadius: '4px',
                       backgroundColor: 'var(--bg-surface-subtle)',
                       border: '1px solid var(--border-default)',
                       color: 'var(--text-primary)',
                       cursor: 'pointer',
                       outline: 'none',
+                      maxWidth: '100px',
+                      textOverflow: 'ellipsis',
+                      overflow: 'hidden',
+                      whiteSpace: 'nowrap',
                     }}
-                    title="Switch inspected Brevo account"
+                    title={activeAccount?.accountName ? `Account: ${activeAccount.accountName}` : 'Switch account'}
                   >
                     {accounts.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.accountName} {a.isPrimary ? '★' : ''} ({a.status})
+                        {a.accountName} {a.isPrimary ? '★' : ''}
                       </option>
                     ))}
                   </select>
                 )}
-                {activeAccount?.isPrimary ? (
-                  <Badge variant="warning" size="sm" style={{ fontSize: '10px' }}>
-                    <Star size={10} style={{ marginRight: '3px', fill: 'currentColor' }} /> Primary In-Use
-                  </Badge>
-                ) : (
-                  <Badge variant={activeAccount?.status === 'healthy' ? 'outline' : 'warning'} size="sm" style={{ fontSize: '10px', color: activeAccount?.status === 'healthy' ? 'var(--success)' : 'var(--warning)', borderColor: activeAccount?.status === 'healthy' ? 'var(--success)' : 'var(--warning)' }}>
-                    {activeAccount?.accountName ? `${activeAccount.accountName} (${activeAccount.status})` : 'No Account Connected'}
-                  </Badge>
-                )}
+                <Badge
+                  variant={isQuotaExhausted ? 'danger' : activeAccount?.isPrimary ? 'warning' : 'outline'}
+                  size="sm"
+                  style={{
+                    fontSize: '10px',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                    color: !isQuotaExhausted && !activeAccount?.isPrimary && activeAccount?.status === 'healthy' ? 'var(--success)' : undefined,
+                    borderColor: !isQuotaExhausted && !activeAccount?.isPrimary && activeAccount?.status === 'healthy' ? 'var(--success)' : undefined,
+                  }}
+                >
+                  {isQuotaExhausted ? (
+                    'Exhausted'
+                  ) : activeAccount?.isPrimary ? (
+                    <>
+                      <Star size={9} style={{ marginRight: '3px', fill: 'currentColor' }} /> Primary
+                    </>
+                  ) : activeAccount?.status === 'healthy' ? (
+                    'Healthy'
+                  ) : (
+                    activeAccount?.status || 'Active'
+                  )}
+                </Badge>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '2.1rem', fontWeight: 800, color: isQuotaExhausted ? 'var(--danger)' : 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span style={{ fontSize: '2rem', fontWeight: 800, color: isQuotaExhausted ? 'var(--danger)' : 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
                 {remainingCredits.toLocaleString()}
               </span>
               <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isQuotaExhausted ? 'var(--danger)' : 'var(--text-secondary)' }}>
-                {isQuotaExhausted ? 'credits remaining (Daily Quota Reached!)' : 'credits remaining today'}
-              </span>
-              <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-muted)' }}>
-                ({activePlanType} tier • {totalDailyQuota.toLocaleString()} daily limit)
+                credits left today
               </span>
             </div>
 
-            {/* Visual Quota Progress Bar */}
-            <div style={{ marginTop: '2px' }}>
-              <div style={{ height: '6px', width: '100%', backgroundColor: 'var(--bg-surface-subtle)', borderRadius: '3px', overflow: 'hidden' }}>
-                <div
-                  style={{
-                    height: '100%',
-                    width: `${percentUsed}%`,
-                    backgroundColor: isQuotaExhausted ? 'var(--danger)' : percentUsed > 80 ? 'var(--warning)' : 'var(--success)',
-                    transition: 'width 0.4s ease',
-                  }}
-                />
-              </div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
-                <span>{dailyDispatched} dispatched today ({percentUsed}% used)</span>
-                <span>{remainingCredits} available until quota reached</span>
-              </div>
+            {/* Sleek 3px Progress Bar */}
+            <div style={{ height: '3px', width: '100%', backgroundColor: 'var(--bg-surface-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${percentUsed}%`,
+                  backgroundColor: isQuotaExhausted ? 'var(--danger)' : percentUsed > 80 ? 'var(--warning)' : 'var(--success)',
+                  transition: 'width 0.4s ease',
+                }}
+              />
             </div>
           </div>
 
           <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Today's Dispatched: <strong style={{ color: 'var(--text-primary)' }}>{dailyDispatched}</strong></span>
-            <span>Monthly Total: <strong style={{ color: 'var(--text-primary)' }}>{activeAccount?.monthlySentCount ?? 0}</strong></span>
-            <span>Router Total: <strong style={{ color: 'var(--text-primary)' }}>{outboxItems.length}</strong></span>
+            <span>Today: <strong style={{ color: 'var(--text-primary)' }}>{dailyDispatched} sent</strong> / {totalDailyQuota.toLocaleString()} cap</span>
+            <span><strong style={{ color: isQuotaExhausted ? 'var(--danger)' : 'var(--text-primary)' }}>{percentUsed}%</strong> used</span>
           </div>
         </Card>
 
