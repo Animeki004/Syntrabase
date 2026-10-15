@@ -1,6 +1,7 @@
 {
   "name": "@syntrabase/console",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
   "description": "Next.js Developer Console for the Syntrabase platform",
   "scripts": {

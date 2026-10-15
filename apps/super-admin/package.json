@@ -1,6 +1,7 @@
 {
   "name": "@syntrabase/super-admin",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
   "description": "Next.js Super Admin Console for Syntrabase platform operators",
   "scripts": {

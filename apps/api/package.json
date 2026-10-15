@@ -1,6 +1,7 @@
 {
   "name": "@syntrabase/api",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
   "description": "Fastify Backend API Gateway & Realtime Engine for the Syntrabase platform",
   "main": "dist/apps/api/src/server.js",
