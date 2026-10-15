@@ -1,10 +1,13 @@
 import crypto from 'crypto';
 import { query } from '../db/pool.js';
 import { EmailService } from './email.service.js';
+import { ProjectService } from './project.service.js';
 import {
   ProjectAuthConfig,
   AuthProviderId,
   PasswordPolicy,
+  UserActionsConfig,
+  MfaPolicy,
   AuthUsageTelemetry,
   AuthActivityLog,
   EmailTemplatesMap,
@@ -185,16 +188,18 @@ export class AuthConfigService {
    * ABSOLUTE MANDATE: New projects start with all optional providers DISABLED by default!
    */
   public static async getProjectAuthConfig(projectId: string): Promise<ProjectAuthConfig> {
-    const cached = configCache.get(projectId);
+    const canonicalId = await ProjectService.resolveProjectId(projectId);
+    const cached = configCache.get(canonicalId) || configCache.get(projectId);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.config;
     }
 
     try {
-      const res = await query<any>('SELECT * FROM project_auth_configs WHERE project_id = $1', [projectId]);
+      const res = await query<any>('SELECT * FROM project_auth_configs WHERE project_id = $1 OR project_id = $2', [canonicalId, projectId]);
       if (res.rows.length > 0) {
         const row = res.rows[0];
         const config = this.rowToAuthConfig(row);
+        configCache.set(canonicalId, { config, expiresAt: Date.now() + CACHE_TTL_MS });
         configCache.set(projectId, { config, expiresAt: Date.now() + CACHE_TTL_MS });
         return config;
       }
@@ -260,6 +265,11 @@ export class AuthConfigService {
           requireSymbols: false,
           maxAgeDays: 0,
         },
+        userActions: {
+          enableCreate: true,
+          enableDelete: true,
+          emailEnumerationProtection: true,
+        },
         accountLinkingMode: 'link_same_email',
         signupQuotaPerWindow: 100,
         authorizedDomains: ['localhost', '127.0.0.1'],
@@ -270,8 +280,10 @@ export class AuthConfigService {
         },
         mfaPolicy: {
           enabled: false,
+          enforcement: 'optional',
           enforceForAdmins: false,
-          allowedFactors: ['totp'],
+          allowedFactors: ['totp', 'passkey'],
+          selectedCriteria: { roles: ['admin'], customClaims: ['mfaRequired'] },
         },
         activityLoggingEnabled: true,
         blockingFunctions: {},
@@ -288,17 +300,26 @@ export class AuthConfigService {
    */
   public static async updateProjectAuthConfig(
     projectId: string,
-    updates: Partial<ProjectAuthConfig>
+    updates: Partial<Omit<ProjectAuthConfig, 'userActions' | 'mfaPolicy'>> & {
+      userActions?: Partial<UserActionsConfig>;
+      mfaPolicy?: Partial<MfaPolicy>;
+    }
   ): Promise<ProjectAuthConfig> {
+    const canonicalId = await ProjectService.resolveProjectId(projectId);
     // Ensure config exists
-    const current = await this.getProjectAuthConfig(projectId);
+    const current = await this.getProjectAuthConfig(canonicalId);
 
     const merged = {
       ...current,
       ...updates,
       passwordPolicy: { ...current.passwordPolicy, ...(updates.passwordPolicy || {}) },
+      userActions: { ...current.userActions, ...(updates.userActions || {}) },
       sessionPolicy: { ...current.sessionPolicy, ...(updates.sessionPolicy || {}) },
-      mfaPolicy: { ...current.mfaPolicy, ...(updates.mfaPolicy || {}) },
+      mfaPolicy: {
+        ...current.mfaPolicy,
+        ...(updates.mfaPolicy || {}),
+        enabled: updates.mfaPolicy?.enabled ?? (updates.mfaPolicy?.enforcement === 'required_all' || updates.mfaPolicy?.enforcement === 'required_selected' ? true : current.mfaPolicy.enabled),
+      },
       updatedAt: new Date().toISOString(),
     };
 
@@ -320,8 +341,9 @@ export class AuthConfigService {
              session_policy = $13::jsonb,
              mfa_policy = $14::jsonb,
              activity_logging_enabled = $15,
+             user_actions = $16::jsonb,
              updated_at = NOW()
-         WHERE project_id = $16
+         WHERE project_id = $17 OR project_id = $18
          RETURNING *`,
         [
           merged.emailPasswordEnabled,
@@ -339,15 +361,52 @@ export class AuthConfigService {
           JSON.stringify(merged.sessionPolicy),
           JSON.stringify(merged.mfaPolicy),
           merged.activityLoggingEnabled,
+          JSON.stringify(merged.userActions),
+          canonicalId,
           projectId,
         ]
       );
 
-      const updated = this.rowToAuthConfig(res.rows[0] || merged);
+      let updatedRow = res.rows[0];
+      if (!updatedRow) {
+        const ins = await query<any>(
+          `INSERT INTO project_auth_configs (
+            project_id, email_password_enabled, email_link_enabled, anonymous_enabled, phone_enabled,
+            google_oauth_enabled, github_oauth_enabled, apple_oauth_enabled, require_email_verification,
+            password_policy, account_linking_mode, signup_quota_per_window, authorized_domains,
+            session_policy, mfa_policy, activity_logging_enabled, user_actions, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13::jsonb, $14::jsonb, $15::jsonb, $16, $17::jsonb, NOW())
+          RETURNING *`,
+          [
+            canonicalId,
+            merged.emailPasswordEnabled,
+            merged.emailLinkEnabled,
+            merged.anonymousEnabled,
+            merged.phoneEnabled,
+            merged.googleOauthEnabled,
+            merged.githubOauthEnabled,
+            merged.appleOauthEnabled,
+            merged.requireEmailVerification,
+            JSON.stringify(merged.passwordPolicy),
+            merged.accountLinkingMode,
+            merged.signupQuotaPerWindow,
+            JSON.stringify(merged.authorizedDomains),
+            JSON.stringify(merged.sessionPolicy),
+            JSON.stringify(merged.mfaPolicy),
+            merged.activityLoggingEnabled,
+            JSON.stringify(merged.userActions),
+          ]
+        );
+        updatedRow = ins.rows[0];
+      }
+
+      const updated = this.rowToAuthConfig(updatedRow || merged);
+      configCache.set(canonicalId, { config: updated, expiresAt: Date.now() + CACHE_TTL_MS });
       configCache.set(projectId, { config: updated, expiresAt: Date.now() + CACHE_TTL_MS });
       return updated;
     } catch {
-      // In-memory fallback
+      // In-memory fallback for offline test harness
+      configCache.set(canonicalId, { config: merged, expiresAt: Date.now() + CACHE_TTL_MS });
       configCache.set(projectId, { config: merged, expiresAt: Date.now() + CACHE_TTL_MS });
       return merged;
     }
@@ -787,6 +846,11 @@ export class AuthConfigService {
         requireSymbols: false,
         maxAgeDays: 0,
       },
+      userActions: row.user_actions || {
+        enableCreate: true,
+        enableDelete: true,
+        emailEnumerationProtection: true,
+      },
       accountLinkingMode: row.account_linking_mode || 'link_same_email',
       signupQuotaPerWindow: row.signup_quota_per_window || 100,
       authorizedDomains: row.authorized_domains || ['localhost', '127.0.0.1'],
@@ -795,10 +859,12 @@ export class AuthConfigService {
         refreshTokenTtlDays: 7,
         singleSessionPerUser: false,
       },
-      mfaPolicy: row.mfa_policy || {
-        enabled: false,
-        enforceForAdmins: false,
-        allowedFactors: ['totp'],
+      mfaPolicy: {
+        enabled: row.mfa_policy?.enabled ?? false,
+        enforcement: row.mfa_policy?.enforcement || (row.mfa_policy?.enforceForAdmins ? 'required_selected' : (row.mfa_policy?.enabled ? 'required_all' : 'optional')),
+        enforceForAdmins: !!row.mfa_policy?.enforceForAdmins,
+        allowedFactors: row.mfa_policy?.allowedFactors || ['totp', 'passkey'],
+        selectedCriteria: row.mfa_policy?.selectedCriteria || { roles: ['admin'], customClaims: ['mfaRequired'] },
       },
       activityLoggingEnabled: row.activity_logging_enabled !== false,
       blockingFunctions: row.blocking_functions || {},
@@ -806,6 +872,26 @@ export class AuthConfigService {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
+  }
+
+  /**
+   * Asserts whether a user action (create account or delete account) is permitted.
+   * Throws HTTP 403 ADMIN_ONLY_OPERATION if disabled.
+   */
+  public static async assertUserActionAllowed(projectId: string, action: 'create' | 'delete'): Promise<void> {
+    const config = await this.getProjectAuthConfig(projectId);
+    if (action === 'create' && config.userActions?.enableCreate === false) {
+      const err: any = new Error('ADMIN_ONLY_OPERATION: User sign-up is disabled for this project. New users may only be created via the Admin SDK or Developer Console.');
+      err.statusCode = 403;
+      err.code = 'SIGNUP_DISABLED';
+      throw err;
+    }
+    if (action === 'delete' && config.userActions?.enableDelete === false) {
+      const err: any = new Error('ADMIN_ONLY_OPERATION: Self account deletion is disabled for this project.');
+      err.statusCode = 403;
+      err.code = 'ACCOUNT_DELETION_DISABLED';
+      throw err;
+    }
   }
 
   private static getProviderFlagKey(provider: string): string {

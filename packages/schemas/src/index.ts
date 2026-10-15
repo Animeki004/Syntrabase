@@ -310,10 +310,21 @@ export const SessionPolicySchema = z.object({
   singleSessionPerUser: z.boolean().default(false),
 });
 
+export const UserActionsConfigSchema = z.object({
+  enableCreate: z.boolean().default(true),
+  enableDelete: z.boolean().default(true),
+  emailEnumerationProtection: z.boolean().default(true),
+});
+
 export const MfaPolicySchema = z.object({
   enabled: z.boolean().default(false),
+  enforcement: z.enum(['optional', 'required_all', 'required_selected']).default('optional'),
   enforceForAdmins: z.boolean().default(false),
-  allowedFactors: z.array(z.enum(['totp', 'sms'])).default(['totp']),
+  allowedFactors: z.array(z.enum(['totp', 'passkey', 'sms'])).default(['totp', 'passkey']),
+  selectedCriteria: z.object({
+    roles: z.array(z.string()).optional(),
+    customClaims: z.array(z.string()).optional(),
+  }).optional(),
 });
 
 export const EmailTemplateConfigSchema = z.object({
@@ -333,12 +344,13 @@ export const UpdateProjectAuthConfigSchema = z.object({
   githubOauthEnabled: z.boolean().optional(),
   appleOauthEnabled: z.boolean().optional(),
   requireEmailVerification: z.boolean().optional(),
+  userActions: UserActionsConfigSchema.partial().optional(),
   passwordPolicy: PasswordPolicySchema.optional(),
   accountLinkingMode: z.enum(['link_same_email', 'multiple_accounts']).optional(),
   signupQuotaPerWindow: z.number().int().min(1).max(10000).optional(),
   authorizedDomains: z.array(z.string().min(1).max(255)).optional(),
   sessionPolicy: SessionPolicySchema.optional(),
-  mfaPolicy: MfaPolicySchema.optional(),
+  mfaPolicy: MfaPolicySchema.partial().optional(),
   activityLoggingEnabled: z.boolean().optional(),
 });
 

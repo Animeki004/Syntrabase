@@ -65,32 +65,7 @@ export default function StoragePage() {
 
   // Authoritative project plan context
   const [isPlanLoading, setIsPlanLoading] = useState(true);
-  const [planContext, setPlanContext] = useState<ProjectPlanContext>({
-    projectId,
-    planId: activeProject?.planId || '00000000-0000-0000-0000-000000000003',
-    planName: activeProject?.planName || 'Enterprise Plan',
-    planSlug: (activeProject?.planSlug as any) || 'enterprise',
-    capabilities: {
-      'database.documents': true,
-      'database.realtime': true,
-      'storage.objects': true,
-      'auth.email': true,
-      'auth.anonymous': true,
-    },
-    limits: {
-      maxDbStorageBytes: 10737418240,
-      maxDocSizeBytes: 10485760,
-      maxApiRequestsPerWindow: 100000,
-      maxFileStorageBytes: 107374182400,
-      maxRealtimeConnections: 10000,
-    },
-    usage: {
-      dbStorageBytes: 0,
-      fileStorageBytes: 0,
-      activeConnections: 0,
-    },
-    isOverride: false,
-  });
+  const [planContext, setPlanContext] = useState<ProjectPlanContext | null>(null);
 
   // Modals
   const [signedUrlModal, setSignedUrlModal] = useState<{ path: string; url: string; expires: string } | null>(null);
@@ -145,10 +120,10 @@ export default function StoragePage() {
     fetchFiles();
   }, [projectId, fetchFiles]);
 
-  const isStorageEnabled = !!planContext.capabilities['storage.objects'];
+  const isStorageEnabled = planContext ? !!planContext.capabilities['storage.objects'] : false;
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!isStorageEnabled) {
+    if (isPlanLoading || !isStorageEnabled) {
       addToast(
         "Upload rejected by backend policy: Feature 'storage.objects' is disabled on current plan (FEATURE_DISABLED)",
         'error'
@@ -277,18 +252,28 @@ export default function StoragePage() {
             <h1 style={{ fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>
               Object Storage Buckets
             </h1>
-            <Badge variant={isStorageEnabled ? 'success' : 'danger'}>
-              {isStorageEnabled ? 'Encrypted Object Storage: Active' : 'Storage Disabled (Free Plan)'}
-            </Badge>
+            {isPlanLoading ? (
+              <div className="skeleton-box" style={{ width: '190px', height: '22px', borderRadius: 'var(--radius-full)' }} />
+            ) : (
+              <Badge variant={isStorageEnabled ? 'success' : 'danger'}>
+                {isStorageEnabled ? 'Encrypted Object Storage: Active' : `Storage Disabled (${planContext?.planName || 'Plan'})`}
+              </Badge>
+            )}
           </div>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 }}>
-            {isStorageEnabled
-              ? 'Local & S3-compatible persistent storage with presigned URLs and MIME-type verification.'
-              : 'File & object storage capabilities are governed authoritatively by the assigned project plan.'}
-          </p>
+          {isPlanLoading ? (
+            <div className="skeleton-box" style={{ width: '380px', height: '14px', borderRadius: '4px', marginTop: '6px' }} />
+          ) : (
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 }}>
+              {isStorageEnabled
+                ? 'Local & S3-compatible persistent storage with presigned URLs and MIME-type verification.'
+                : 'File & object storage capabilities are governed authoritatively by the assigned project plan.'}
+            </p>
+          )}
         </div>
         <div>
-          {isStorageEnabled ? (
+          {isPlanLoading ? (
+            <div className="skeleton-box" style={{ width: '130px', height: '36px', borderRadius: 'var(--radius-md)' }} />
+          ) : isStorageEnabled ? (
             <label>
               <Button variant="primary" icon={<Upload size={15} />} style={{ cursor: 'pointer' }}>
                 Upload Object
@@ -302,14 +287,14 @@ export default function StoragePage() {
                 icon={<Lock size={15} color="var(--accent-rose)" />}
                 onClick={() => {
                   addToast(
-                    "Upload rejected by backend policy: Feature 'storage.objects' is disabled on Free Tier (FEATURE_DISABLED)",
+                    `Upload rejected by backend policy: Feature 'storage.objects' is disabled on ${planContext?.planName || 'current plan'} (FEATURE_DISABLED)`,
                     'error'
                   );
                   setShowUpgradeModal(true);
                 }}
                 style={{ opacity: 0.85, cursor: 'not-allowed', borderColor: 'rgba(239, 68, 68, 0.4)', color: 'var(--text-muted)' }}
               >
-                Uploads Disabled ({planContext.planName})
+                Uploads Disabled ({planContext?.planName || 'Plan'})
               </Button>
               <Button variant="primary" size="md" onClick={() => setShowUpgradeModal(true)}>
                 Upgrade Plan
@@ -320,7 +305,7 @@ export default function StoragePage() {
       </div>
 
       {/* Prominent Free Plan Storage Restriction Banner */}
-      {!isStorageEnabled && (
+      {!isPlanLoading && !isStorageEnabled && (
         <div
           style={{
             padding: '16px 20px',
@@ -348,12 +333,12 @@ export default function StoragePage() {
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
               <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 700, color: '#f87171' }}>
-                Dedicated File Storage is Disabled on the {planContext.planName}
+                Dedicated File Storage is Disabled on the {planContext?.planName || 'Plan'}
               </h4>
               <Badge variant="danger" size="sm">FEATURE_DISABLED</Badge>
             </div>
             <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Your project is assigned to the <strong>{planContext.planName}</strong> where the <code>storage.objects</code> capability is disabled.
+              Your project is assigned to the <strong>{planContext?.planName || 'Plan'}</strong> where the <code>storage.objects</code> capability is disabled.
               Direct upload endpoints (<code>/api/v1/storage/upload</code>), multipart chunks, and presigned upload URLs are blocked authoritatively by the backend gateway with HTTP 403 <code>FEATURE_DISABLED</code>.
             </p>
             <div
@@ -423,16 +408,28 @@ export default function StoragePage() {
             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
               Total Stored
             </span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              {isStorageEnabled ? `${files.length} objects` : 'Disabled'}
-            </span>
+            {isPlanLoading ? (
+              <div className="skeleton-box" style={{ width: '60px', height: '14px', borderRadius: '3px' }} />
+            ) : (
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                {isStorageEnabled ? `${files.length} objects` : 'Disabled'}
+              </span>
+            )}
           </div>
-          <div style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: isStorageEnabled ? 'var(--accent-blue)' : 'var(--text-muted)' }}>
-            {isStorageEnabled ? formatBytes(totalBytes) : '0 B'}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
-            {isStorageEnabled ? 'Local NVMe persisted volume' : '0 B / 0 B (Disabled on Free Plan)'}
-          </div>
+          {isPlanLoading ? (
+            <div className="skeleton-box" style={{ width: '90px', height: '28px', borderRadius: '4px', margin: '4px 0' }} />
+          ) : (
+            <div style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: isStorageEnabled ? 'var(--accent-blue)' : 'var(--text-muted)' }}>
+              {isStorageEnabled ? formatBytes(totalBytes) : '0 B'}
+            </div>
+          )}
+          {isPlanLoading ? (
+            <div className="skeleton-box" style={{ width: '150px', height: '12px', borderRadius: '3px', marginTop: '6px' }} />
+          ) : (
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+              {isStorageEnabled ? 'Local NVMe persisted volume' : '0 B / 0 B (Disabled on Free Plan)'}
+            </div>
+          )}
         </Card>
 
         <Card>
@@ -440,20 +437,30 @@ export default function StoragePage() {
             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
               Quota & Guards
             </span>
-            {isStorageEnabled ? (
+            {isPlanLoading ? (
+              <div className="skeleton-box" style={{ width: '16px', height: '16px', borderRadius: '50%' }} />
+            ) : isStorageEnabled ? (
               <ShieldCheck size={15} color="var(--accent-emerald)" />
             ) : (
               <ShieldAlert size={15} color="var(--accent-rose)" />
             )}
           </div>
-          <div style={{ fontSize: '1.3rem', fontWeight: 700, color: isStorageEnabled ? 'var(--accent-emerald)' : 'var(--accent-rose)' }}>
-            {isStorageEnabled ? 'Active Enforcement' : 'FEATURE_DISABLED'}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
-            {isStorageEnabled
-              ? `${formatBytes(planContext.limits.maxFileStorageBytes)} max capacity • Strict MIME validation`
-              : 'File uploads disabled on Free Tier • Upgrade required'}
-          </div>
+          {isPlanLoading ? (
+            <div className="skeleton-box" style={{ width: '130px', height: '28px', borderRadius: '4px', margin: '4px 0' }} />
+          ) : (
+            <div style={{ fontSize: '1.3rem', fontWeight: 700, color: isStorageEnabled ? 'var(--accent-emerald)' : 'var(--accent-rose)' }}>
+              {isStorageEnabled ? 'Active Enforcement' : 'FEATURE_DISABLED'}
+            </div>
+          )}
+          {isPlanLoading ? (
+            <div className="skeleton-box" style={{ width: '180px', height: '12px', borderRadius: '3px', marginTop: '6px' }} />
+          ) : (
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+              {isStorageEnabled
+                ? `${formatBytes(planContext?.limits.maxFileStorageBytes || 0)} max capacity • Strict MIME validation`
+                : 'File uploads disabled on Free Tier • Upgrade required'}
+            </div>
+          )}
         </Card>
       </div>
 
@@ -655,7 +662,7 @@ export default function StoragePage() {
                 Restricted Capability: <code>storage.objects</code>
               </div>
               <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                Dedicated object and file storage is disabled on your assigned <strong>{planContext.planName}</strong>.
+                Dedicated object and file storage is disabled on your assigned <strong>{planContext?.planName || 'current plan'}</strong>.
               </div>
             </div>
           </div>

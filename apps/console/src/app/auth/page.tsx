@@ -37,7 +37,11 @@ import {
   ExternalLink,
   Shield,
   Copy,
-  Plus
+  Plus,
+  UserCheck,
+  Fingerprint,
+  Smartphone,
+  KeyRound,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 import { useProject } from '@/components/ProjectContext';
@@ -147,9 +151,21 @@ export default function SyntrabaseAuthPage() {
   // ---------------------------------------------------------------------------
   // TAB 5: SETTINGS SUB-NAVIGATION STATE
   // ---------------------------------------------------------------------------
-  const [activeSettingSection, setActiveSettingSection] = useState<'verification' | 'linking' | 'password' | 'quota' | 'domains'>('verification');
+  const [activeSettingSection, setActiveSettingSection] = useState<'user_actions' | 'verification' | 'linking' | 'password' | 'quota' | 'domains' | 'mfa'>('user_actions');
   const [requireEmailVerification, setRequireEmailVerification] = useState(false);
   const [accountLinkingMode, setAccountLinkingMode] = useState<'link_same_email' | 'multiple_accounts'>('link_same_email');
+
+  // User Actions Configuration (Public Sign-up, Public Delete, Enumeration Protection)
+  const [enableCreate, setEnableCreate] = useState(true);
+  const [enableDelete, setEnableDelete] = useState(true);
+  const [emailEnumerationProtection, setEmailEnumerationProtection] = useState(true);
+
+  // Multi-Factor Authentication Configuration (Optional, Required All, Required Selected)
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaEnforcement, setMfaEnforcement] = useState<'optional' | 'required_all' | 'required_selected'>('optional');
+  const [mfaAllowedFactors, setMfaAllowedFactors] = useState<('totp' | 'passkey')[]>(['totp', 'passkey']);
+  const [mfaSelectedRoles, setMfaSelectedRoles] = useState('admin');
+  const [mfaSelectedClaims, setMfaSelectedClaims] = useState('mfaRequired');
 
   // Password Policy settings
   const [pwdMinLength, setPwdMinLength] = useState(8);
@@ -233,6 +249,20 @@ export default function SyntrabaseAuthPage() {
           }
           if (data.config.signupQuotaPerWindow) {
             setSignupQuotaWindow(data.config.signupQuotaPerWindow);
+          }
+          if (data.config.userActions) {
+            setEnableCreate(data.config.userActions.enableCreate !== false);
+            setEnableDelete(data.config.userActions.enableDelete !== false);
+            setEmailEnumerationProtection(data.config.userActions.emailEnumerationProtection !== false);
+          }
+          if (data.config.mfaPolicy) {
+            setMfaEnabled(Boolean(data.config.mfaPolicy.enabled));
+            setMfaEnforcement(data.config.mfaPolicy.enforcement || (data.config.mfaPolicy.enforceForAdmins ? 'required_selected' : 'optional'));
+            setMfaAllowedFactors(data.config.mfaPolicy.allowedFactors || ['totp', 'passkey']);
+            if (data.config.mfaPolicy.selectedCriteria) {
+              setMfaSelectedRoles(data.config.mfaPolicy.selectedCriteria.roles?.join(', ') || 'admin');
+              setMfaSelectedClaims(data.config.mfaPolicy.selectedCriteria.customClaims?.join(', ') || 'mfaRequired');
+            }
           }
         }
       }
@@ -451,6 +481,11 @@ export default function SyntrabaseAuthPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
+          userActions: {
+            enableCreate,
+            enableDelete,
+            emailEnumerationProtection,
+          },
           accountLinkingMode,
           passwordPolicy: {
             minLength: pwdMinLength,
@@ -461,6 +496,16 @@ export default function SyntrabaseAuthPage() {
           },
           signupQuotaPerWindow: signupQuotaWindow,
           authorizedDomains,
+          mfaPolicy: {
+            enabled: mfaEnabled,
+            enforcement: mfaEnforcement,
+            enforceForAdmins: mfaEnforcement === 'required_selected',
+            allowedFactors: mfaAllowedFactors,
+            selectedCriteria: {
+              roles: mfaSelectedRoles.split(',').map((r) => r.trim()).filter(Boolean),
+              customClaims: mfaSelectedClaims.split(',').map((c) => c.trim()).filter(Boolean),
+            },
+          },
         }),
       });
 
@@ -1710,43 +1755,195 @@ export default function SyntrabaseAuthPage() {
       {/* TAB 5: SETTINGS                                                           */}
       {/* ========================================================================= */}
       {activeTab === 'settings' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '20px' }}>
-          {/* Sub Navigation */}
+        <div style={{ display: 'grid', gridTemplateColumns: '270px 1fr', gap: '20px' }}>
+          {/* Sub Navigation (Categorized with 28px circular icon badge containers) */}
           <div
             style={{
               backgroundColor: 'var(--bg-surface)',
               border: '1px solid var(--border-default)',
               borderRadius: 'var(--radius-lg)',
-              padding: '10px',
+              padding: '12px 8px',
               display: 'flex',
               flexDirection: 'column',
               gap: '4px',
               alignSelf: 'start',
             }}
           >
+            {/* GROUP 1: USER ACCOUNT MANAGEMENT */}
+            <div
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                color: 'var(--text-muted)',
+                textTransform: 'uppercase',
+                padding: '8px 12px 4px',
+              }}
+            >
+              User Account Management
+            </div>
+
             {[
-              { id: 'verification', label: 'Email Verification' },
-              { id: 'linking', label: 'Account Linking' },
-              { id: 'password', label: 'Password Policy' },
-              { id: 'quota', label: 'Signup Rate Limits' },
-              { id: 'domains', label: 'Authorized Domains' },
+              { id: 'user_actions', label: 'User actions', icon: UserCheck },
+              { id: 'verification', label: 'Email verification', icon: Mail },
+              { id: 'linking', label: 'Account linking', icon: LinkIcon },
+              { id: 'password', label: 'Password policy', icon: Lock },
+              { id: 'quota', label: 'Signup rate limits', icon: ShieldAlert },
             ].map((s) => {
               const isSelected = activeSettingSection === s.id;
+              const IconComp = s.icon;
               return (
                 <div
                   key={s.id}
                   onClick={() => setActiveSettingSection(s.id as any)}
                   style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
                     padding: '8px 12px',
                     borderRadius: 'var(--radius-md)',
                     cursor: 'pointer',
-                    fontSize: '0.82rem',
+                    fontSize: '0.84rem',
                     fontWeight: isSelected ? 600 : 500,
                     background: isSelected ? 'var(--primary-subtle)' : 'transparent',
                     color: isSelected ? 'var(--primary-text)' : 'var(--text-secondary)',
+                    transition: 'all 0.15s ease',
                   }}
                 >
-                  {s.label}
+                  <div
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: isSelected ? 'var(--primary)' : 'var(--bg-surface-active)',
+                      color: isSelected ? '#ffffff' : 'var(--text-secondary)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <IconComp size={14} />
+                  </div>
+                  <span>{s.label}</span>
+                </div>
+              );
+            })}
+
+            {/* GROUP 2: DOMAINS */}
+            <div
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                color: 'var(--text-muted)',
+                textTransform: 'uppercase',
+                padding: '14px 12px 4px',
+                borderTop: '1px solid var(--border-subtle)',
+                marginTop: '6px',
+              }}
+            >
+              Domains
+            </div>
+
+            {[
+              { id: 'domains', label: 'Authorized domains', icon: Globe },
+            ].map((s) => {
+              const isSelected = activeSettingSection === s.id;
+              const IconComp = s.icon;
+              return (
+                <div
+                  key={s.id}
+                  onClick={() => setActiveSettingSection(s.id as any)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    cursor: 'pointer',
+                    fontSize: '0.84rem',
+                    fontWeight: isSelected ? 600 : 500,
+                    background: isSelected ? 'var(--primary-subtle)' : 'transparent',
+                    color: isSelected ? 'var(--primary-text)' : 'var(--text-secondary)',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: isSelected ? 'var(--primary)' : 'var(--bg-surface-active)',
+                      color: isSelected ? '#ffffff' : 'var(--text-secondary)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <IconComp size={14} />
+                  </div>
+                  <span>{s.label}</span>
+                </div>
+              );
+            })}
+
+            {/* GROUP 3: MULTI-FACTOR AUTHENTICATION */}
+            <div
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                color: 'var(--text-muted)',
+                textTransform: 'uppercase',
+                padding: '14px 12px 4px',
+                borderTop: '1px solid var(--border-subtle)',
+                marginTop: '6px',
+              }}
+            >
+              Multi-Factor Authentication
+            </div>
+
+            {[
+              { id: 'mfa', label: 'Multi-factor policy', icon: Key },
+            ].map((s) => {
+              const isSelected = activeSettingSection === s.id;
+              const IconComp = s.icon;
+              return (
+                <div
+                  key={s.id}
+                  onClick={() => setActiveSettingSection(s.id as any)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-md)',
+                    cursor: 'pointer',
+                    fontSize: '0.84rem',
+                    fontWeight: isSelected ? 600 : 500,
+                    background: isSelected ? 'var(--primary-subtle)' : 'transparent',
+                    color: isSelected ? 'var(--primary-text)' : 'var(--text-secondary)',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: isSelected ? 'var(--primary)' : 'var(--bg-surface-active)',
+                      color: isSelected ? '#ffffff' : 'var(--text-secondary)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <IconComp size={14} />
+                  </div>
+                  <span>{s.label}</span>
                 </div>
               );
             })}
@@ -1764,6 +1961,120 @@ export default function SyntrabaseAuthPage() {
               gap: '20px',
             }}
           >
+            {activeSettingSection === 'user_actions' && (
+              <div>
+                <div style={{ marginBottom: '20px' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                    User Actions Protection
+                  </h3>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Control public self-service registration, self-deletion, and account enumeration protection.
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {/* Enable Create (sign-up) */}
+                  <div
+                    style={{
+                      padding: '16px 20px',
+                      backgroundColor: 'var(--bg-surface-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        fontSize: '0.9rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={enableCreate}
+                        onChange={(e) => setEnableCreate(e.target.checked)}
+                        style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                      />
+                      <span>Enable create (sign-up)</span>
+                    </label>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginLeft: '28px', marginTop: '6px' }}>
+                      Allow public users to self-register via the Client SDK. When disabled, public registrations are blocked with HTTP 403 (<code>SIGNUP_DISABLED</code>). Administrators can still create users via the Admin SDK and Console.
+                    </div>
+                  </div>
+
+                  {/* Enable Delete */}
+                  <div
+                    style={{
+                      padding: '16px 20px',
+                      backgroundColor: 'var(--bg-surface-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        fontSize: '0.9rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={enableDelete}
+                        onChange={(e) => setEnableDelete(e.target.checked)}
+                        style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                      />
+                      <span>Enable delete</span>
+                    </label>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginLeft: '28px', marginTop: '6px' }}>
+                      Allow users to delete their own accounts via the Client SDK. When disabled, self-service deletion is blocked with HTTP 403 (<code>ACCOUNT_DELETION_DISABLED</code>). Administrators can still delete users via the Admin SDK and Console.
+                    </div>
+                  </div>
+
+                  {/* Email enumeration protection */}
+                  <div
+                    style={{
+                      padding: '16px 20px',
+                      backgroundColor: 'var(--bg-surface-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        fontSize: '0.9rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={emailEnumerationProtection}
+                        onChange={(e) => setEmailEnumerationProtection(e.target.checked)}
+                        style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                      />
+                      <span>Email enumeration protection (recommended)</span>
+                    </label>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginLeft: '28px', marginTop: '6px' }}>
+                      Prevents malicious actors from guessing whether an email is registered. When enabled, failed login attempts return uniform errors, and password reset requests return identical confirmation responses regardless of whether an account exists.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {activeSettingSection === 'verification' && (
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
@@ -2021,6 +2332,236 @@ export default function SyntrabaseAuthPage() {
                       )}
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {activeSettingSection === 'mfa' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                      Multi-Factor Authentication (MFA)
+                    </h3>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      Protect user accounts with a mandatory or optional second authentication factor during login.
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: 'var(--radius-full)',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      background: mfaEnabled ? 'rgba(34, 197, 94, 0.15)' : 'var(--bg-surface-active)',
+                      color: mfaEnabled ? 'var(--success)' : 'var(--text-muted)',
+                    }}
+                  >
+                    {mfaEnabled ? 'ENABLED' : 'DISABLED'}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  {/* Master Toggle */}
+                  <div
+                    style={{
+                      padding: '16px 20px',
+                      backgroundColor: 'var(--bg-surface-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        fontSize: '0.9rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={mfaEnabled}
+                        onChange={(e) => setMfaEnabled(e.target.checked)}
+                        style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                      />
+                      <span>Enable Multi-Factor Authentication for this Project</span>
+                    </label>
+                  </div>
+
+                  {mfaEnabled && (
+                    <>
+                      {/* Enforcement Level (3 modes) */}
+                      <div
+                        style={{
+                          padding: '20px',
+                          backgroundColor: 'var(--bg-surface-subtle)',
+                          borderRadius: 'var(--radius-md)',
+                          border: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        <h4 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 12px' }}>
+                          Project Enforcement Level
+                        </h4>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                          {/* Mode 1: Optional for every user */}
+                          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name="mfaEnforcement"
+                              checked={mfaEnforcement === 'optional'}
+                              onChange={() => setMfaEnforcement('optional')}
+                              style={{ marginTop: '3px', accentColor: 'var(--primary)' }}
+                            />
+                            <div>
+                              <div style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                1. Optional for every user
+                              </div>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                Users can enable MFA themselves from their account security settings. Users who haven't enrolled can still sign in normally with primary credentials.
+                              </div>
+                            </div>
+                          </label>
+
+                          {/* Mode 2: Required for every user */}
+                          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name="mfaEnforcement"
+                              checked={mfaEnforcement === 'required_all'}
+                              onChange={() => setMfaEnforcement('required_all')}
+                              style={{ marginTop: '3px', accentColor: 'var(--primary)' }}
+                            />
+                            <div>
+                              <div style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                2. Required for every user
+                              </div>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                Every user must enroll a second factor before accessing protected application features. The backend strictly enforces this; hiding or skipping setup is rejected server-side.
+                              </div>
+                            </div>
+                          </label>
+
+                          {/* Mode 3: Required for selected users */}
+                          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name="mfaEnforcement"
+                              checked={mfaEnforcement === 'required_selected'}
+                              onChange={() => setMfaEnforcement('required_selected')}
+                              style={{ marginTop: '3px', accentColor: 'var(--primary)' }}
+                            />
+                            <div>
+                              <div style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                3. Required for selected users (Role / Claim Gated)
+                              </div>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                Enforce mandatory MFA only for privileged users (e.g. users with admin roles or high-privilege claims). Standard users can continue signing in normally.
+                              </div>
+                            </div>
+                          </label>
+                        </div>
+
+                        {/* Selected criteria inputs */}
+                        {mfaEnforcement === 'required_selected' && (
+                          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                                Required Roles (comma-separated)
+                              </label>
+                              <input
+                                type="text"
+                                value={mfaSelectedRoles}
+                                onChange={(e) => setMfaSelectedRoles(e.target.value)}
+                                placeholder="admin, superadmin, operator"
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 12px',
+                                  borderRadius: 'var(--radius-md)',
+                                  border: '1px solid var(--border-default)',
+                                  background: 'var(--bg-surface)',
+                                  color: 'var(--text-primary)',
+                                  fontSize: '0.84rem',
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                                Required Custom Claims (comma-separated)
+                              </label>
+                              <input
+                                type="text"
+                                value={mfaSelectedClaims}
+                                onChange={(e) => setMfaSelectedClaims(e.target.value)}
+                                placeholder="mfaRequired, privileged"
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 12px',
+                                  borderRadius: 'var(--radius-md)',
+                                  border: '1px solid var(--border-default)',
+                                  background: 'var(--bg-surface)',
+                                  color: 'var(--text-primary)',
+                                  fontSize: '0.84rem',
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Allowed Second Factors */}
+                      <div
+                        style={{
+                          padding: '20px',
+                          backgroundColor: 'var(--bg-surface-subtle)',
+                          borderRadius: 'var(--radius-md)',
+                          border: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        <h4 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 12px' }}>
+                          Allowed Second Factors
+                        </h4>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.86rem', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                            <input
+                              type="checkbox"
+                              checked={mfaAllowedFactors.includes('totp')}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setMfaAllowedFactors([...mfaAllowedFactors, 'totp']);
+                                } else {
+                                  setMfaAllowedFactors(mfaAllowedFactors.filter((f) => f !== 'totp'));
+                                }
+                              }}
+                              style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                            />
+                            <span><strong>Authenticator App (TOTP)</strong> — Google Authenticator, Microsoft Authenticator, 1Password</span>
+                          </label>
+
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.86rem', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                            <input
+                              type="checkbox"
+                              checked={mfaAllowedFactors.includes('passkey')}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setMfaAllowedFactors([...mfaAllowedFactors, 'passkey']);
+                                } else {
+                                  setMfaAllowedFactors(mfaAllowedFactors.filter((f) => f !== 'passkey'));
+                                }
+                              }}
+                              style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                            />
+                            <span><strong>Passkeys (WebAuthn / FIDO2)</strong> — Touch ID, Face ID, Windows Hello, Hardware Keys</span>
+                          </label>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}

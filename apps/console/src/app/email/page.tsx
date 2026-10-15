@@ -60,6 +60,7 @@ export default function ProjectEmailPage() {
 
   // Domains State
   const [domains, setDomains] = useState<CustomSenderDomain[]>([]);
+  const [domainSearch, setDomainSearch] = useState('');
   const [selectedDomain, setSelectedDomain] = useState<CustomSenderDomain | null>(null);
   const [showAddDomainModal, setShowAddDomainModal] = useState(false);
   const [newDomainName, setNewDomainName] = useState('');
@@ -731,17 +732,52 @@ export default function ProjectEmailPage() {
           TAB 1: CUSTOM SENDING DOMAINS
           ===================================================================== */}
       {activeTab === 'domains' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 340px) 1fr', gap: '24px', alignItems: 'start' }}>
+        <div className="email-domains-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 340px) minmax(0, 1fr)', gap: '20px', alignItems: 'start' }}>
           {/* Left Column: Domain List */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', position: 'sticky', top: '16px', minWidth: 0 }}>
             <Card>
               <CardHeader>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '8px' }}>
                   <CardTitle style={{ fontSize: '0.92rem' }}>Registered Domains</CardTitle>
                   <Badge variant="neutral" size="sm">{domains.length} total</Badge>
                 </div>
               </CardHeader>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '12px' }}>
+
+              {/* Filter search bar when there are more than 3 domains */}
+              {domains.length > 3 && (
+                <div style={{ padding: '0 12px 8px' }}>
+                  <input
+                    type="text"
+                    placeholder="Search domains..."
+                    value={domainSearch}
+                    onChange={(e) => setDomainSearch(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px',
+                      fontSize: '0.78rem',
+                      background: 'var(--bg-canvas)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-sm)',
+                      color: 'var(--text-primary)',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* Constrained Scrollable Domain List */}
+              <div
+                className="custom-scrollbar"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  padding: '12px',
+                  maxHeight: 'calc(100vh - 360px)',
+                  minHeight: '200px',
+                  overflowY: 'auto',
+                }}
+              >
                 {loading ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '8px 0' }}>
                     <div style={{ height: '42px', borderRadius: 'var(--radius-md)', background: 'var(--bg-surface-subtle)', animation: 'pulse 1.5s infinite' }} />
@@ -756,8 +792,23 @@ export default function ProjectEmailPage() {
                       Add Domain
                     </Button>
                   </div>
-                ) : (
-                  domains.map((dom) => {
+                ) : (() => {
+                  const filteredDomains = domainSearch.trim()
+                    ? domains.filter((d) => d.domainName.toLowerCase().includes(domainSearch.toLowerCase().trim()))
+                    : domains;
+
+                  if (filteredDomains.length === 0) {
+                    return (
+                      <div style={{ padding: '28px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                        <div>No domains matching &ldquo;{domainSearch}&rdquo;</div>
+                        <Button variant="ghost" size="xs" onClick={() => setDomainSearch('')} style={{ marginTop: '8px' }}>
+                          Clear Search
+                        </Button>
+                      </div>
+                    );
+                  }
+
+                  return filteredDomains.map((dom) => {
                     const isSelected = selectedDomain?.id === dom.id;
                     return (
                       <div
@@ -772,30 +823,43 @@ export default function ProjectEmailPage() {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
+                          gap: '8px',
                           transition: 'all 0.12s ease',
                         }}
                       >
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Globe size={13} color={isSelected ? 'var(--primary)' : 'var(--text-muted)'} />
-                            <span style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
+                            <Globe size={13} color={isSelected ? 'var(--primary)' : 'var(--text-muted)'} style={{ flexShrink: 0 }} />
+                            <span
+                              style={{
+                                fontSize: '0.84rem',
+                                fontWeight: 600,
+                                color: 'var(--text-primary)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                display: 'block',
+                              }}
+                              title={dom.domainName}
+                            >
                               {dom.domainName}
                             </span>
                           </div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             Added {new Date(dom.createdAt).toLocaleDateString()}
                           </div>
                         </div>
                         <Badge
                           variant={dom.verificationStatus === 'verified' ? 'success' : 'warning'}
                           size="sm"
+                          style={{ flexShrink: 0 }}
                         >
                           {dom.verificationStatus}
                         </Badge>
                       </div>
                     );
-                  })
-                )}
+                  });
+                })()}
               </div>
             </Card>
 
@@ -813,7 +877,7 @@ export default function ProjectEmailPage() {
           </div>
 
           {/* Right Column: Selected Domain Details & DNS Records */}
-          <div>
+          <div style={{ minWidth: 0, overflow: 'hidden' }}>
             {loading ? (
               <Card>
                 <div style={{ padding: '36px 20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -932,7 +996,7 @@ export default function ProjectEmailPage() {
                               </div>
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) 2fr', gap: '10px' }}>
+                            <div className="dns-record-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) minmax(0, 2fr)', gap: '10px' }}>
                               {/* Host Name */}
                               <div
                                 style={{
@@ -940,13 +1004,14 @@ export default function ProjectEmailPage() {
                                   border: '1px solid var(--border-subtle)',
                                   borderRadius: 'var(--radius-sm)',
                                   padding: '8px 10px',
+                                  minWidth: 0,
                                 }}
                               >
                                 <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '2px' }}>
                                   Host / Name
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-                                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rec.hostName}>
                                     {rec.hostName}
                                   </span>
                                   <button
@@ -966,13 +1031,14 @@ export default function ProjectEmailPage() {
                                   border: '1px solid var(--border-subtle)',
                                   borderRadius: 'var(--radius-sm)',
                                   padding: '8px 10px',
+                                  minWidth: 0,
                                 }}
                               >
                                 <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '2px' }}>
                                   Value / Target
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-                                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rec.value}>
                                     {rec.value}
                                   </span>
                                   <button

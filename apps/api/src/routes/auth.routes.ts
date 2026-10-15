@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import { AuthService } from '../services/auth.service.js';
 import { AuthConfigService, AuthProviderDisabledError, PasswordPolicyViolationError, SignupQuotaExceededError } from '../services/auth-config.service.js';
 import { MfaService } from '../services/mfa.service.js';
+import { WebAuthnService } from '../services/webauthn.service.js';
 import { TemplateService } from '../services/template.service.js';
 import { ProjectService } from '../services/project.service.js';
 import { EmailService } from '../services/email.service.js';
@@ -416,7 +417,10 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
       });
     } catch (err: any) {
       if (err instanceof AuthProviderDisabledError) {
-        return reply.status(403).send({ error: err.code, message: err.message, provider: err.provider });
+        return reply.status(403).send({ error: err.code, message: err.message, provider: err.provider, code: err.code });
+      }
+      if (err.code === 'SIGNUP_DISABLED') {
+        return reply.status(403).send({ error: err.message, code: 'SIGNUP_DISABLED', message: err.message });
       }
       if (err instanceof PasswordPolicyViolationError) {
         return reply.status(400).send({ error: err.code, message: err.message, violations: err.violations });
@@ -437,13 +441,13 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
       const authResult = await AuthService.loginAppUser(projectId, environmentId, body.email, body.password);
       return reply.send(authResult);
     } catch (err: any) {
+      if (err instanceof AuthProviderDisabledError) {
+        return reply.status(403).send({ error: err.code, message: err.message, provider: err.provider, code: err.code });
+      }
       if (err.code === 'EMAIL_NOT_VERIFIED' || err.statusCode === 403) {
         return reply.status(403).send({ error: 'EMAIL_NOT_VERIFIED', message: err.message });
       }
-      if (err instanceof AuthProviderDisabledError) {
-        return reply.status(403).send({ error: err.code, message: err.message, provider: err.provider });
-      }
-      return reply.status(401).send({ error: err.message });
+      return reply.status(401).send({ error: err.message, code: err.code || 'INVALID_CREDENTIALS' });
     }
   });
 
@@ -503,7 +507,10 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
       return reply.status(201).send(authResult);
     } catch (err: any) {
       if (err instanceof AuthProviderDisabledError) {
-        return reply.status(403).send({ error: err.code, message: err.message, provider: err.provider });
+        return reply.status(403).send({ error: err.code, message: err.message, provider: err.provider, code: err.code });
+      }
+      if (err.code === 'SIGNUP_DISABLED') {
+        return reply.status(403).send({ error: err.message, code: 'SIGNUP_DISABLED', message: err.message });
       }
       if (err instanceof SignupQuotaExceededError) {
         return reply.status(429).send({ error: err.code, message: err.message });
@@ -715,6 +722,33 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
     return reply.status(204).send();
   });
 
+  server.delete('/api/v1/projects/:projectId/auth/users/me', async (req, reply) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Bearer token required for self-deletion' });
+    }
+    const token = authHeader.split(' ')[1];
+    let decoded: any;
+    try {
+      decoded = AuthService.verifyAccessToken(token);
+    } catch {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid or expired access token' });
+    }
+    if (!decoded?.uid) {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid token' });
+    }
+    const { projectId } = req.params as { projectId: string };
+    try {
+      await AuthService.deleteAppUserSelf(projectId, decoded.uid);
+      return reply.status(204).send();
+    } catch (err: any) {
+      if (err.code === 'ACCOUNT_DELETION_DISABLED' || err.statusCode === 403) {
+        return reply.status(403).send({ error: 'ACCOUNT_DELETION_DISABLED', code: 'ACCOUNT_DELETION_DISABLED', message: err.message });
+      }
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
   server.post('/api/v1/projects/:projectId/auth/users/:userId/revoke-sessions', async (req, reply) => {
     const { projectId, userId } = req.params as { projectId: string; userId: string };
     if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
@@ -723,6 +757,62 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
     await AuthService.adminRevokeUserSessions(userId);
     return reply.send({ success: true, message: 'All active sessions revoked for user' });
   });
+
+  server.get('/api/v1/projects/:projectId/auth/users/:userId/mfa', async (req, reply) => {
+    const { projectId, userId } = req.params as { projectId: string; userId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+    const factorsRes = await query<{
+      id: string;
+      factor_type: string;
+      verified: boolean;
+      enrolled_at: string;
+      last_used_at: string | null;
+    }>(
+      'SELECT id, factor_type, verified, enrolled_at, last_used_at FROM app_user_mfa WHERE user_id = $1',
+      [userId]
+    );
+    const passkeys = await WebAuthnService.listAppUserPasskeys(userId, projectId);
+    return reply.send({
+      factors: factorsRes.rows.map((r) => ({
+        id: r.id,
+        factorType: r.factor_type,
+        verified: r.verified,
+        enrolledAt: r.enrolled_at,
+        lastUsedAt: r.last_used_at,
+      })),
+      passkeys,
+    });
+  });
+
+  server.delete('/api/v1/projects/:projectId/auth/users/:userId/mfa/:factorId', async (req, reply) => {
+    const { projectId, userId, factorId } = req.params as { projectId: string; userId: string; factorId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+    await query('DELETE FROM app_user_mfa WHERE user_id = $1 AND (id = $2 OR factor_type = $2)', [userId, factorId]);
+    return reply.status(204).send();
+  });
+
+  server.get('/api/v1/projects/:projectId/auth/users/:userId/passkeys', async (req, reply) => {
+    const { projectId, userId } = req.params as { projectId: string; userId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+    const passkeys = await WebAuthnService.listAppUserPasskeys(userId, projectId);
+    return reply.send({ passkeys });
+  });
+
+  server.delete('/api/v1/projects/:projectId/auth/users/:userId/passkeys/:passkeyId', async (req, reply) => {
+    const { projectId, userId, passkeyId } = req.params as { projectId: string; userId: string; passkeyId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+    await WebAuthnService.deleteAppUserPasskey(userId, projectId, passkeyId);
+    return reply.status(204).send();
+  });
+
 
   // ---------------------------------------------------------------------------
   // 6. Usage Telemetry & Activity Logs
@@ -797,9 +887,347 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
     return reply.send(result);
   });
 
+  server.delete('/api/v1/projects/:projectId/auth/mfa/totp', async (req, reply) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Bearer token required to unenroll MFA' });
+    }
+    const token = authHeader.split(' ')[1];
+    let decoded: any;
+    try {
+      decoded = AuthService.verifyAccessToken(token);
+    } catch {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid or expired access token' });
+    }
+    if (!decoded?.uid) {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid token' });
+    }
+    await MfaService.disableTotp(decoded.uid);
+    return reply.status(204).send();
+  });
+
   server.post('/api/v1/projects/:projectId/auth/mfa/challenge', async (req, reply) => {
     const { userId, code } = req.body as { userId: string; code: string };
     const valid = await MfaService.validateTotpChallenge(userId, code);
     return reply.send({ valid });
+  });
+
+  // Two-Stage MFA Verification (consumes single-use session nonce and issues access + refresh tokens)
+  const handleAppUserMfaVerify = async (req: any, reply: any) => {
+    const { mfaSession, factor, code, passkeyResponse } = req.body as {
+      mfaSession: string;
+      factor: 'totp' | 'passkey';
+      code?: string;
+      passkeyResponse?: any;
+    };
+    if (!mfaSession || !factor) {
+      return reply.status(400).send({ error: 'MISSING_PARAMS', message: 'mfaSession and factor are required.' });
+    }
+    try {
+      const authResult = await AuthService.completeAppUserMfaChallenge(
+        mfaSession,
+        factor,
+        code || passkeyResponse
+      );
+      return reply.send(authResult);
+    } catch (err: any) {
+      const statusCode = err.statusCode || (err.message?.includes('MFA_SESSION_EXPIRED') ? 401 : 400);
+      return reply.status(statusCode).send({ error: err.code || 'MFA_VERIFICATION_FAILED', message: err.message });
+    }
+  };
+
+  server.post('/api/v1/projects/:projectId/auth/mfa/challenge/verify', handleAppUserMfaVerify);
+  server.post('/api/v1/projects/:projectId/auth/mfa/verify', handleAppUserMfaVerify);
+
+  // ---------------------------------------------------------------------------
+  // 8. Application User Passkeys (WebAuthn)
+  // ---------------------------------------------------------------------------
+
+  server.post('/api/v1/projects/:projectId/auth/passkeys/register/options', async (req, reply) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Bearer token required' });
+    }
+    const token = authHeader.split(' ')[1];
+    let decoded: any;
+    try {
+      decoded = AuthService.verifyAccessToken(token);
+    } catch {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid or expired access token' });
+    }
+    const { projectId } = req.params as { projectId: string };
+    const options = await WebAuthnService.getAppUserRegistrationOptions(decoded.uid, decoded.email || `${decoded.uid}@app`, projectId);
+    return reply.send(options);
+  });
+
+  server.post('/api/v1/projects/:projectId/auth/passkeys/register/verify', async (req, reply) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Bearer token required' });
+    }
+    const token = authHeader.split(' ')[1];
+    let decoded: any;
+    try {
+      decoded = AuthService.verifyAccessToken(token);
+    } catch {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid or expired access token' });
+    }
+    const { projectId } = req.params as { projectId: string };
+    const { response, deviceName } = req.body as { response: any; deviceName?: string };
+    const passkey = await WebAuthnService.verifyAppUserRegistration(decoded.uid, projectId, response, deviceName);
+    return reply.status(201).send({ passkey });
+  });
+
+  server.post('/api/v1/projects/:projectId/auth/passkeys/authenticate/options', async (req, reply) => {
+    const { projectId } = req.params as { projectId: string };
+    const { email } = (req.body as { email?: string }) || {};
+    const options = await WebAuthnService.getAppUserAuthenticationOptions(projectId, email);
+    return reply.send(options);
+  });
+
+  server.post('/api/v1/projects/:projectId/auth/passkeys/authenticate/verify', async (req, reply) => {
+    const { projectId } = req.params as { projectId: string };
+    const environmentId = (req.headers['x-environment-id'] as string) || 'default';
+    const { response } = req.body as { response: any };
+    try {
+      const { userId, email } = await WebAuthnService.verifyAppUserAuthentication(projectId, response);
+      
+      const res = await query<any>('SELECT * FROM app_users WHERE id = $1 AND project_id = $2', [userId, projectId]);
+      const userRow = res.rows[0];
+      if (!userRow || userRow.disabled) {
+        return reply.status(403).send({ error: 'ACCOUNT_DISABLED', message: 'User account is disabled or missing' });
+      }
+
+      await query('UPDATE app_users SET last_sign_in_at = NOW() WHERE id = $1', [userRow.id]).catch(() => {});
+
+      const appUser = {
+        id: userRow.id,
+        projectId: userRow.project_id,
+        environmentId: userRow.environment_id,
+        email: userRow.email,
+        displayName: userRow.display_name,
+        emailVerified: userRow.email_verified,
+        disabled: userRow.disabled,
+        customClaims: userRow.custom_claims || {},
+        createdAt: userRow.created_at,
+        updatedAt: userRow.updated_at,
+      };
+
+      const accessToken = AuthService.generateAccessToken({
+        uid: appUser.id,
+        email: appUser.email,
+        projectId: appUser.projectId,
+        environmentId: appUser.environmentId,
+        claims: appUser.customClaims,
+      });
+
+      const rawRefreshToken = CryptoUtil.generateSecureToken(32);
+      const refreshTokenHash = CryptoUtil.sha256(rawRefreshToken);
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      await query(
+        `INSERT INTO auth_sessions (user_id, refresh_token_hash, expires_at)
+         VALUES ($1, $2, $3)`,
+        [appUser.id, refreshTokenHash, expiresAt]
+      );
+
+      await AuthConfigService.logAuthActivity(
+        projectId,
+        environmentId,
+        appUser.id,
+        appUser.email,
+        'auth.login_success',
+        { provider: 'passkey' }
+      ).catch(() => {});
+
+      return reply.send({
+        user: appUser,
+        accessToken,
+        refreshToken: rawRefreshToken,
+        expiresIn: 900,
+      });
+    } catch (err: any) {
+      return reply.status(401).send({ error: 'PASSKEY_VERIFICATION_FAILED', message: err.message });
+    }
+  });
+
+  server.get('/api/v1/projects/:projectId/auth/passkeys', async (req, reply) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Bearer token required' });
+    }
+    const token = authHeader.split(' ')[1];
+    let decoded: any;
+    try {
+      decoded = AuthService.verifyAccessToken(token);
+    } catch {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid or expired access token' });
+    }
+    const { projectId } = req.params as { projectId: string };
+    const passkeys = await WebAuthnService.listAppUserPasskeys(decoded.uid, projectId);
+    return reply.send({ passkeys });
+  });
+
+  server.delete('/api/v1/projects/:projectId/auth/passkeys/:passkeyId', async (req, reply) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Bearer token required' });
+    }
+    const token = authHeader.split(' ')[1];
+    let decoded: any;
+    try {
+      decoded = AuthService.verifyAccessToken(token);
+    } catch {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid or expired access token' });
+    }
+    const { projectId, passkeyId } = req.params as { projectId: string; passkeyId: string };
+    await WebAuthnService.deleteAppUserPasskey(decoded.uid, projectId, passkeyId);
+    return reply.status(204).send();
+  });
+
+  // ---------------------------------------------------------------------------
+  // 9. Developer Console Multi-Factor & Passkey Management
+  // ---------------------------------------------------------------------------
+
+  server.post('/api/v1/auth/developer/mfa/verify', async (req, reply) => {
+    const { mfaSession, factor, code, passkeyResponse } = req.body as {
+      mfaSession: string;
+      factor: 'totp' | 'passkey';
+      code?: string;
+      passkeyResponse?: any;
+    };
+    if (!mfaSession || !factor) {
+      return reply.status(400).send({ error: 'MISSING_PARAMS', message: 'mfaSession and factor are required.' });
+    }
+    try {
+      const authResult = await AuthService.completeDeveloperMfaChallenge(
+        mfaSession,
+        factor,
+        code || passkeyResponse
+      );
+      return reply.send(authResult);
+    } catch (err: any) {
+      const statusCode = err.statusCode || (err.message?.includes('MFA_SESSION_EXPIRED') ? 401 : 400);
+      return reply.status(statusCode).send({ error: err.code || 'MFA_VERIFICATION_FAILED', message: err.message });
+    }
+  });
+
+  server.get('/api/v1/auth/developer/mfa/status', async (req, reply) => {
+    const developerId = await AuthService.requireDeveloper(req);
+    const totpEnrolled = await MfaService.isDeveloperTotpEnrolled(developerId);
+    const passkeys = await WebAuthnService.listDeveloperPasskeys(developerId);
+    return reply.send({
+      totpEnrolled,
+      passkeysCount: passkeys.length,
+      passkeys,
+    });
+  });
+
+  server.post('/api/v1/auth/developer/mfa/totp/enroll', async (req, reply) => {
+    const developerId = await AuthService.requireDeveloper(req);
+    const devRes = await query<{ email: string }>('SELECT email FROM developers WHERE id = $1', [developerId]);
+    const email = devRes.rows[0]?.email || 'developer@syntrabase.internal';
+    const enrollment = await MfaService.enrollDeveloperTotp(developerId, email);
+    return reply.send(enrollment);
+  });
+
+  server.post('/api/v1/auth/developer/mfa/totp/verify', async (req, reply) => {
+    const developerId = await AuthService.requireDeveloper(req);
+    const { token } = req.body as { token: string };
+    const result = await MfaService.verifyAndActivateDeveloperTotp(developerId, token);
+    return reply.send(result);
+  });
+
+  server.delete('/api/v1/auth/developer/mfa/totp', async (req, reply) => {
+    const developerId = await AuthService.requireDeveloper(req);
+    await MfaService.disableDeveloperTotp(developerId);
+    return reply.send({ success: true, message: 'Developer TOTP disabled' });
+  });
+
+  server.post('/api/v1/auth/developer/passkeys/register/options', async (req, reply) => {
+    const developerId = await AuthService.requireDeveloper(req);
+    const devRes = await query<{ email: string }>('SELECT email FROM developers WHERE id = $1', [developerId]);
+    const email = devRes.rows[0]?.email || 'developer@syntrabase.internal';
+    const options = await WebAuthnService.getDeveloperRegistrationOptions(developerId, email);
+    return reply.send(options);
+  });
+
+  server.post('/api/v1/auth/developer/passkeys/register/verify', async (req, reply) => {
+    const developerId = await AuthService.requireDeveloper(req);
+    const { response, deviceName } = req.body as { response: any; deviceName?: string };
+    const passkey = await WebAuthnService.verifyDeveloperRegistration(developerId, response, deviceName);
+    return reply.status(201).send({ passkey });
+  });
+
+  server.post('/api/v1/auth/developer/passkeys/authenticate/options', async (req, reply) => {
+    const { email } = (req.body as { email?: string }) || {};
+    const options = await WebAuthnService.getDeveloperAuthenticationOptions(email);
+    return reply.send(options);
+  });
+
+  server.post('/api/v1/auth/developer/passkeys/authenticate/verify', async (req, reply) => {
+    const { response } = req.body as { response: any };
+    try {
+      const { developerId, email } = await WebAuthnService.verifyDeveloperAuthentication(response);
+      const devRes = await query<any>('SELECT * FROM developers WHERE id = $1', [developerId]);
+      const devRow = devRes.rows[0];
+      if (!devRow || devRow.status === 'suspended') {
+        return reply.status(403).send({ error: 'ACCOUNT_SUSPENDED', message: 'Developer account suspended' });
+      }
+
+      const adminCheck = await query('SELECT developer_id FROM platform_admins WHERE developer_id = $1', [devRow.id]);
+      const isPlatformAdmin = adminCheck.rows.length > 0 || devRow.is_platform_admin;
+
+      const dev = {
+        id: devRow.id,
+        email: devRow.email,
+        displayName: devRow.display_name,
+        emailVerified: devRow.email_verified,
+        isPlatformAdmin,
+        status: (devRow.status as 'active' | 'suspended') || 'active',
+        createdAt: devRow.created_at,
+        updatedAt: devRow.updated_at,
+      };
+
+      const accessToken = AuthService.generateAccessToken({
+        uid: dev.id,
+        email: dev.email,
+        projectId: 'platform',
+        environmentId: 'global',
+        isPlatformAdmin,
+      });
+
+      const rawRefreshToken = CryptoUtil.generateSecureToken(32);
+      const refreshTokenHash = CryptoUtil.sha256(rawRefreshToken);
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      await query(
+        `INSERT INTO auth_sessions (user_id, refresh_token_hash, expires_at)
+         VALUES ($1, $2, $3)`,
+        [dev.id, refreshTokenHash, expiresAt]
+      );
+
+      return reply.send({
+        user: dev,
+        accessToken,
+        refreshToken: rawRefreshToken,
+        expiresIn: 900,
+      });
+    } catch (err: any) {
+      return reply.status(401).send({ error: 'PASSKEY_VERIFICATION_FAILED', message: err.message });
+    }
+  });
+
+  server.get('/api/v1/auth/developer/passkeys', async (req, reply) => {
+    const developerId = await AuthService.requireDeveloper(req);
+    const passkeys = await WebAuthnService.listDeveloperPasskeys(developerId);
+    return reply.send({ passkeys });
+  });
+
+  server.delete('/api/v1/auth/developer/passkeys/:passkeyId', async (req, reply) => {
+    const developerId = await AuthService.requireDeveloper(req);
+    const { passkeyId } = req.params as { passkeyId: string };
+    await WebAuthnService.deleteDeveloperPasskey(developerId, passkeyId);
+    return reply.status(204).send();
   });
 };

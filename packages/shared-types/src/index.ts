@@ -98,10 +98,20 @@ export interface TokenPayload {
 }
 
 export interface AuthResponse {
-  user: AppUser | Developer;
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
+  user?: AppUser | Developer;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
+  mfaRequired?: boolean;
+  mfaSession?: string;
+  allowedFactors?: ('totp' | 'passkey')[];
+}
+
+export interface MfaChallengeResponse {
+  mfaRequired: true;
+  mfaSession: string;
+  allowedFactors: ('totp' | 'passkey')[];
+  enrollmentRequired?: boolean;
 }
 
 // -----------------------------------------------------------------------------
@@ -637,10 +647,43 @@ export interface SessionPolicy {
   singleSessionPerUser: boolean;
 }
 
+export interface UserActionsConfig {
+  enableCreate: boolean; // Enable create (sign-up)
+  enableDelete: boolean; // Enable delete (self account deletion)
+  emailEnumerationProtection: boolean; // Protect against account enumeration
+}
+
+export type MfaEnforcementLevel = 'optional' | 'required_all' | 'required_selected';
+
 export interface MfaPolicy {
   enabled: boolean;
-  enforceForAdmins: boolean;
-  allowedFactors: ('totp' | 'sms')[];
+  enforcement: MfaEnforcementLevel;
+  enforceForAdmins: boolean; // Backwards compatible shortcut
+  allowedFactors: ('totp' | 'passkey' | 'sms')[];
+  selectedCriteria?: {
+    roles?: string[]; // e.g. ['admin', 'employee']
+    customClaims?: string[]; // e.g. ['mfaRequired']
+  };
+}
+
+export interface PasskeyRecord {
+  id: string;
+  credentialId: string;
+  deviceName: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  aaguid?: string;
+}
+
+export interface MfaChallengeSession {
+  mfaRequired: true;
+  mfaSession: string; // Short-lived single-use bound challenge token
+  allowedFactors: ('totp' | 'passkey')[];
+  user: {
+    id: string;
+    email: string;
+    displayName?: string;
+  };
 }
 
 export interface EmailTemplateConfig {
@@ -677,6 +720,7 @@ export interface ProjectAuthConfig {
   providersConfig: Record<string, Record<string, unknown>>;
   requireEmailVerification: boolean;
   passwordPolicy: PasswordPolicy;
+  userActions: UserActionsConfig;
   accountLinkingMode: 'link_same_email' | 'multiple_accounts';
   signupQuotaPerWindow: number;
   authorizedDomains: string[];
@@ -721,6 +765,7 @@ export interface AuthUsageTelemetry {
 export interface TotpEnrollmentResult {
   secret: string;
   otpauthUrl: string;
+  qrCodeUrl: string;
   backupCodes: string[];
 }
 

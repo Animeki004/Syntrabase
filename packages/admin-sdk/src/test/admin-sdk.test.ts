@@ -33,6 +33,14 @@ test('Admin SDK - Initializes with valid sk_live key', () => {
   const auth = getAdminAuth(app);
   assert.ok(auth);
   assert.equal(typeof auth.getUser, 'function');
+  assert.equal(typeof auth.setUserActions, 'function');
+  assert.equal(typeof auth.getUserActions, 'function');
+  assert.equal(typeof auth.setMfaPolicy, 'function');
+  assert.equal(typeof auth.getMfaPolicy, 'function');
+  assert.equal(typeof auth.getUserMfa, 'function');
+  assert.equal(typeof auth.unenrollUserMfa, 'function');
+  assert.equal(typeof auth.listUserPasskeys, 'function');
+  assert.equal(typeof auth.deleteUserPasskey, 'function');
 
   const rules = getAdminRules(app);
   assert.ok(rules);

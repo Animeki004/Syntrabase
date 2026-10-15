@@ -39,8 +39,8 @@ docs/
 
 ### 1. Developer Guides & API Specifications
 - [API Reference](./API_REFERENCE.md): Comprehensive documentation of all Fastify endpoints including Auth, Documents, Transactions, Field Transforms, Collection Groups, Webhooks, Storage, and Super Admin fleet APIs.
-- [SDK Reference](./SDK_REFERENCE.md): Modular Firebase v9/v10 compatible Client SDK and Node.js Admin SDK reference with working TypeScript examples.
-- [Test Strategy](./TEST_STRATEGY.md): Adversarial test suite, isolated database restore verification, and client bundle zero-secret leak tests.
+- [SDK Reference](./SDK_REFERENCE.md): Modular Firebase v9/v10 compatible Client SDK and Node.js Admin SDK reference with working TypeScript examples for Auth, Firestore, Storage, Realtime, TOTP MFA with dynamic QR codes, WebAuthn Passkeys, and User Actions policies.
+- [Test Strategy](./TEST_STRATEGY.md): Adversarial test suite, isolated database restore verification, and client bundle zero-secret leak tests (110+ API & security tests).
 
 ### 2. Deployment & Operations
 - [Coolify VPS Deployment Guide](./deployment/COOLIFY_DEPLOYMENT_GUIDE.md): Complete setup for Coolify PaaS, Docker Compose integration, Traefik TLS termination, and health checks.

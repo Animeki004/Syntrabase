@@ -15,7 +15,10 @@ import {
   ArrowLeft,
   RefreshCw,
   Check,
-  Shield
+  Shield,
+  Fingerprint,
+  Smartphone,
+  Key,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -23,7 +26,7 @@ import { Input } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import { API_BASE_URL } from '@/config';
 
-type AuthMode = 'login' | 'forgot' | 'reset';
+type AuthMode = 'login' | 'forgot' | 'reset' | 'mfa';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -35,8 +38,16 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [sessionRevokedNotice, setSessionRevokedNotice] = useState(false);
+  const [revokedReason, setRevokedReason] = useState<string | null>(null);
+
+  // Multi-Factor Authentication Second-Stage State
+  const [mfaSession, setMfaSession] = useState('');
+  const [mfaAllowedFactors, setMfaAllowedFactors] = useState<('totp' | 'passkey')[]>(['totp']);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaVerifying, setMfaVerifying] = useState(false);
 
   // Forgot password state
   const [forgotEmail, setForgotEmail] = useState('');
@@ -52,7 +63,9 @@ export default function LoginPage() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('reason') === 'session_revoked') {
+      const reason = params.get('reason');
+      if (reason) {
+        setRevokedReason(reason);
         setSessionRevokedNotice(true);
       }
       const token = params.get('reset_token');
@@ -63,7 +76,46 @@ export default function LoginPage() {
     }
   }, []);
 
-  // 1. Handle Standard Developer Sign In
+  // Centralized session completion helper - strictly prevents storing undefined tokens
+  const completeSessionLogin = async (data: any, fallbackEmail: string) => {
+    if (typeof window !== 'undefined') {
+      if (!data.accessToken) {
+        throw new Error('Authentication gateway did not provide a valid access token');
+      }
+      localStorage.setItem('auth_token', data.accessToken);
+      if (data.refreshToken) {
+        localStorage.setItem('auth_refresh_token', data.refreshToken);
+      }
+      localStorage.setItem('auth_email', data.user?.email || fallbackEmail);
+      if (data.user) {
+        localStorage.setItem('auth_developer', JSON.stringify(data.user));
+      }
+
+      // Pre-fetch authoritative developer projects before transitioning
+      try {
+        const pRes = await fetch(`${API_BASE_URL}/api/v1/projects`, {
+          headers: { Authorization: `Bearer ${data.accessToken}` },
+        });
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          if (Array.isArray(pData.projects) && pData.projects.length > 0) {
+            localStorage.setItem('syntrabase_cached_projects', JSON.stringify(pData.projects));
+            localStorage.setItem('syntrabase_active_project_id', pData.projects[0].id);
+            if (pData.maxProjects) {
+              localStorage.setItem('syntrabase_max_projects', String(pData.maxProjects));
+            }
+          }
+        }
+      } catch {
+        // Non-fatal pre-fetch error
+      }
+    }
+
+    addToast(`Authenticated successfully as ${data.user?.email || fallbackEmail}`, 'success');
+    router.push('/');
+  };
+
+  // 1. Handle Standard Developer Sign In (Password stage)
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -92,44 +144,150 @@ export default function LoginPage() {
         return;
       }
 
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('auth_token', data.accessToken);
-        if (data.refreshToken) {
-          localStorage.setItem('auth_refresh_token', data.refreshToken);
-        }
-        localStorage.setItem('auth_email', data.user?.email || email);
-        if (data.user) {
-          localStorage.setItem('auth_developer', JSON.stringify(data.user));
-        }
-
-        // Pre-fetch authoritative developer projects before transitioning to prevent 1/1 glitch
-        try {
-          const pRes = await fetch(`${API_BASE_URL}/api/v1/projects`, {
-            headers: { Authorization: `Bearer ${data.accessToken}` },
-          });
-          if (pRes.ok) {
-            const pData = await pRes.json();
-            if (Array.isArray(pData.projects) && pData.projects.length > 0) {
-              localStorage.setItem('syntrabase_cached_projects', JSON.stringify(pData.projects));
-              localStorage.setItem('syntrabase_active_project_id', pData.projects[0].id);
-              if (pData.maxProjects) {
-                localStorage.setItem('syntrabase_max_projects', String(pData.maxProjects));
-              }
-            }
-          }
-        } catch {
-          // Non-fatal pre-fetch error
-        }
+      // If developer account has MFA enabled, transition to stage 2
+      if (data.mfaRequired) {
+        setMfaSession(data.mfaSession);
+        setMfaAllowedFactors(data.allowedFactors || ['totp']);
+        setMfaCode('');
+        setErrorMsg(null);
+        setMode('mfa');
+        addToast('Multi-factor authentication required. Please enter your code.', 'info');
+        return;
       }
 
-      addToast(`Authenticated successfully as ${email}`, 'success');
-      router.push('/');
+      await completeSessionLogin(data, email);
     } catch (err: any) {
       const msg = err.message || 'Unable to reach authentication gateway';
       setErrorMsg(msg);
       addToast(msg, 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 1b. Handle Developer Sign In with Passkey (WebAuthn)
+  const handlePasskeyLogin = async () => {
+    setErrorMsg(null);
+    setPasskeyLoading(true);
+    try {
+      const { startAuthentication } = await import('@simplewebauthn/browser');
+
+      // 1. Fetch challenge/options from API
+      const optRes = await fetch(`${API_BASE_URL}/api/v1/auth/developer/passkeys/authenticate/options`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase() || undefined }),
+      });
+      const options = await optRes.json();
+      if (!optRes.ok) {
+        throw new Error(options.message || options.error || 'Failed to initialize passkey authentication');
+      }
+
+      // 2. Prompt user via browser WebAuthn prompt
+      const authResponse = await startAuthentication({ optionsJSON: options });
+
+      // 3. Verify response with server
+      const verifyRes = await fetch(`${API_BASE_URL}/api/v1/auth/developer/passkeys/authenticate/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ response: authResponse }),
+      });
+      const data = await verifyRes.json();
+      if (!verifyRes.ok) {
+        throw new Error(data.message || data.error || 'Passkey verification failed');
+      }
+
+      await completeSessionLogin(data, data.user?.email || email || 'developer');
+    } catch (err: any) {
+      if (err.name === 'NotAllowedError') {
+        return; // User dismissed browser prompt
+      }
+      const msg = err.message || 'Passkey authentication failed';
+      setErrorMsg(msg);
+      addToast(msg, 'error');
+    } finally {
+      setPasskeyLoading(false);
+    }
+  };
+
+  // 1c. Handle MFA TOTP Verification (Stage 2)
+  const handleVerifyMfaTotp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    if (!mfaCode.trim()) {
+      addToast('Please enter your confirmation code', 'error');
+      return;
+    }
+
+    setMfaVerifying(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/auth/developer/mfa/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mfaSession,
+          factor: 'totp',
+          code: mfaCode.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Verification code is invalid');
+      }
+
+      await completeSessionLogin(data, email);
+    } catch (err: any) {
+      const msg = err.message || 'Verification code invalid. Please try again or use a backup code.';
+      setErrorMsg(msg);
+      addToast(msg, 'error');
+    } finally {
+      setMfaVerifying(false);
+    }
+  };
+
+  // 1d. Handle MFA Passkey Verification (Stage 2 alternative)
+  const handleVerifyMfaPasskey = async () => {
+    setErrorMsg(null);
+    setPasskeyLoading(true);
+    try {
+      const { startAuthentication } = await import('@simplewebauthn/browser');
+
+      const optRes = await fetch(`${API_BASE_URL}/api/v1/auth/developer/passkeys/authenticate/options`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase() || undefined }),
+      });
+      const options = await optRes.json();
+      if (!optRes.ok) {
+        throw new Error(options.message || options.error || 'Failed to initialize passkey challenge');
+      }
+
+      const authResponse = await startAuthentication({ optionsJSON: options });
+
+      const verifyRes = await fetch(`${API_BASE_URL}/api/v1/auth/developer/mfa/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mfaSession,
+          factor: 'passkey',
+          passkeyResponse: authResponse,
+        }),
+      });
+
+      const data = await verifyRes.json();
+      if (!verifyRes.ok) {
+        throw new Error(data.message || data.error || 'Passkey verification failed');
+      }
+
+      await completeSessionLogin(data, email);
+    } catch (err: any) {
+      if (err.name === 'NotAllowedError') return;
+      const msg = err.message || 'Passkey verification failed';
+      setErrorMsg(msg);
+      addToast(msg, 'error');
+    } finally {
+      setPasskeyLoading(false);
     }
   };
 
@@ -242,11 +400,11 @@ export default function LoginPage() {
         justifyContent: 'center',
         backgroundColor: '#0f1115',
         backgroundImage: 'radial-gradient(circle at 50% 20%, rgba(37, 99, 235, 0.12), transparent 45%)',
-        padding: '24px',
+        padding: '16px',
         fontFamily: 'var(--font-sans)',
       }}
     >
-      <div style={{ width: '100%', maxWidth: '440px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div style={{ width: '100%', maxWidth: '420px', display: 'flex', flexDirection: 'column', gap: '14px', margin: 'auto' }}>
         {/* Brand Header */}
         <div style={{ textAlign: 'center' }}>
           <div
@@ -254,52 +412,57 @@ export default function LoginPage() {
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '52px',
-              height: '52px',
-              borderRadius: '14px',
+              width: '46px',
+              height: '46px',
+              borderRadius: '12px',
               backgroundColor: 'rgba(37, 99, 235, 0.15)',
               border: '1px solid rgba(37, 99, 235, 0.3)',
-              marginBottom: '16px',
+              marginBottom: '10px',
             }}
           >
-            <Flame size={28} color="#3b82f6" />
+            <Flame size={24} color="#3b82f6" />
           </div>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 700, color: '#f3f4f6', margin: '0 0 6px', letterSpacing: '-0.02em' }}>
-            Developer Console
+          <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#f3f4f6', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
+            {mode === 'mfa' ? 'Two-Factor Authentication' : 'Developer Console'}
           </h1>
-          <p style={{ fontSize: '0.88rem', color: '#9ca3af', margin: 0 }}>
+          <p style={{ fontSize: '0.82rem', color: '#9ca3af', margin: 0 }}>
             {mode === 'login' && 'Self-hosted Firestore alternative gateway authentication'}
             {mode === 'forgot' && 'Self-service account password recovery'}
             {mode === 'reset' && 'Set new password for your developer account'}
+            {mode === 'mfa' && 'Enter your second factor confirmation code to complete sign-in'}
           </p>
         </div>
 
         {/* Authentication Card */}
         <Card style={{ backgroundColor: '#16191f', borderColor: '#262a33', boxShadow: '0 12px 32px rgba(0,0,0,0.5)' }}>
-          <CardContent style={{ padding: '28px 24px' }}>
-            {/* Session Invalidation Warning */}
+          <CardContent style={{ padding: '20px 20px' }}>
+            {/* Session Invalidation / Expired Warning */}
             {sessionRevokedNotice && mode === 'login' && (
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'flex-start',
                   gap: '10px',
-                  padding: '12px 14px',
+                  padding: '10px 12px',
                   borderRadius: '8px',
                   backgroundColor: 'rgba(239, 68, 68, 0.12)',
                   border: '1px solid rgba(239, 68, 68, 0.35)',
                   color: '#fca5a5',
-                  fontSize: '0.82rem',
-                  lineHeight: 1.45,
-                  marginBottom: '18px',
+                  fontSize: '0.8rem',
+                  lineHeight: 1.4,
+                  marginBottom: '14px',
                 }}
               >
-                <AlertCircle size={18} style={{ color: '#ef4444', flexShrink: 0, marginTop: '2px' }} />
+                <AlertCircle size={16} style={{ color: '#ef4444', flexShrink: 0, marginTop: '2px' }} />
                 <div>
                   <strong style={{ display: 'block', color: '#ffffff', marginBottom: '2px' }}>
-                    Session Terminated
+                    {revokedReason === 'password_reset' || revokedReason === 'password_changed'
+                      ? 'Password Changed'
+                      : 'Session Expired'}
                   </strong>
-                  Your developer session was invalidated because your password was reset. Please sign in with your updated credentials.
+                  {revokedReason === 'password_reset' || revokedReason === 'password_changed'
+                    ? 'Your developer session was invalidated because your password was reset. Please sign in with your updated credentials.'
+                    : 'Your authentication session has expired or was cleared. Please sign in to continue.'}
                 </div>
               </div>
             )}
@@ -311,17 +474,17 @@ export default function LoginPage() {
                   display: 'flex',
                   alignItems: 'flex-start',
                   gap: '10px',
-                  padding: '12px 14px',
+                  padding: '10px 12px',
                   borderRadius: '8px',
                   backgroundColor: 'rgba(16, 185, 129, 0.12)',
                   border: '1px solid rgba(16, 185, 129, 0.35)',
                   color: '#6ee7b7',
-                  fontSize: '0.82rem',
-                  lineHeight: 1.45,
-                  marginBottom: '18px',
+                  fontSize: '0.8rem',
+                  lineHeight: 1.4,
+                  marginBottom: '14px',
                 }}
               >
-                <CheckCircle2 size={18} style={{ color: '#10b981', flexShrink: 0, marginTop: '2px' }} />
+                <CheckCircle2 size={16} style={{ color: '#10b981', flexShrink: 0, marginTop: '2px' }} />
                 <div>{resetSuccessNotice}</div>
               </div>
             )}
@@ -339,7 +502,7 @@ export default function LoginPage() {
                   border: '1px solid rgba(239, 68, 68, 0.3)',
                   color: '#f87171',
                   fontSize: '0.82rem',
-                  marginBottom: '16px',
+                  marginBottom: '14px',
                 }}
               >
                 <AlertCircle size={16} />
@@ -352,7 +515,7 @@ export default function LoginPage() {
             {/* ------------------------------------------------------------- */}
             {mode === 'login' && (
               <>
-                <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#d1d5db', marginBottom: '6px' }}>
                       Developer Email
@@ -412,21 +575,173 @@ export default function LoginPage() {
                   <Button
                     type="submit"
                     variant="primary"
-                    disabled={loading}
-                    style={{ width: '100%', padding: '10px', fontSize: '0.9rem', marginTop: '4px' }}
+                    disabled={loading || passkeyLoading}
+                    style={{ width: '100%', padding: '9px', fontSize: '0.88rem', marginTop: '2px' }}
                   >
                     {loading ? 'Authenticating Gateway...' : 'Sign In to Console'}
                     <ArrowRight size={16} />
                   </Button>
                 </form>
 
-                <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '0.82rem', color: '#9ca3af' }}>
+                <div style={{ display: 'flex', alignItems: 'center', margin: '14px 0', gap: '10px' }}>
+                  <div style={{ flex: 1, height: '1px', backgroundColor: '#232730' }} />
+                  <span style={{ fontSize: '0.72rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>OR</span>
+                  <div style={{ flex: 1, height: '1px', backgroundColor: '#232730' }} />
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handlePasskeyLogin}
+                  disabled={loading || passkeyLoading}
+                  style={{
+                    width: '100%',
+                    padding: '9px',
+                    fontSize: '0.88rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    backgroundColor: 'rgba(59, 130, 246, 0.06)',
+                    borderColor: 'rgba(59, 130, 246, 0.25)',
+                    color: '#93c5fd',
+                  }}
+                >
+                  <Fingerprint size={17} color="#60a5fa" />
+                  {passkeyLoading ? 'Authenticating with Passkey...' : 'Sign In with Passkey'}
+                </Button>
+
+                <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '0.82rem', color: '#9ca3af' }}>
                   New developer?{' '}
                   <Link href="/register" style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}>
                     Create an account
                   </Link>
                 </div>
               </>
+            )}
+
+            {/* ------------------------------------------------------------- */}
+            {/* VIEW 4: TWO-FACTOR AUTHENTICATION (TOTP / PASSKEY) */}
+            {/* ------------------------------------------------------------- */}
+            {mode === 'mfa' && (
+              <div>
+                <form onSubmit={handleVerifyMfaTotp} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '12px 14px',
+                      borderRadius: '8px',
+                      backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                      border: '1px solid rgba(59, 130, 246, 0.25)',
+                      color: '#93c5fd',
+                      fontSize: '0.82rem',
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    <Smartphone size={20} color="#3b82f6" style={{ flexShrink: 0 }} />
+                    <div>
+                      Account protected by <strong>Multi-Factor Authentication</strong>. Enter your 6-digit authenticator code or 8-character backup code.
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#d1d5db', marginBottom: '6px' }}>
+                      Security Confirmation Code
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <Input
+                        type="text"
+                        autoFocus
+                        value={mfaCode}
+                        onChange={(e) => setMfaCode(e.target.value.replace(/\s/g, ''))}
+                        placeholder="000 000"
+                        maxLength={16}
+                        required
+                        style={{
+                          backgroundColor: '#101216',
+                          borderColor: '#2d323c',
+                          color: '#f3f4f6',
+                          paddingLeft: '38px',
+                          fontFamily: 'monospace',
+                          fontSize: '1.15rem',
+                          letterSpacing: '0.25em',
+                          textAlign: 'center',
+                        }}
+                      />
+                      <ShieldCheck size={18} color="#3b82f6" style={{ position: 'absolute', left: '12px', top: '10px', pointerEvents: 'none' }} />
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    disabled={mfaVerifying || !mfaCode.trim()}
+                    style={{ width: '100%', padding: '10px', fontSize: '0.9rem', marginTop: '4px' }}
+                  >
+                    {mfaVerifying ? 'Verifying Code...' : 'Verify & Sign In'}
+                    <ArrowRight size={16} />
+                  </Button>
+
+                  {mfaAllowedFactors.includes('passkey') && (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', margin: '4px 0', gap: '10px' }}>
+                        <div style={{ flex: 1, height: '1px', backgroundColor: '#232730' }} />
+                        <span style={{ fontSize: '0.72rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>OR</span>
+                        <div style={{ flex: 1, height: '1px', backgroundColor: '#232730' }} />
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleVerifyMfaPasskey}
+                        disabled={passkeyLoading || mfaVerifying}
+                        style={{
+                          width: '100%',
+                          padding: '9px',
+                          fontSize: '0.88rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px',
+                          backgroundColor: 'rgba(59, 130, 246, 0.06)',
+                          borderColor: 'rgba(59, 130, 246, 0.25)',
+                          color: '#93c5fd',
+                        }}
+                      >
+                        <Fingerprint size={17} color="#60a5fa" />
+                        {passkeyLoading ? 'Authenticating with Passkey...' : 'Verify with Security Key / Passkey'}
+                      </Button>
+                    </>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrorMsg(null);
+                      setMfaCode('');
+                      setMfaSession('');
+                      setMode('login');
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#9ca3af',
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      padding: '4px',
+                      marginTop: '6px',
+                    }}
+                  >
+                    <ArrowLeft size={14} /> Back to Sign In
+                  </button>
+                </form>
+              </div>
             )}
 
             {/* ------------------------------------------------------------- */}

@@ -57,7 +57,7 @@
 ## 3. Secret & Credential Scanning (`secret-scan.mjs`)
 
 **Execution Command:** `node scratch/secret-scan.mjs`  
-**Files Scanned:** All 239 tracked files across the repository.  
+**Files Scanned:** All 243 files across the repository.  
 **Patterns Evaluated:** AWS keys, private keys, JWT secrets, database connection passwords, Slack webhooks, GitHub PATs, Brevo/Resend API tokens.  
 **Findings:** **ZERO EXPOSED SECRETS.**  
 - Detected string matches in `README.md` and `docs/SDK_REFERENCE.md` were confirmed to be synthetic documentation sample placeholders (`pk_live_default_key_sample...`, `pk_live_your_publishable_key...`).
@@ -87,9 +87,12 @@
 
 **Execution Command:** `npm test`  
 **Exit Status:** **Code 0 (100% Pass)**  
-**Total Test Cases:** 100 passed, 0 failed, 0 skipped.  
+**Total Test Cases:** 119 passed, 0 failed, 0 skipped.  
 
-- **Security Verification Suite (`apps/api/src/test/security-assessment-verification.test.ts`):** 26/26 passed.
-- **Client SDK Security Gate (`packages/client-sdk/src/test/client-bundle.test.ts`):** 3/3 passed (ensures client bundle never leaks server secrets or admin functions).
+- **Core API Integration & Security Suite (`apps/api`):** 110/110 passed (100%).
+  - Includes 26 dedicated security regression tests in `apps/api/src/test/security-assessment-verification.test.ts`.
+  - Includes 10 dedicated MFA, WebAuthn challenge, single-use nonce, and user action tests in `apps/api/src/test/user-actions-and-mfa-security.test.ts`.
+- **Client SDK Security Gate (`packages/client-sdk/src/test/client-bundle.test.ts`):** 4/4 passed (ensures client bundle never leaks server secrets or admin functions).
+- **Admin SDK Security Gate (`packages/admin-sdk/src/test/admin-sdk.test.ts`):** 5/5 passed (validates key formats, token claims, and enforces browser window runtime guardrails).
 - **Rules Engine Evaluator Suite (`packages/rules-engine/src/test/evaluator.test.ts`):** 100% passed.
 - **Email & Outbox Resiliency Suite (`apps/api/src/test/brevo-email-and-contact.test.ts`):** 14/14 passed.

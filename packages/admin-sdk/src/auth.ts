@@ -1,5 +1,5 @@
 import { AdminApp } from './app.js';
-import { AppUser, ProjectAuthConfig } from '@syntrabase/shared-types';
+import { AppUser, ProjectAuthConfig, UserActionsConfig, MfaPolicy, PasskeyRecord } from '@syntrabase/shared-types';
 
 export class AdminAuth {
   constructor(public readonly app: AdminApp) {}
@@ -136,6 +136,84 @@ export class AdminAuth {
     if (!res.ok) throw new Error(`Admin updateProjectAuthConfig failed: ${res.statusText}`);
     const data = (await res.json()) as { config: ProjectAuthConfig };
     return data.config;
+  }
+
+  /**
+   * Configures backend-enforced User Actions (public sign-up, self-deletion, email enumeration protection).
+   */
+  public async setUserActions(config: Partial<UserActionsConfig>): Promise<ProjectAuthConfig> {
+    return this.updateProjectAuthConfig({ userActions: config as UserActionsConfig });
+  }
+
+  /**
+   * Retrieves the current User Actions security configuration for the project.
+   */
+  public async getUserActions(): Promise<UserActionsConfig> {
+    const config = await this.getProjectAuthConfig();
+    return config.userActions;
+  }
+
+  /**
+   * Configures Multi-Factor Authentication project enforcement policy and allowed factors.
+   */
+  public async setMfaPolicy(policy: Partial<MfaPolicy>): Promise<ProjectAuthConfig> {
+    return this.updateProjectAuthConfig({ mfaPolicy: policy as MfaPolicy });
+  }
+
+  /**
+   * Retrieves the current Multi-Factor Authentication policy for the project.
+   */
+  public async getMfaPolicy(): Promise<MfaPolicy> {
+    const config = await this.getProjectAuthConfig();
+    return config.mfaPolicy;
+  }
+
+  /**
+   * Retrieves enrolled MFA factors (TOTP) and registered passkeys for a specific user.
+   */
+  public async getUserMfa(uid: string): Promise<{
+    factors: Array<{
+      id: string;
+      factorType: string;
+      verified: boolean;
+      enrolledAt: string;
+      lastUsedAt: string | null;
+    }>;
+    passkeys: PasskeyRecord[];
+  }> {
+    const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/auth/users/${uid}/mfa`;
+    const res = await fetch(url, { method: 'GET', headers: this.getHeaders() });
+    if (!res.ok) throw new Error(`Admin getUserMfa failed: ${res.statusText}`);
+    return (await res.json()) as any;
+  }
+
+  /**
+   * Unenrolls / revokes an MFA factor for a specific user (e.g. lost phone recovery).
+   */
+  public async unenrollUserMfa(uid: string, factorId = 'totp'): Promise<void> {
+    const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/auth/users/${uid}/mfa/${factorId}`;
+    const res = await fetch(url, { method: 'DELETE', headers: this.getHeaders() });
+    if (!res.ok) throw new Error(`Admin unenrollUserMfa failed: ${res.statusText}`);
+  }
+
+  /**
+   * Lists all registered FIDO2 WebAuthn Passkeys for a specific user.
+   */
+  public async listUserPasskeys(uid: string): Promise<PasskeyRecord[]> {
+    const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/auth/users/${uid}/passkeys`;
+    const res = await fetch(url, { method: 'GET', headers: this.getHeaders() });
+    if (!res.ok) throw new Error(`Admin listUserPasskeys failed: ${res.statusText}`);
+    const data = (await res.json()) as { passkeys: PasskeyRecord[] };
+    return data.passkeys;
+  }
+
+  /**
+   * Revokes / deletes a specific FIDO2 WebAuthn Passkey for a user.
+   */
+  public async deleteUserPasskey(uid: string, passkeyId: string): Promise<void> {
+    const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/auth/users/${uid}/passkeys/${passkeyId}`;
+    const res = await fetch(url, { method: 'DELETE', headers: this.getHeaders() });
+    if (!res.ok) throw new Error(`Admin deleteUserPasskey failed: ${res.statusText}`);
   }
 
   public async verifyIdToken(

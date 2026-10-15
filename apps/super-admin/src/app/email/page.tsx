@@ -24,7 +24,10 @@ import {
   ExternalLink,
   ShieldCheck,
   Zap,
-  Star
+  Star,
+  ChevronDown,
+  ChevronUp,
+  Search
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -115,6 +118,22 @@ export default function GlobalEmailControlPage() {
   const [selectedDomainForCloudflare, setSelectedDomainForCloudflare] = useState<any>(null);
   const [selectedDomainIds, setSelectedDomainIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [domainSearchFilter, setDomainSearchFilter] = useState('');
+  const [expandedDomainIds, setExpandedDomainIds] = useState<string[]>([]);
+
+  const toggleDomainExpanded = (id: string) => {
+    setExpandedDomainIds((prev) =>
+      prev.includes(id) ? prev.filter((dId) => dId !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleAllDomains = () => {
+    if (expandedDomainIds.length === domains.length) {
+      setExpandedDomainIds([]);
+    } else {
+      setExpandedDomainIds(domains.map((d) => d.id));
+    }
+  };
 
   // Authorized Sender Identities State
   const [senders, setSenders] = useState<any[]>([]);
@@ -1416,144 +1435,319 @@ export default function GlobalEmailControlPage() {
                   <Plus size={15} style={{ marginRight: '6px' }} /> Register Custom Domain
                 </Button>
               </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={domains.length > 0 && selectedDomainIds.length === domains.length}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedDomainIds(domains.map((d) => d.id));
-                        } else {
-                          setSelectedDomainIds([]);
-                        }
-                      }}
-                      style={{ cursor: 'pointer' }}
-                    />
-                    <span>Select All ({domains.length} domains)</span>
-                  </label>
-                  {selectedDomainIds.length > 0 && (
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                      {selectedDomainIds.length} of {domains.length} selected
-                    </span>
-                  )}
-                </div>
+            ) : (() => {
+              const filteredDomains = domainSearchFilter.trim()
+                ? domains.filter((d) =>
+                    (d.domainName || '').toLowerCase().includes(domainSearchFilter.toLowerCase().trim()) ||
+                    (d.projectName || '').toLowerCase().includes(domainSearchFilter.toLowerCase().trim())
+                  )
+                : domains;
 
-                {domains.map((dom) => {
-                  const isChecked = selectedDomainIds.includes(dom.id);
-                  return (
-                    <Card key={dom.id} style={{ border: isChecked ? '1px solid var(--primary)' : '1px solid var(--border-color)', background: 'var(--bg-card)' }}>
-                      <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid var(--border-color)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedDomainIds((prev) => [...prev, dom.id]);
-                              } else {
-                                setSelectedDomainIds((prev) => prev.filter((id) => id !== dom.id));
-                              }
-                            }}
-                            style={{ cursor: 'pointer' }}
-                          />
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <Globe size={18} color="var(--accent-blue)" />
-                              <span style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                {dom.domainName}
-                              </span>
-                              <Badge
-                                variant={dom.verificationStatus === 'verified' ? 'success' : dom.verificationStatus === 'failed' ? 'danger' : 'warning'}
-                                size="sm"
-                              >
-                                {dom.verificationStatus.toUpperCase()}
-                              </Badge>
-                            </div>
-                            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                              Scope: {dom.projectName ? `Tenant (${dom.projectName})` : 'Platform Global'} · Registered: {new Date(dom.createdAt).toLocaleDateString()}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedDomainForCloudflare(dom);
-                              setShowCloudflareModal(true);
-                            }}
-                            style={{ gap: '6px' }}
-                          >
-                            <Zap size={13} color="#f59e0b" />
-                            Cloudflare Auto-DNS
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleVerifyDomain(dom.id)}
-                            disabled={verifyingDomainId === dom.id}
-                          >
-                            <RefreshCw size={13} className={verifyingDomainId === dom.id ? 'animate-spin' : ''} style={{ marginRight: '4px' }} />
-                            {verifyingDomainId === dom.id ? 'Verifying DNS...' : 'Verify DNS'}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteDomain(dom.id)}
-                            style={{ color: 'var(--accent-rose)' }}
-                            title="Delete custom domain"
-                          >
-                            <Trash2 size={13} />
-                          </Button>
-                        </div>
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {/* Filter & Actions Bar */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '12px',
+                      padding: '12px 14px',
+                      borderRadius: 'var(--radius-md)',
+                      backgroundColor: 'var(--bg-surface-subtle)',
+                      border: '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '240px', maxWidth: '450px' }}>
+                      <div style={{ position: 'relative', width: '100%' }}>
+                        <Search
+                          size={14}
+                          style={{
+                            position: 'absolute',
+                            left: '10px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            color: 'var(--text-muted)',
+                            pointerEvents: 'none',
+                          }}
+                        />
+                        <input
+                          type="text"
+                          placeholder={`Filter ${domains.length} domains by name or tenant...`}
+                          value={domainSearchFilter}
+                          onChange={(e) => setDomainSearchFilter(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '7px 10px 7px 32px',
+                            fontSize: '0.8rem',
+                            background: 'var(--bg-surface)',
+                            border: '1px solid var(--border-default)',
+                            borderRadius: 'var(--radius-sm)',
+                            color: 'var(--text-primary)',
+                            outline: 'none',
+                          }}
+                        />
                       </div>
+                      {domainSearchFilter && (
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => setDomainSearchFilter('')}
+                          style={{ fontSize: '0.74rem', whiteSpace: 'nowrap' }}
+                        >
+                          Clear
+                        </Button>
+                      )}
+                    </div>
 
-                    <div style={{ padding: '16px 20px' }}>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                        DNS Records Required for Domain Verification:
-                      </div>
-                      <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
-                          <thead>
-                            <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)' }}>
-                              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Type</th>
-                              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Host / Name</th>
-                              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Required Target Value</th>
-                              <th style={{ padding: '6px 8px', textAlign: 'right' }}>Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr>
-                              <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>TXT (DKIM)</td>
-                              <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>mail._domainkey.{dom.domainName}</td>
-                              <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', color: 'var(--accent-blue)', wordBreak: 'break-all' }}>v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQ...</td>
-                              <td style={{ padding: '8px', textAlign: 'right' }}><Badge variant="outline" size="sm">DKIM Key</Badge></td>
-                            </tr>
-                            <tr>
-                              <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>TXT (SPF)</td>
-                              <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>@ / {dom.domainName}</td>
-                              <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', color: 'var(--accent-emerald)' }}>v=spf1 include:spf.brevo.com ~all</td>
-                              <td style={{ padding: '8px', textAlign: 'right' }}><Badge variant="outline" size="sm">SPF Record</Badge></td>
-                            </tr>
-                            <tr>
-                              <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>CNAME</td>
-                              <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>tracking.{dom.domainName}</td>
-                              <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>tracking.brevo.com</td>
-                              <td style={{ padding: '8px', textAlign: 'right' }}><Badge variant="outline" size="sm">Click Tracking</Badge></td>
-                            </tr>
-                          </tbody>
-                        </table>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={filteredDomains.length > 0 && selectedDomainIds.length === filteredDomains.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedDomainIds(filteredDomains.map((d) => d.id));
+                            } else {
+                              setSelectedDomainIds([]);
+                            }
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <span>Select All ({filteredDomains.length})</span>
+                      </label>
+
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={handleToggleAllDomains}
+                        style={{ fontSize: '0.78rem', gap: '5px' }}
+                      >
+                        {expandedDomainIds.length === domains.length ? (
+                          <>
+                            <ChevronUp size={13} /> Collapse All DNS
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown size={13} /> Expand All DNS
+                          </>
+                        )}
+                      </Button>
+
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        {selectedDomainIds.length > 0 ? `${selectedDomainIds.length} selected · ` : ''}
+                        {filteredDomains.length} of {domains.length} domains
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Constrained Scrollable List for 24+ Domains */}
+                  {filteredDomains.length === 0 ? (
+                    <div style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                      No custom domains matching &ldquo;{domainSearchFilter}&rdquo;
+                      <div style={{ marginTop: '8px' }}>
+                        <Button variant="ghost" size="xs" onClick={() => setDomainSearchFilter('')}>
+                          Reset Filter
+                        </Button>
                       </div>
                     </div>
-                  </Card>
-                );
-              })}
-              </div>
-            )}
+                  ) : (
+                    <div
+                      className="custom-scrollbar"
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px',
+                        maxHeight: 'calc(100vh - 280px)',
+                        minHeight: '320px',
+                        overflowY: 'auto',
+                        paddingRight: '6px',
+                      }}
+                    >
+                      {filteredDomains.map((dom) => {
+                        const isChecked = selectedDomainIds.includes(dom.id);
+                        const isExpanded = expandedDomainIds.includes(dom.id);
+
+                        return (
+                          <Card
+                            key={dom.id}
+                            style={{
+                              border: isChecked ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                              background: 'var(--bg-card)',
+                              transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+                              overflow: 'hidden',
+                              padding: 0,
+                              flexShrink: 0,
+                              boxShadow: 'var(--shadow-sm)',
+                            }}
+                          >
+                            <div
+                              style={{
+                                padding: '16px 20px',
+                                minHeight: '68px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                flexWrap: 'wrap',
+                                gap: '14px',
+                                borderBottom: isExpanded ? '1px solid var(--border-color)' : 'none',
+                                background: isChecked ? 'rgba(99, 102, 241, 0.05)' : 'transparent',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedDomainIds((prev) => [...prev, dom.id]);
+                                    } else {
+                                      setSelectedDomainIds((prev) => prev.filter((id) => id !== dom.id));
+                                    }
+                                  }}
+                                  style={{ cursor: 'pointer', flexShrink: 0 }}
+                                />
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', minWidth: 0 }}>
+                                    <Globe size={16} color="var(--accent-blue)" style={{ flexShrink: 0 }} />
+                                    <span
+                                      style={{
+                                        fontSize: '0.98rem',
+                                        fontWeight: 700,
+                                        color: 'var(--text-primary)',
+                                        maxWidth: '320px',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                      }}
+                                      title={dom.domainName}
+                                    >
+                                      {dom.domainName}
+                                    </span>
+                                    <Badge
+                                      variant={dom.verificationStatus === 'verified' ? 'success' : dom.verificationStatus === 'failed' ? 'danger' : 'warning'}
+                                      size="sm"
+                                    >
+                                      {dom.verificationStatus.toUpperCase()}
+                                    </Badge>
+                                  </div>
+                                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    Scope: {dom.projectName ? `Tenant (${dom.projectName})` : 'Platform Global'} · Registered: {new Date(dom.createdAt).toLocaleDateString()}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedDomainForCloudflare(dom);
+                                    setShowCloudflareModal(true);
+                                  }}
+                                  style={{ gap: '5px', fontSize: '0.78rem' }}
+                                >
+                                  <Zap size={13} color="#f59e0b" />
+                                  Cloudflare
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleVerifyDomain(dom.id)}
+                                  disabled={verifyingDomainId === dom.id}
+                                  style={{ fontSize: '0.78rem' }}
+                                >
+                                  <RefreshCw size={12} className={verifyingDomainId === dom.id ? 'animate-spin' : ''} style={{ marginRight: '4px' }} />
+                                  {verifyingDomainId === dom.id ? 'Verifying...' : 'Verify DNS'}
+                                </Button>
+                                <Button
+                                  variant={isExpanded ? 'primary' : 'ghost'}
+                                  size="sm"
+                                  onClick={() => toggleDomainExpanded(dom.id)}
+                                  style={{ gap: '4px', fontSize: '0.78rem' }}
+                                >
+                                  {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                                  DNS {isExpanded ? 'Hide' : 'Records'}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteDomain(dom.id)}
+                                  style={{ color: 'var(--accent-rose)' }}
+                                  title="Delete custom domain"
+                                >
+                                  <Trash2 size={13} />
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Collapsible DNS Parameters Section */}
+                            {isExpanded && (
+                              <div style={{ padding: '14px 18px', backgroundColor: 'var(--bg-surface-subtle)' }}>
+                                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                                  DNS Authentication Records for {dom.domainName}:
+                                </div>
+                                <div style={{ overflowX: 'auto' }}>
+                                  <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                                    <colgroup>
+                                      <col style={{ width: '110px' }} />
+                                      <col style={{ width: '220px' }} />
+                                      <col />
+                                      <col style={{ width: '100px' }} />
+                                    </colgroup>
+                                    <thead>
+                                      <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)' }}>
+                                        <th style={{ padding: '6px 8px', textAlign: 'left' }}>Type</th>
+                                        <th style={{ padding: '6px 8px', textAlign: 'left' }}>Host / Name</th>
+                                        <th style={{ padding: '6px 8px', textAlign: 'left' }}>Required Target Value</th>
+                                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Status</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>TXT (DKIM)</td>
+                                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`mail._domainkey.${dom.domainName}`}>
+                                          mail._domainkey.{dom.domainName}
+                                        </td>
+                                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', color: 'var(--accent-blue)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title="v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQ...">
+                                          v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQ...
+                                        </td>
+                                        <td style={{ padding: '8px', textAlign: 'right' }}><Badge variant="outline" size="sm">DKIM Key</Badge></td>
+                                      </tr>
+                                      <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>TXT (SPF)</td>
+                                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`@ / ${dom.domainName}`}>
+                                          @ / {dom.domainName}
+                                        </td>
+                                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', color: 'var(--accent-emerald)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title="v=spf1 include:spf.brevo.com ~all">
+                                          v=spf1 include:spf.brevo.com ~all
+                                        </td>
+                                        <td style={{ padding: '8px', textAlign: 'right' }}><Badge variant="outline" size="sm">SPF Record</Badge></td>
+                                      </tr>
+                                      <tr>
+                                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>CNAME</td>
+                                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`tracking.${dom.domainName}`}>
+                                          tracking.{dom.domainName}
+                                        </td>
+                                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title="tracking.brevo.com">
+                                          tracking.brevo.com
+                                        </td>
+                                        <td style={{ padding: '8px', textAlign: 'right' }}><Badge variant="outline" size="sm">Click Tracking</Badge></td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </Card>
       )}

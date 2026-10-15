@@ -87,6 +87,16 @@ test('Client SDK API Surface - Exposes standard Firebase v9/v10 functions', () =
   assert.equal(typeof ClientSDK.addDoc, 'function');
   assert.equal(typeof ClientSDK.deleteObject, 'function');
   assert.equal(typeof ClientSDK.listAll, 'function');
+  // Two-Factor Authentication & WebAuthn Passkeys
+  assert.equal(typeof ClientSDK.enrollTotp, 'function');
+  assert.equal(typeof ClientSDK.verifyAndActivateTotp, 'function');
+  assert.equal(typeof ClientSDK.unenrollTotp, 'function');
+  assert.equal(typeof ClientSDK.completeMfaSignIn, 'function');
+  assert.equal(typeof ClientSDK.deleteUser, 'function');
+  assert.equal(typeof ClientSDK.registerPasskey, 'function');
+  assert.equal(typeof ClientSDK.signInWithPasskey, 'function');
+  assert.equal(typeof ClientSDK.listPasskeys, 'function');
+  assert.equal(typeof ClientSDK.deletePasskey, 'function');
 });
 
 test('Client SDK Storage - toBase64 handles Uint8Array and Buffer correctly', async () => {

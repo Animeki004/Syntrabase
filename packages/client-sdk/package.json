@@ -1,6 +1,6 @@
 {
   "name": "@syntrabase/client-sdk",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "description": "Public Syntrabase client SDK with modular v9/v10 syntax",
   "main": "dist/client-sdk/src/index.js",
@@ -37,7 +37,8 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@syntrabase/shared-types": "^1.1.0"
+    "@simplewebauthn/browser": "^14.0.0",
+    "@syntrabase/shared-types": "^1.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",

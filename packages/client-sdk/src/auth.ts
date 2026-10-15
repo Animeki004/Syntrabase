@@ -1,5 +1,5 @@
 import { FirebaseApp } from './app.js';
-import { AppUser, TotpEnrollmentResult, TotpVerifyResult } from '@syntrabase/shared-types';
+import { AppUser, TotpEnrollmentResult, TotpVerifyResult, PasskeyRecord } from '@syntrabase/shared-types';
 
 export class Auth {
   public currentUser: AppUser | null = null;
@@ -70,7 +70,7 @@ export async function signInWithEmailAndPassword(
   auth: Auth,
   email: string,
   passwordPlain: string
-): Promise<{ user: AppUser }> {
+): Promise<{ user?: AppUser; mfaRequired?: boolean; mfaSession?: string; allowedFactors?: ('totp' | 'passkey')[] }> {
   const url = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/login`;
   const res = await fetch(url, {
     method: 'POST',
@@ -83,13 +83,33 @@ export async function signInWithEmailAndPassword(
   });
 
   if (!res.ok) {
-    const errorData = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(errorData.error || `Login error: ${res.statusText}`);
+    const errorData = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    throw new Error(errorData.message || errorData.error || `Login error: ${res.statusText}`);
   }
 
-  const data = (await res.json()) as { user: AppUser; accessToken: string; refreshToken: string };
-  auth.setSession(data.user, data.accessToken, data.refreshToken);
-  return { user: data.user };
+  const data = (await res.json()) as {
+    user?: AppUser;
+    accessToken?: string;
+    refreshToken?: string;
+    mfaRequired?: boolean;
+    mfaSession?: string;
+    allowedFactors?: ('totp' | 'passkey')[];
+  };
+
+  if (data.mfaRequired) {
+    return {
+      mfaRequired: true,
+      mfaSession: data.mfaSession,
+      allowedFactors: data.allowedFactors,
+    };
+  }
+
+  if (data.user && data.accessToken && data.refreshToken) {
+    auth.setSession(data.user, data.accessToken, data.refreshToken);
+    return { user: data.user };
+  }
+
+  return data;
 }
 
 export async function signOut(auth: Auth): Promise<void> {
@@ -301,4 +321,333 @@ export async function verifyTotpMfa(auth: Auth, token: string): Promise<TotpVeri
 
   return (await res.json()) as TotpVerifyResult;
 }
+
+/**
+ * Completes a two-stage Multi-Factor Authentication challenge with a TOTP code or passkey assertion.
+ */
+export async function completeMfaChallenge(
+  auth: Auth,
+  mfaSession: string,
+  factor: 'totp' | 'passkey',
+  code?: string
+): Promise<{ user: AppUser }> {
+  let passkeyResponse = undefined;
+  if (factor === 'passkey') {
+    const { startAuthentication } = await import('@simplewebauthn/browser');
+    const optUrl = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/passkeys/authenticate/options`;
+    const optRes = await fetch(optUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': auth.app.options.apiKey,
+      },
+      body: JSON.stringify({}),
+    });
+    const options = await optRes.json();
+    passkeyResponse = await startAuthentication({ optionsJSON: options as any });
+  }
+
+  const url = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/mfa/challenge/verify`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': auth.app.options.apiKey,
+      'x-environment-id': auth.app.options.environmentId || 'default',
+    },
+    body: JSON.stringify({
+      mfaSession,
+      factor,
+      code,
+      passkeyResponse,
+    }),
+  });
+
+  if (!res.ok) {
+    const errorData = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    throw new Error(errorData.message || errorData.error || `MFA challenge error: ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as { user: AppUser; accessToken: string; refreshToken: string };
+  auth.setSession(data.user, data.accessToken, data.refreshToken);
+  return { user: data.user };
+}
+
+/**
+ * Registers a new WebAuthn Passkey for the signed-in user.
+ */
+export async function createPasskey(auth: Auth, deviceName = 'Passkey Device'): Promise<PasskeyRecord> {
+  if (!auth.accessToken) {
+    throw new Error('User must be signed in to register a passkey');
+  }
+  const { startRegistration } = await import('@simplewebauthn/browser');
+
+  const optUrl = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/passkeys/register/options`;
+  const optRes = await fetch(optUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${auth.accessToken}`,
+      'x-api-key': auth.app.options.apiKey,
+    },
+  });
+  if (!optRes.ok) {
+    const errorData = (await optRes.json().catch(() => ({}))) as { error?: string };
+    throw new Error(errorData.error || `Passkey registration options error: ${optRes.statusText}`);
+  }
+  const options = await optRes.json();
+
+  const regResponse = await startRegistration({ optionsJSON: options as any });
+
+  const verifyUrl = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/passkeys/register/verify`;
+  const verifyRes = await fetch(verifyUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${auth.accessToken}`,
+      'x-api-key': auth.app.options.apiKey,
+    },
+    body: JSON.stringify({ response: regResponse, deviceName }),
+  });
+  if (!verifyRes.ok) {
+    const errorData = (await verifyRes.json().catch(() => ({}))) as { error?: string };
+    throw new Error(errorData.error || `Passkey verification error: ${verifyRes.statusText}`);
+  }
+
+  const data = (await verifyRes.json()) as { passkey: PasskeyRecord };
+  return data.passkey;
+}
+
+export const registerPasskey = createPasskey;
+
+/**
+ * Signs in passwordless using a registered WebAuthn passkey.
+ */
+export async function signInWithPasskey(auth: Auth, email?: string): Promise<{ user: AppUser }> {
+  const { startAuthentication } = await import('@simplewebauthn/browser');
+
+  const optUrl = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/passkeys/authenticate/options`;
+  const optRes = await fetch(optUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': auth.app.options.apiKey,
+    },
+    body: JSON.stringify({ email }),
+  });
+  if (!optRes.ok) {
+    const errorData = (await optRes.json().catch(() => ({}))) as { error?: string };
+    throw new Error(errorData.error || `Passkey auth options error: ${optRes.statusText}`);
+  }
+  const options = await optRes.json();
+
+  const authResponse = await startAuthentication({ optionsJSON: options as any });
+
+  const verifyUrl = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/passkeys/authenticate/verify`;
+  const verifyRes = await fetch(verifyUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': auth.app.options.apiKey,
+      'x-environment-id': auth.app.options.environmentId || 'default',
+    },
+    body: JSON.stringify({ response: authResponse }),
+  });
+  if (!verifyRes.ok) {
+    const errorData = (await verifyRes.json().catch(() => ({}))) as { error?: string };
+    throw new Error(errorData.error || `Passkey verification failed: ${verifyRes.statusText}`);
+  }
+
+  const data = (await verifyRes.json()) as { user: AppUser; accessToken: string; refreshToken: string };
+  auth.setSession(data.user, data.accessToken, data.refreshToken);
+  return { user: data.user };
+}
+
+/**
+ * Lists all registered passkeys for the signed-in user.
+ */
+export async function listPasskeys(auth: Auth): Promise<PasskeyRecord[]> {
+  if (!auth.accessToken) {
+    throw new Error('User must be signed in to list passkeys');
+  }
+
+  const url = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/passkeys`;
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${auth.accessToken}`,
+      'x-api-key': auth.app.options.apiKey,
+    },
+  });
+
+  if (!res.ok) {
+    const errorData = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(errorData.error || `Failed to list passkeys: ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as { passkeys: PasskeyRecord[] };
+  return data.passkeys;
+}
+
+/**
+ * Deletes a registered passkey.
+ */
+export async function deletePasskey(auth: Auth, passkeyId: string): Promise<void> {
+  if (!auth.accessToken) {
+    throw new Error('User must be signed in to delete a passkey');
+  }
+
+  const url = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/passkeys/${passkeyId}`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${auth.accessToken}`,
+      'x-api-key': auth.app.options.apiKey,
+    },
+  });
+
+  if (!res.ok) {
+    const errorData = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(errorData.error || `Failed to delete passkey: ${res.statusText}`);
+  }
+}
+
+/**
+ * Self-service account deletion for the signed-in user.
+ * Enforces project-level user action permission (enableDelete).
+ */
+export async function deleteUser(auth: Auth): Promise<void> {
+  if (!auth.accessToken) {
+    throw new Error('User must be signed in to delete account');
+  }
+
+  const url = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/users/me`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${auth.accessToken}`,
+      'x-api-key': auth.app.options.apiKey,
+    },
+  });
+
+  if (!res.ok) {
+    const errorData = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    throw new Error(errorData.message || errorData.error || `Failed to delete account: ${res.statusText}`);
+  }
+
+  auth.setSession(null, null, null);
+}
+
+/**
+ * Initiates TOTP Multi-Factor Authentication enrollment for the signed-in user.
+ * Generates an enrollment secret, scannable QR code data URL, and 8 emergency recovery backup codes.
+ */
+export async function enrollTotp(auth: Auth): Promise<TotpEnrollmentResult> {
+  if (!auth.accessToken) {
+    throw new Error('User must be signed in to enroll TOTP Multi-Factor Authentication');
+  }
+
+  const url = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/mfa/totp/enroll`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${auth.accessToken}`,
+      'x-api-key': auth.app.options.apiKey,
+    },
+  });
+
+  if (!res.ok) {
+    const errorData = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    throw new Error(errorData.message || errorData.error || `Failed to initiate TOTP enrollment: ${res.statusText}`);
+  }
+
+  return (await res.json()) as TotpEnrollmentResult;
+}
+
+/**
+ * Confirms and activates TOTP Multi-Factor Authentication for the signed-in user.
+ */
+export async function verifyAndActivateTotp(auth: Auth, token: string): Promise<TotpVerifyResult> {
+  if (!auth.accessToken) {
+    throw new Error('User must be signed in to verify TOTP Multi-Factor Authentication');
+  }
+
+  const url = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/mfa/totp/verify`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${auth.accessToken}`,
+      'x-api-key': auth.app.options.apiKey,
+    },
+    body: JSON.stringify({ token }),
+  });
+
+  if (!res.ok) {
+    const errorData = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    throw new Error(errorData.message || errorData.error || `Failed to verify TOTP code: ${res.statusText}`);
+  }
+
+  return (await res.json()) as TotpVerifyResult;
+}
+
+/**
+ * Unenrolls / disables TOTP Multi-Factor Authentication for the signed-in user.
+ */
+export async function unenrollTotp(auth: Auth): Promise<void> {
+  if (!auth.accessToken) {
+    throw new Error('User must be signed in to unenroll TOTP Multi-Factor Authentication');
+  }
+
+  const url = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/mfa/totp`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${auth.accessToken}`,
+      'x-api-key': auth.app.options.apiKey,
+    },
+  });
+
+  if (!res.ok) {
+    const errorData = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    throw new Error(errorData.message || errorData.error || `Failed to unenroll TOTP: ${res.statusText}`);
+  }
+}
+
+/**
+ * Completes two-stage Multi-Factor Authentication challenge during sign-in.
+ */
+export async function completeMfaSignIn(
+  auth: Auth,
+  mfaSession: string,
+  factor: 'totp' | 'passkey',
+  codeOrPasskeyResponse: string | any
+): Promise<{ user: AppUser }> {
+  const url = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/mfa/challenge/verify`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': auth.app.options.apiKey,
+      'x-environment-id': auth.app.options.environmentId || 'default',
+    },
+    body: JSON.stringify({
+      mfaSession,
+      factor,
+      code: factor === 'totp' ? codeOrPasskeyResponse : undefined,
+      passkeyResponse: factor === 'passkey' ? codeOrPasskeyResponse : undefined,
+    }),
+  });
+
+  if (!res.ok) {
+    const errorData = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    throw new Error(errorData.message || errorData.error || `MFA challenge verification failed: ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as { user: AppUser; accessToken: string; refreshToken: string };
+  auth.setSession(data.user, data.accessToken, data.refreshToken);
+  return { user: data.user };
+}
+
+
 

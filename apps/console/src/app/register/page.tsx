@@ -105,11 +105,11 @@ export default function RegisterPage() {
         justifyContent: 'center',
         backgroundColor: '#0f1115',
         backgroundImage: 'radial-gradient(circle at 50% 15%, rgba(37, 99, 235, 0.15), transparent 50%)',
-        padding: '32px 16px',
+        padding: '16px',
         fontFamily: 'var(--font-sans)',
       }}
     >
-      <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div style={{ width: '100%', maxWidth: '440px', display: 'flex', flexDirection: 'column', gap: '14px', margin: 'auto' }}>
         {/* Brand Header */}
         <div style={{ textAlign: 'center' }}>
           <div
@@ -117,27 +117,27 @@ export default function RegisterPage() {
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '52px',
-              height: '52px',
-              borderRadius: '14px',
+              width: '46px',
+              height: '46px',
+              borderRadius: '12px',
               backgroundColor: 'rgba(37, 99, 235, 0.15)',
               border: '1px solid rgba(37, 99, 235, 0.3)',
-              marginBottom: '16px',
+              marginBottom: '10px',
             }}
           >
-            <Flame size={28} color="#3b82f6" />
+            <Flame size={24} color="#3b82f6" />
           </div>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 700, color: '#f3f4f6', margin: '0 0 6px', letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontSize: '1.45rem', fontWeight: 700, color: '#f3f4f6', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
             Create Developer Account
           </h1>
-          <p style={{ fontSize: '0.88rem', color: '#9ca3af', margin: 0 }}>
+          <p style={{ fontSize: '0.82rem', color: '#9ca3af', margin: 0 }}>
             Provision your private Syntrabase developer workspace &amp; API credentials
           </p>
         </div>
 
         {/* Register Card */}
         <Card style={{ backgroundColor: '#16191f', borderColor: '#262a33', boxShadow: '0 12px 32px rgba(0,0,0,0.5)' }}>
-          <CardContent style={{ padding: '28px 24px' }}>
+          <CardContent style={{ padding: '20px 20px' }}>
             {errorMsg && (
               <div
                 style={{

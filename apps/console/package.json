@@ -11,6 +11,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "^14.0.0",
     "@syntrabase/client-sdk": "*",
     "@syntrabase/shared-types": "*",
     "lucide-react": "^1.55.0",

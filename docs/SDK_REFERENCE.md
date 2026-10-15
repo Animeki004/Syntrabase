@@ -62,23 +62,66 @@ const { user } = await linkWithEmailAndPassword(auth, 'alice@example.com', 'Supe
 console.log('Account linked successfully:', user.email);
 ```
 
-#### `enrollTotpMfa(auth)`
-Enrolls an RFC 6238 Time-based One-Time Password (TOTP) factor for the currently authenticated user. Returns the Base32 secret, OTPAuth URL for QR code scanners, and 8 hashed backup recovery codes.
+#### `enrollTotpMfa(auth)` / `enrollTotp(auth)`
+Enrolls an RFC 6238 Time-based One-Time Password (TOTP) factor for the currently authenticated user. Returns the Base32 secret, OTPAuth URI, an immediately scannable base64 visual QR code URL (`data:image/png;base64,...`), and 8 hashed backup recovery codes.
 ```typescript
 import { enrollTotpMfa } from '@syntrabase/client-sdk';
 
-const { secret, otpauthUrl, backupCodes } = await enrollTotpMfa(auth);
+const { secret, otpauthUrl, qrCodeUrl, backupCodes } = await enrollTotpMfa(auth);
+
+// Render directly into an <img> element:
+// <img src={qrCodeUrl} alt="Scan TOTP QR Code" width={200} height={200} />
 console.log('TOTP Secret:', secret);
+console.log('OTPAuth URL:', otpauthUrl);
 console.log('Backup recovery codes:', backupCodes);
 ```
 
-#### `verifyTotpMfa(auth, code)`
+#### `verifyTotpMfa(auth, code)` / `verifyAndActivateTotp(auth, code)`
 Verifies a 6-digit TOTP code and activates two-factor authentication on the account.
 ```typescript
 import { verifyTotpMfa } from '@syntrabase/client-sdk';
 
 await verifyTotpMfa(auth, '123456');
 console.log('Two-factor authentication successfully enabled!');
+```
+
+#### `unenrollTotpMfa(auth)` / `unenrollTotp(auth)`
+Disables TOTP two-factor authentication for the currently authenticated user.
+```typescript
+import { unenrollTotpMfa } from '@syntrabase/client-sdk';
+
+await unenrollTotpMfa(auth);
+console.log('TOTP factor successfully unenrolled');
+```
+
+#### `createPasskey(auth)` / `registerPasskey(auth)`
+Registers a WebAuthn / FIDO2 hardware passkey (TouchID, FaceID, Windows Hello, YubiKey) for the current user.
+```typescript
+import { createPasskey } from '@syntrabase/client-sdk';
+
+const result = await createPasskey(auth);
+console.log('Passkey registered successfully:', result.credentialId);
+```
+
+#### `verifyPasskeyLogin(auth, options)`
+Authenticates via WebAuthn passkey assertion. Completes step-up authentication or passwordless sign-in.
+```typescript
+import { verifyPasskeyLogin } from '@syntrabase/client-sdk';
+
+const { user } = await verifyPasskeyLogin(auth, { email: 'alice@example.com' });
+console.log('Logged in with passkey:', user.email);
+```
+
+#### `getUserSessions(auth)` & `revokeUserSession(auth, sessionId)`
+Inspects active device sessions and revokes specific sessions.
+```typescript
+import { getUserSessions, revokeUserSession } from '@syntrabase/client-sdk';
+
+const sessions = await getUserSessions(auth);
+console.log('Active sessions:', sessions);
+
+// Revoke a specific session
+await revokeUserSession(auth, sessions[0].id);
 ```
 
 #### `sendEmailVerification(auth, user)`
@@ -371,6 +414,39 @@ await adminAuth.updateProjectAuthConfig({
     maxAgeDays: 90
   }
 });
+
+// Configure User Actions (Email Enumeration, Sign-up Gating, Self-Deletion)
+await adminAuth.setUserActions({
+  emailEnumerationProtection: true,
+  enableCreate: true,
+  enableDelete: false // Prevent users from self-deleting accounts
+});
+const actions = await adminAuth.getUserActions();
+console.log('User actions:', actions);
+
+// Configure Project-wide MFA Policy (Enforced, Optional, or Disabled)
+await adminAuth.setMfaPolicy({
+  state: 'enforced',
+  enforceAllUsers: true,
+  allowedFactors: ['totp', 'passkey']
+});
+const mfaPolicy = await adminAuth.getMfaPolicy();
+console.log('MFA policy:', mfaPolicy);
+
+// Inspect a specific user's enrolled MFA factors
+const userMfa = await adminAuth.getUserMfa(newUser.uid);
+console.log('Enrolled factors:', userMfa.factors);
+
+// Administratively unenroll a user's compromised or lost MFA factor
+if (userMfa.factors.length > 0) {
+  await adminAuth.unenrollUserMfa(newUser.uid, userMfa.factors[0].id);
+}
+
+// List and revoke user WebAuthn / FIDO2 Passkeys
+const passkeys = await adminAuth.listUserPasskeys(newUser.uid);
+if (passkeys.length > 0) {
+  await adminAuth.deleteUserPasskey(newUser.uid, passkeys[0].id);
+}
 ```
 
 ---

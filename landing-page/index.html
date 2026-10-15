@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Syntrabase SDK — The Self-Hosted, Open-Source Firebase Alternative Built on PostgreSQL 16</title>
+  <meta name="description" content="Syntrabase SDK: Modular, tree-shakeable client and privileged admin SDKs for PostgreSQL 16 JSONB. Drop-in Firebase v9/v10 API compatibility, FIDO2 WebAuthn passkeys, visual TOTP MFA, realtime WebSockets, and predictable $5/mo fixed hosting.">
+  <meta name="keywords" content="Syntrabase, Firebase alternative, PostgreSQL 16 JSONB, self-hosted backend, client SDK, admin SDK, WebAuthn passkeys, TOTP MFA, Coolify, Docker, open source">
+  
+  <!-- Open Graph / Social Meta -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://github.com/Animeki004/Syntrabase">
+  <meta property="og:title" content="Syntrabase SDK — Open-Source Firebase Alternative on PostgreSQL 16">
+  <meta property="og:description" content="Drop-in Firebase v9/v10 API compatibility powered by PostgreSQL 16 JSONB. Zero vendor lock-in, fixed $5/mo hosting, WebAuthn passkeys & TOTP MFA.">
+  <meta property="og:image" content="./assets/syntrabase-banner.jpg">
+
+  <!-- Twitter Meta -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://github.com/Animeki004/Syntrabase">
+  <meta property="twitter:title" content="Syntrabase SDK — Open-Source Firebase Alternative">
+  <meta property="twitter:description" content="Drop-in Firebase v9/v10 API compatibility powered by PostgreSQL 16 JSONB.">
+  <meta property="twitter:image" content="./assets/syntrabase-banner.jpg">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="dark">
+  <!-- Top Navigation Bar -->
+  <header class="app-header glass-header" id="main-header">
+    <div class="header-inner">
+      <div class="logo-area" id="brand-logo-btn" title="Syntrabase Overview">
+        <div class="logo-badge">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <span class="logo-title">Syntrabase</span>
+        <span class="version-tag">v1.2.0</span>
+      </div>
+
+      <!-- Navigation Links -->
+      <nav class="nav-links" id="primary-nav">
+        <a href="#overview" class="nav-link active" data-section="section-overview">Overview</a>
+        <a href="#docs" class="nav-link" data-section="section-docs">Documentation</a>
+        <a href="#studio" class="nav-link" data-section="section-studio">Interactive Studio</a>
+        <a href="#architecture" class="nav-link" data-section="section-architecture">Architecture</a>
+      </nav>
+
+      <!-- Right Header Actions -->
+      <div class="header-actions">
+        <a href="https://github.com/Animeki004/Syntrabase" target="_blank" rel="noopener noreferrer" class="btn btn-github" id="btn-github-link" title="Star on GitHub">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          <span>GitHub</span>
+          <span class="github-badge">★ Star</span>
+        </a>
+
+        <button id="btn-theme-toggle" class="btn-icon" aria-label="Toggle Theme" title="Toggle Light/Dark Theme">
+          <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========================================================================= -->
+  <!-- SECTION 1: PRODUCT HERO & OVERVIEW                                        -->
+  <!-- ========================================================================= -->
+  <section id="section-overview" class="page-section active">
+    <div class="app-container">
+      
+      <!-- Announcement Pill -->
+      <div class="hero-announcement-wrap">
+        <div class="hero-pill">
+          <span class="pill-badge">v1.2.0 Released</span>
+          <span class="pill-text">WebAuthn FIDO2 Passkeys, Visual TOTP QR Codes & User Actions Gating</span>
+          <a href="#doc-client-passkeys" class="pill-arrow" id="hero-passkeys-link">Learn more →</a>
+        </div>
+      </div>
+
+      <!-- Main Hero Header -->
+      <div class="hero-content">
+        <h1 class="hero-title">
+          The Self-Hosted, Open-Source <br />
+          <span class="text-gradient">Firebase Alternative</span> Built for Production
+        </h1>
+        <p class="hero-subtitle">
+          Enjoy the exact modular Firestore, Auth, Storage, and Realtime developer workflow you love—backed entirely by an authoritative <strong>PostgreSQL 16 JSONB</strong> foundation you control. Predictable $5/mo fixed hosting, zero proprietary vendor lock-in, and enterprise-grade Argon2id, WebAuthn & TOTP security.
+        </p>
+
+        <!-- Quick Install Command Blocks -->
+        <div class="install-bar">
+          <div class="install-box" title="Click to copy Client SDK install command">
+            <span class="install-label">Client SDK:</span>
+            <code>npm install @syntrabase/client-sdk</code>
+            <button class="btn-copy-code" data-copy="npm install @syntrabase/client-sdk" aria-label="Copy Client SDK install command">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          </div>
+          <div class="install-box" title="Click to copy Admin SDK install command">
+            <span class="install-label">Admin SDK:</span>
+            <code>npm install @syntrabase/admin-sdk</code>
+            <button class="btn-copy-code" data-copy="npm install @syntrabase/admin-sdk" aria-label="Copy Admin SDK install command">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Action CTAs -->
+        <div class="hero-actions">
+          <button class="btn btn-primary btn-large jump-to-section" data-target="section-studio">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Launch Interactive Test Studio
+          </button>
+          <button class="btn btn-secondary btn-large jump-to-section" data-target="section-docs">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+            Explore Complete Documentation
+          </button>
+          <a href="https://github.com/Animeki004/Syntrabase" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-large">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+            GitHub Repository
+          </a>
+        </div>
+      </div>
+
+      <!-- Generated Product Banner Graphic Container -->
+      <div class="hero-banner-container glass-card">
+        <img src="./assets/syntrabase-banner.jpg" alt="Syntrabase Open-Source Firebase Alternative Architecture Banner" class="hero-banner-image" width="1280" height="720" loading="eager" />
+        <div class="banner-overlay-caption">
+          <div class="caption-badge">Production Architecture</div>
+          <span>PostgreSQL 16 JSONB Core • Fastify Gateway • Modular Client SDK • Privileged Admin SDK • FIDO2 Passkeys</span>
+        </div>
+      </div>
+
+      <!-- Interactive Code Showcase Section -->
+      <div class="showcase-section">
+        <div class="section-heading text-center">
+          <h2 class="section-title">100% Familiar Firebase v9/v10 Modular Syntax</h2>
+          <p class="section-subtitle">Zero learning curve. Keep your existing frontend code patterns while gaining full control of your PostgreSQL database.</p>
+        </div>
+
+        <div class="code-preview-card glass-card">
+          <!-- Code Tabs -->
+          <div class="code-tabs-bar">
+            <button class="code-tab active" data-snippet="snippet-auth">🔐 Auth & Passkeys</button>
+            <button class="code-tab" data-snippet="snippet-firestore">🗄️ Firestore JSONB</button>
+            <button class="code-tab" data-snippet="snippet-realtime">⚡ Realtime onSnapshot</button>
+            <button class="code-tab" data-snippet="snippet-storage">📦 Cloud Storage</button>
+            <button class="code-tab" data-snippet="snippet-admin">🛡️ Privileged Admin SDK</button>
+          </div>
+
+          <!-- Snippet 1: Auth & MFA & Passkeys -->
+          <div class="code-snippet-panel active" id="snippet-auth">
+            <pre><code><span class="kw">import</span> { initializeApp } <span class="kw">from</span> <span class="str">'@syntrabase/client-sdk'</span>;
+<span class="kw">import</span> { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  enrollTotpMfa, 
+  createPasskey, 
+  verifyPasskeyLogin 
+} <span class="kw">from</span> <span class="str">'@syntrabase/client-sdk'</span>;
+
+<span class="cmt">// 1. Initialize Modular Syntrabase App</span>
+<span class="kw">const</span> app = initializeApp({
+  apiUrl: <span class="str">'https://api.yourdomain.com'</span>,
+  projectId: <span class="str">'my-production-app'</span>,
+  apiKey: <span class="str">'pk_live_f893a7c...'</span>
+});
+<span class="kw">const</span> auth = getAuth(app);
+
+<span class="cmt">// 2. Primary Password Sign-In (with Step-Up MFA Interception)</span>
+<span class="kw">const</span> cred = <span class="kw">await</span> signInWithEmailAndPassword(auth, <span class="str">'alice@example.com'</span>, <span class="str">'SecurePass123!'</span>);
+
+<span class="cmt">// 3. Enroll TOTP MFA (Returns Scannable Visual QR Code Data URI)</span>
+<span class="kw">const</span> { secret, qrCodeUrl, backupCodes } = <span class="kw">await</span> enrollTotpMfa(auth);
+<span class="cmt">// <img src={qrCodeUrl} alt="Scan in Authenticator App" /></span>
+
+<span class="cmt">// 4. Register WebAuthn FIDO2 Biometric Passkey (TouchID, FaceID, YubiKey)</span>
+<span class="kw">const</span> passkey = <span class="kw">await</span> createPasskey(auth);
+console.log(<span class="str">'Hardware Passkey bound:'</span>, passkey.credentialId);
+
+<span class="cmt">// 5. Seamless Passwordless Sign-In via Passkey Assertion</span>
+<span class="kw">const</span> { user } = <span class="kw">await</span> verifyPasskeyLogin(auth, { email: <span class="str">'alice@example.com'</span> });</code></pre>
+          </div>
+
+          <!-- Snippet 2: Firestore JSONB CRUD -->
+          <div class="code-snippet-panel" id="snippet-firestore">
+            <pre><code><span class="kw">import</span> { 
+  getFirestore, 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  query, 
+  where, 
+  orderBy, 
+  limit, 
+  serverTimestamp, 
+  increment, 
+  runTransaction 
+} <span class="kw">from</span> <span class="str">'@syntrabase/client-sdk'</span>;
+
+<span class="kw">const</span> db = getFirestore(app);
+
+<span class="cmt">// 1. Set Document with Atomic Server Timestamp</span>
+<span class="kw">await</span> setDoc(doc(db, <span class="str">'orders'</span>, <span class="str">'order_789'</span>), {
+  customer: <span class="str">'Alice Cooper'</span>,
+  total: 129.50,
+  status: <span class="str">'paid'</span>,
+  createdAt: serverTimestamp() <span class="cmt">// Syntrabase replaces sentinel atomically</span>
+});
+
+<span class="cmt">// 2. PostgreSQL GIN Index-Accelerated Query</span>
+<span class="kw">const</span> q = query(
+  collection(db, <span class="str">'orders'</span>),
+  where(<span class="str">'status'</span>, <span class="str">'=='</span>, <span class="str">'paid'</span>),
+  orderBy(<span class="str">'total'</span>, <span class="str">'desc'</span>),
+  limit(20)
+);
+
+<span class="cmt">// 3. Optimistic ACID Transaction with Auto-Rollback</span>
+<span class="kw">await</span> runTransaction(db, <span class="kw">async</span> (txn) => {
+  <span class="kw">const</span> invDoc = <span class="kw">await</span> txn.get(doc(db, <span class="str">'inventory'</span>, <span class="str">'laptop_pro'</span>));
+  <span class="kw">if</span> (invDoc.data().stock <= 0) <span class="kw">throw new</span> Error(<span class="str">'Item out of stock'</span>);
+
+  txn.update(doc(db, <span class="str">'inventory'</span>, <span class="str">'laptop_pro'</span>), {
+    stock: increment(-1)
+  });
+});</code></pre>
+          </div>
+
+          <!-- Snippet 3: Realtime WebSocket -->
+          <div class="code-snippet-panel" id="snippet-realtime">
+            <pre><code><span class="kw">import</span> { getFirestore, doc, onSnapshot } <span class="kw">from</span> <span class="str">'@syntrabase/client-sdk'</span>;
+
+<span class="kw">const</span> db = getFirestore(app);
+<span class="kw">const</span> docRef = doc(db, <span class="str">'live_auctions'</span>, <span class="str">'auction_item_42'</span>);
+
+<span class="cmt">// Subscribe to instantaneous WebSocket document updates</span>
+<span class="cmt">// Enforces token-first handshake and multi-tenant project isolation</span>
+<span class="kw">const</span> unsubscribe = onSnapshot(docRef, (snapshot) => {
+  <span class="kw">const</span> data = snapshot.data();
+  console.log(<span class="str">'Live Bid Received in &lt;10ms:'</span>, data.highestBid, data.bidder);
+  updatePriceDisplay(data.highestBid);
+});
+
+<span class="cmt">// Cleanly tear down subscription when unmounting view</span>
+<span class="cmt">// unsubscribe();</span></code></pre>
+          </div>
+
+          <!-- Snippet 4: Storage Module -->
+          <div class="code-snippet-panel" id="snippet-storage">
+            <pre><code><span class="kw">import</span> { getStorage, ref, uploadBytes, getDownloadURL } <span class="kw">from</span> <span class="str">'@syntrabase/client-sdk'</span>;
+
+<span class="kw">const</span> storage = getStorage(app);
+<span class="kw">const</span> fileRef = ref(storage, <span class="str">'invoices/inv_2026_10.pdf'</span>);
+
+<span class="cmt">// 1. Isomorphic Upload (Browser File/Blob or Node.js Buffer)</span>
+<span class="kw">const</span> result = <span class="kw">await</span> uploadBytes(fileRef, userSelectedFile, {
+  contentType: <span class="str">'application/pdf'</span>
+});
+
+<span class="cmt">// 2. Acquire Cryptographically Tamper-Proof Signed URL</span>
+<span class="cmt">// Server-side enforcement with Content-Security-Policy & X-Content-Type-Options: nosniff</span>
+<span class="kw">const</span> downloadUrl = <span class="kw">await</span> getDownloadURL(fileRef);
+console.log(<span class="str">'Direct Download Link:'</span>, downloadUrl);</code></pre>
+          </div>
+
+          <!-- Snippet 5: Admin SDK -->
+          <div class="code-snippet-panel" id="snippet-admin">
+            <pre><code><span class="kw">import</span> { initializeAdminApp, getAdminAuth, getAdminFirestore, getAdminAudit } <span class="kw">from</span> <span class="str">'@syntrabase/admin-sdk'</span>;
+
+<span class="cmt">// 1. Privileged Initialization (Node.js Only with sk_live_... Secret)</span>
+<span class="cmt">// Built-in browser guardrail immediately throws if executed inside window</span>
+<span class="kw">const</span> adminApp = initializeAdminApp({
+  apiUrl: <span class="str">'https://api.yourdomain.com'</span>,
+  projectId: <span class="str">'my-production-app'</span>,
+  secretKey: process.env.SYNTRABASE_SECRET_KEY
+});
+
+<span class="kw">const</span> adminAuth = getAdminAuth(adminApp);
+
+<span class="cmt">// 2. Enforce Strict Project-Wide MFA & User Action Policies</span>
+<span class="kw">await</span> adminAuth.setUserActions({
+  emailEnumerationProtection: <span class="kw">true</span>,
+  enableCreate: <span class="kw">true</span>,
+  enableDelete: <span class="kw">false</span> <span class="cmt">// Prevent user account self-deletion</span>
+});
+
+<span class="kw">await</span> adminAuth.setMfaPolicy({
+  state: <span class="str">'enforced'</span>,
+  enforceAllUsers: <span class="kw">true</span>,
+  allowedFactors: [<span class="str">'totp'</span>, <span class="str">'passkey'</span>]
+});
+
+<span class="cmt">// 3. Verify Cryptographic HMAC Audit Ledger Chain</span>
+<span class="kw">const</span> audit = getAdminAudit(adminApp);
+<span class="kw">const</span> ledgerStatus = <span class="kw">await</span> audit.verifyLedger();
+console.log(<span class="str">'Audit Chain Intact:'</span>, ledgerStatus.valid);</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Value Proposition Pillars Grid -->
+      <div class="pillars-section">
+        <div class="section-heading text-center">
+          <h2 class="section-title">Engineered for Sovereign Control & Extreme Performance</h2>
+          <p class="section-subtitle">Everything required to run mission-critical production SaaS without cloud vendor taxation.</p>
+        </div>
+
+        <div class="pillars-grid">
+          <div class="pillar-card glass-card">
+            <div class="pillar-icon-box">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <h3>FIDO2 Passkeys & Visual TOTP MFA</h3>
+            <p>Modern passwordless WebAuthn biometric authentication paired with RFC 6238 TOTP issuing instant base64 QR code data URIs and 8 cryptographic backup codes.</p>
+          </div>
+
+          <div class="pillar-card glass-card">
+            <div class="pillar-icon-box">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            </div>
+            <h3>PostgreSQL 16 JSONB Power</h3>
+            <p>Full ACID compliance, transactional rollbacks, atomic field transforms (`serverTimestamp`, `increment`), and direct SQL access whenever you need analytics.</p>
+          </div>
+
+          <div class="pillar-card glass-card">
+            <div class="pillar-icon-box">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </div>
+            <h3>Token-First Realtime WebSockets</h3>
+            <p>Sub-10ms change broadcasting with strict tenant isolation. Authenticated clients only receive real-time streams matching their authorized project ID.</p>
+          </div>
+
+          <div class="pillar-card glass-card">
+            <div class="pillar-icon-box">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            </div>
+            <h3>Signed Storage & CSP Hardening</h3>
+            <p>Object storage with HMAC-SHA256 signed download tokens, path traversal guards, strict quota calculation, and CSP `default-src 'none'` headers.</p>
+          </div>
+
+          <div class="pillar-card glass-card">
+            <div class="pillar-icon-box">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+            </div>
+            <h3>Privileged Admin SDK</h3>
+            <p>Secure server-side user management, custom claims, MFA policy administration, and automated browser guardrails preventing accidental credential exposure.</p>
+          </div>
+
+          <div class="pillar-card glass-card">
+            <div class="pillar-icon-box">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <h3>Predictable $5/mo Fixed Cost</h3>
+            <p>1-Click deployment via Coolify or Docker. Serve 10M+ reads and writes on a $5/mo VPS instead of facing unbounded $10,000+ surprise cloud bills.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ========================================================================= -->
+  <!-- SECTION 2: COMPREHENSIVE DOCUMENTATION                                    -->
+  <!-- ========================================================================= -->
+  <section id="section-docs" class="page-section">
+    <div class="app-container">
+      
+      <!-- Documentation Main Section Header -->
+      <div class="docs-header-banner text-center">
+        <span class="doc-badge badge-blue">Official Documentation • v1.2.0</span>
+        <h1 class="section-title">Complete SDK Guides & API Reference</h1>
+        <p class="section-subtitle">Drop-in Firebase v9/v10 syntax, enterprise FIDO2 WebAuthn passkeys, visual TOTP QR MFA, and PostgreSQL 16 JSONB primitives.</p>
+      </div>
+
+      <div class="docs-layout">
+        
+        <!-- Sticky Docs Navigation Sidebar -->
+        <aside class="docs-sidebar glass-card">
+          <div class="docs-nav-group">
+            <span class="docs-nav-header"><span class="docs-nav-header-dot dot-blue"></span>Getting Started</span>
+            <a href="#doc-overview" class="docs-nav-item active"><span class="nav-dot"></span>Overview & Architecture</a>
+            <a href="#doc-install" class="docs-nav-item"><span class="nav-dot"></span>Installation & Packages</a>
+            <a href="#doc-config" class="docs-nav-item"><span class="nav-dot"></span>Configuration & Keys</a>
+          </div>
+
+          <div class="docs-nav-group">
+            <span class="docs-nav-header"><span class="docs-nav-header-dot dot-purple"></span>Client SDK Modules</span>
+            <a href="#doc-client-init" class="docs-nav-item"><span class="nav-dot"></span>App Initialization</a>
+            <a href="#doc-client-auth" class="docs-nav-item"><span class="nav-dot"></span>Authentication & Sessions</a>
+            <a href="#doc-client-mfa" class="docs-nav-item"><span class="nav-dot"></span>TOTP MFA & Visual QR Codes</a>
+            <a href="#doc-client-passkeys" class="docs-nav-item"><span class="nav-dot"></span>WebAuthn FIDO2 Passkeys</a>
+            <a href="#doc-client-firestore" class="docs-nav-item"><span class="nav-dot"></span>Firestore Documents (CRUD)</a>
+            <a href="#doc-client-queries" class="docs-nav-item"><span class="nav-dot"></span>Queries & Filtering</a>
+            <a href="#doc-client-transforms" class="docs-nav-item"><span class="nav-dot"></span>Atomic Field Transforms</a>
+            <a href="#doc-client-batch" class="docs-nav-item"><span class="nav-dot"></span>Batch Writes & Transactions</a>
+            <a href="#doc-client-realtime" class="docs-nav-item"><span class="nav-dot"></span>Realtime WebSockets (onSnapshot)</a>
+            <a href="#doc-client-storage" class="docs-nav-item"><span class="nav-dot"></span>Storage & Signed URLs</a>
+          </div>
+
+          <div class="docs-nav-group">
+            <span class="docs-nav-header"><span class="docs-nav-header-dot dot-emerald"></span>Admin SDK Modules</span>
+            <a href="#doc-admin-init" class="docs-nav-item"><span class="nav-dot"></span>Privileged Initialization</a>
+            <a href="#doc-admin-users" class="docs-nav-item"><span class="nav-dot"></span>User Management & Claims</a>
+            <a href="#doc-admin-actions" class="docs-nav-item"><span class="nav-dot"></span>User Actions & Gating Policy</a>
+            <a href="#doc-admin-mfa" class="docs-nav-item"><span class="nav-dot"></span>Project MFA & Factor Admin</a>
+            <a href="#doc-admin-audit" class="docs-nav-item"><span class="nav-dot"></span>Cryptographic Audit Ledger</a>
+            <a href="#doc-admin-guardrail" class="docs-nav-item"><span class="nav-dot"></span>Browser Runtime Guardrail</a>
+          </div>
+
+          <div class="docs-nav-group">
+            <span class="docs-nav-header"><span class="docs-nav-header-dot dot-amber"></span>Quality & Verification</span>
+            <a href="#doc-testing" class="docs-nav-item"><span class="nav-dot"></span>Automated Test Bench & Gates</a>
+            <a href="#doc-release" class="docs-nav-item"><span class="nav-dot"></span>Release & Staging Readiness</a>
+          </div>
+        </aside>
+
+      <!-- Main Docs Content -->
+      <article class="docs-article glass-card">
+        
+        <!-- Doc 1: Overview -->
+        <div class="doc-block" id="doc-overview">
+          <div class="doc-badge badge-blue">Getting Started • Architecture</div>
+          <h2 class="doc-title">Overview & Architecture</h2>
+          <p>
+            Syntrabase is an open-source, multi-tenant developer platform engineered as a high-performance, drop-in replacement for Google Firebase. While Firebase relies on closed Google Cloud primitives with unpredictable pay-per-read billing models, Syntrabase runs natively on <strong>PostgreSQL 16 JSONB</strong>.
+          </p>
+          <div class="doc-callout callout-info">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <div>
+              <strong>Predictable $5/Month Fixed Infrastructure:</strong> Run your entire SaaS (Auth, Firestore, Storage, Realtime) on a single $5/mo VPS with 10M+ operations instead of risking unbounded $10,000+ cloud bills.
+            </div>
+          </div>
+          <p>The Syntrabase ecosystem consists of two first-class SDK packages:</p>
+          <ul class="doc-list">
+            <li><strong><code>@syntrabase/client-sdk@^1.2.0</code></strong>: Tree-shakeable, modular client library for browsers and mobile applications matching Firebase v9/v10 functional syntax.</li>
+            <li><strong><code>@syntrabase/admin-sdk@^1.2.0</code></strong>: Privileged Node.js server library using master <code>sk_live_...</code> keys for backend microservices, Next.js server actions, and background workers.</li>
+          </ul>
+        </div>
+
+        <!-- Doc 2: Install -->
+        <div class="doc-block" id="doc-install">
+          <div class="doc-badge badge-blue">Installation • Packages</div>
+          <h2 class="doc-title">Installation & Package Ecosystem</h2>
+          <p>Install the modular client SDK in your web application (Next.js, Vite, React, Vue, Svelte, or Vanilla JS):</p>
+          <div class="code-box" data-filename="terminal.sh">
+            <pre><code>npm install @syntrabase/client-sdk@^1.2.0</code></pre>
+            <button class="btn-copy-code" data-copy="npm install @syntrabase/client-sdk@^1.2.0">Copy</button>
+          </div>
+
+          <p>For Node.js backend servers, server actions, or administrative microservices, install the admin SDK:</p>
+          <div class="code-box" data-filename="terminal.sh">
+            <pre><code>npm install @syntrabase/admin-sdk@^1.2.0</code></pre>
+            <button class="btn-copy-code" data-copy="npm install @syntrabase/admin-sdk@^1.2.0">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 3: Config -->
+        <div class="doc-block" id="doc-config">
+          <div class="doc-badge badge-purple">Configuration • Security</div>
+          <h2 class="doc-title">Configuration, Keys & Environments</h2>
+          <p>
+            Syntrabase enforces strict separation between public client credentials and privileged master secrets. Never leak master secrets into frontend client bundles:
+          </p>
+          <div class="doc-callout callout-security">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <div>
+              <strong>Security Protocol:</strong> Publishable keys (<code>pk_live_...</code>) are safe for browser code and obey Security Rules. Master secret keys (<code>sk_live_...</code>) are restricted to backend servers and bypass all client security rules.
+            </div>
+          </div>
+          <div class="code-box" data-filename=".env.production">
+            <pre><code># Frontend Application Environment (.env.production)
+NEXT_PUBLIC_SYNTRABASE_URL=https://api.yourdomain.com
+NEXT_PUBLIC_SYNTRABASE_PROJECT_ID=saas-production-app
+NEXT_PUBLIC_SYNTRABASE_API_KEY=pk_live_839a7b1c4e6f9d2a015b7e8c3f
+
+# Server-Side Only Backend Environment (Never bundle in client)
+SYNTRABASE_SECRET_KEY=sk_live_your_admin_secret_key_sample
+SYNTRABASE_ENVIRONMENT=production # 'production' | 'staging' | 'development'</code></pre>
+            <button class="btn-copy-code" data-copy="NEXT_PUBLIC_SYNTRABASE_URL=https://api.yourdomain.com
+NEXT_PUBLIC_SYNTRABASE_PROJECT_ID=saas-production-app
+NEXT_PUBLIC_SYNTRABASE_API_KEY=pk_live_839a7b1c4e6f9d2a015b7e8c3f
+SYNTRABASE_SECRET_KEY=sk_live_your_admin_secret_key_sample">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 4: Client Init -->
+        <div class="doc-block" id="doc-client-init">
+          <div class="doc-badge badge-cyan">Client SDK • Initialization</div>
+          <h2 class="doc-title">App Initialization (Client SDK)</h2>
+          <p>Initialize the application instance by providing your API gateway endpoint, project ID, and publishable key:</p>
+          <div class="code-box" data-filename="syntrabase.ts">
+            <pre><code>import { initializeApp } from '@syntrabase/client-sdk';
+
+export const app = initializeApp({
+  apiUrl: process.env.NEXT_PUBLIC_SYNTRABASE_URL || 'https://api.yourdomain.com',
+  projectId: 'saas-production-app',
+  apiKey: 'pk_live_839a7b1c4e6f9d2a015b7e8c3f',
+  environmentId: 'production' // 'default' | 'development' | 'staging' | 'production'
+});</code></pre>
+            <button class="btn-copy-code" data-copy="import { initializeApp } from '@syntrabase/client-sdk';
+
+export const app = initializeApp({
+  apiUrl: process.env.NEXT_PUBLIC_SYNTRABASE_URL || 'https://api.yourdomain.com',
+  projectId: 'saas-production-app',
+  apiKey: 'pk_live_839a7b1c4e6f9d2a015b7e8c3f',
+  environmentId: 'production'
+});">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 5: Client Auth -->
+        <div class="doc-block" id="doc-client-auth">
+          <div class="doc-badge badge-violet">Client SDK • Authentication</div>
+          <h2 class="doc-title">Authentication & Sessions</h2>
+          <p>The Auth module provides user registration, login, anonymous guest sessions, password resets, and session management:</p>
+          <div class="code-box" data-filename="auth-service.ts">
+            <pre><code>import { 
+  getAuth, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signInAnonymously,
+  getUserSessions,
+  revokeUserSession,
+  signOut 
+} from '@syntrabase/client-sdk';
+
+const auth = getAuth(app);
+
+// 1. Register with email & password (Argon2id hashing)
+const { user } = await createUserWithEmailAndPassword(auth, 'alice@example.com', 'SuperPass123!');
+
+// 2. Sign In (Returns tokens or { mfaRequired: true, mfaToken: '...' })
+const result = await signInWithEmailAndPassword(auth, 'alice@example.com', 'SuperPass123!');
+if (result.mfaRequired) {
+  console.log('Step-up MFA required! Token:', result.mfaToken);
+}
+
+// 3. Inspect active device sessions
+const sessions = await getUserSessions(auth);
+console.log('Active sessions:', sessions);
+
+// 4. Revoke a specific session
+await revokeUserSession(auth, sessions[0].id);</code></pre>
+            <button class="btn-copy-code" data-copy="import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInAnonymously, getUserSessions, revokeUserSession, signOut } from '@syntrabase/client-sdk';">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 6: Client MFA -->
+        <div class="doc-block" id="doc-client-mfa">
+          <div class="doc-badge badge-emerald">Client SDK • TOTP 2FA</div>
+          <h2 class="doc-title">TOTP MFA & Visual QR Codes</h2>
+          <p>
+            Syntrabase includes built-in RFC 6238 TOTP two-factor authentication. When enrolled, the SDK returns the secret, an OTPAuth URI, and a pre-rendered <strong>visual base64 QR code data URI</strong> ready for direct display in an <code>&lt;img&gt;</code> element, alongside 8 cryptographic backup recovery codes.
+          </p>
+          <div class="doc-callout callout-success">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <div>
+              <strong>Universal Scannability:</strong> Generates authentic RFC 6238 compliant QR codes scanned effortlessly by Google Authenticator, Microsoft Authenticator, Authy, Apple Passwords, and 1Password.
+            </div>
+          </div>
+          <div class="code-box" data-filename="totp-enrollment.ts">
+            <pre><code>import { getAuth, enrollTotpMfa, verifyTotpMfa, unenrollTotpMfa } from '@syntrabase/client-sdk';
+
+const auth = getAuth(app);
+
+// 1. Enroll TOTP Factor (Returns QR Code Data URI & Recovery Codes)
+const { secret, otpauthUrl, qrCodeUrl, backupCodes } = await enrollTotpMfa(auth);
+
+// Render directly in your React / HTML view:
+// <img src={qrCodeUrl} alt="Scan QR Code in Authenticator App" />
+
+// 2. Complete enrollment by verifying first 6-digit rolling code:
+await verifyTotpMfa(auth, '583921');
+console.log('TOTP 2FA successfully activated on account!');
+
+// 3. Unenroll factor when requested:
+// await unenrollTotpMfa(auth);</code></pre>
+            <button class="btn-copy-code" data-copy="import { getAuth, enrollTotpMfa, verifyTotpMfa, unenrollTotpMfa } from '@syntrabase/client-sdk';">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 7: Client Passkeys -->
+        <div class="doc-block" id="doc-client-passkeys">
+          <div class="doc-badge badge-amber">Client SDK • FIDO2 WebAuthn</div>
+          <h2 class="doc-title">WebAuthn FIDO2 Passkeys</h2>
+          <p>
+            Users can register physical security keys (YubiKey) or platform biometrics (TouchID, FaceID, Windows Hello) for passwordless authentication:
+          </p>
+          <div class="doc-callout callout-warning">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <div>
+              <strong>Phishing-Resistant Architecture:</strong> WebAuthn cryptographic keys are bound to your domain origin and stored in the client hardware's Secure Enclave / TPM.
+            </div>
+          </div>
+          <div class="code-box" data-filename="passkey-service.ts">
+            <pre><code>import { getAuth, createPasskey, verifyPasskeyLogin } from '@syntrabase/client-sdk';
+
+const auth = getAuth(app);
+
+// 1. Register Passkey on current account
+// Triggers native browser navigator.credentials.create() with challenge nonces
+const passkeyResult = await createPasskey(auth);
+console.log('Passkey registered:', passkeyResult.credentialId);
+
+// 2. Passwordless Sign-In via Passkey
+// Triggers native browser navigator.credentials.get()
+const { user } = await verifyPasskeyLogin(auth, { email: 'alice@example.com' });
+console.log('Authenticated passwordless as:', user.email);</code></pre>
+            <button class="btn-copy-code" data-copy="import { getAuth, createPasskey, verifyPasskeyLogin } from '@syntrabase/client-sdk';">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 8: Client Firestore -->
+        <div class="doc-block" id="doc-client-firestore">
+          <div class="doc-badge badge-teal">Client SDK • Document Database</div>
+          <h2 class="doc-title">Firestore Document Database (CRUD)</h2>
+          <p>
+            All document CRUD operations use identical modular v9/v10 syntax. Data is persisted in PostgreSQL 16 JSONB columns with automatic schema indexing:
+          </p>
+          <div class="code-box" data-filename="firestore-crud.ts">
+            <pre><code>import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  addDoc, 
+  setDoc, 
+  getDoc, 
+  updateDoc, 
+  deleteDoc 
+} from '@syntrabase/client-sdk';
+
+const db = getFirestore(app);
+
+// 1. Create document with auto-generated UUID
+const docRef = await addDoc(collection(db, 'notes'), {
+  title: 'Weekly Sprint Planning',
+  author: 'Alice',
+  published: true
+});
+
+// 2. Set or overwrite explicit document
+await setDoc(doc(db, 'notes', 'custom_id_1'), {
+  title: 'Architecture Overview',
+  version: 2
+});
+
+// 3. Read document
+const snapshot = await getDoc(doc(db, 'notes', 'custom_id_1'));
+if (snapshot.exists()) {
+  console.log('Document Data:', snapshot.data());
+}
+
+// 4. Update specific fields
+await updateDoc(doc(db, 'notes', 'custom_id_1'), {
+  version: 3
+});
+
+// 5. Delete document
+await deleteDoc(doc(db, 'notes', 'custom_id_1'));</code></pre>
+            <button class="btn-copy-code" data-copy="import { getFirestore, collection, doc, addDoc, setDoc, getDoc, updateDoc, deleteDoc } from '@syntrabase/client-sdk';">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 9: Client Queries -->
+        <div class="doc-block" id="doc-client-queries">
+          <div class="doc-badge badge-cyan">Client SDK • GIN Index Queries</div>
+          <h2 class="doc-title">Queries & Filtering</h2>
+          <p>
+            Filter and order documents with composable query constraints. Backed by PostgreSQL GIN indexes for sub-millisecond filtering:
+          </p>
+          <div class="code-box" data-filename="queries.ts">
+            <pre><code>import { getFirestore, collection, query, where, orderBy, limit, getDocs } from '@syntrabase/client-sdk';
+
+const db = getFirestore(app);
+
+const q = query(
+  collection(db, 'products'),
+  where('category', '==', 'electronics'),
+  where('price', '<=', 500),
+  orderBy('price', 'desc'),
+  limit(25)
+);
+
+const querySnapshot = await getDocs(q);
+querySnapshot.forEach((doc) => {
+  console.log(doc.id, '=>', doc.data());
+});</code></pre>
+            <button class="btn-copy-code" data-copy="import { getFirestore, collection, query, where, orderBy, limit, getDocs } from '@syntrabase/client-sdk';">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 10: Client Transforms -->
+        <div class="doc-block" id="doc-client-transforms">
+          <div class="doc-badge badge-rose">Client SDK • Field Transforms</div>
+          <h2 class="doc-title">Atomic Field Transforms</h2>
+          <p>
+            Perform atomic in-database calculations without read-before-write race conditions:
+          </p>
+          <div class="code-box" data-filename="transforms.ts">
+            <pre><code>import { 
+  getFirestore, 
+  doc, 
+  updateDoc, 
+  serverTimestamp, 
+  increment, 
+  arrayUnion, 
+  arrayRemove, 
+  deleteField 
+} from '@syntrabase/client-sdk';
+
+const db = getFirestore(app);
+
+await updateDoc(doc(db, 'analytics', 'page_views'), {
+  views: increment(1),                      // Atomic math
+  updatedAt: serverTimestamp(),             // Replaced with authoritative DB ISO timestamp
+  tags: arrayUnion('tech', 'postgresql'),    // Add unique array items
+  deprecatedField: deleteField()             // Purges property from JSONB
+});</code></pre>
+            <button class="btn-copy-code" data-copy="import { getFirestore, doc, updateDoc, serverTimestamp, increment, arrayUnion, arrayRemove, deleteField } from '@syntrabase/client-sdk';">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 11: Client Batch & Transactions -->
+        <div class="doc-block" id="doc-client-batch">
+          <div class="doc-badge badge-orange">Client SDK • ACID Transactions</div>
+          <h2 class="doc-title">Batch Writes & Transactions</h2>
+          <p>
+            Syntrabase brings true PostgreSQL ACID transactional integrity to modular Firestore code. Read-modify-write transactions auto-retry on conflict and roll back cleanly on errors:
+          </p>
+          <div class="code-box" data-filename="transactions.ts">
+            <pre><code>import { 
+  getFirestore, 
+  doc, 
+  runTransaction, 
+  writeBatch, 
+  increment 
+} from '@syntrabase/client-sdk';
+
+const db = getFirestore(app);
+
+// 1. ACID Transaction (E-Commerce Stock Purchase)
+await runTransaction(db, async (txn) => {
+  const productDoc = await txn.get(doc(db, 'inventory', 'laptop_x1'));
+  if (productDoc.data().stock <= 0) {
+    throw new Error('Item out of stock');
+  }
+
+  // Atomically decrement stock and record order
+  txn.update(doc(db, 'inventory', 'laptop_x1'), {
+    stock: increment(-1)
+  });
+  txn.set(doc(db, 'orders', 'order_5502'), {
+    itemId: 'laptop_x1',
+    status: 'paid'
+  });
+});
+
+// 2. Atomic Batch Writes (Up to 500 operations in one roundtrip)
+const batch = writeBatch(db);
+batch.set(doc(db, 'logs', 'log_1'), { event: 'user_login' });
+batch.update(doc(db, 'users', 'user_1'), { lastActive: new Date().toISOString() });
+await batch.commit();</code></pre>
+            <button class="btn-copy-code" data-copy="import { getFirestore, doc, runTransaction, writeBatch, increment } from '@syntrabase/client-sdk';">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 12: Client Realtime -->
+        <div class="doc-block" id="doc-client-realtime">
+          <div class="doc-badge badge-teal">Client SDK • WebSockets</div>
+          <h2 class="doc-title">Realtime WebSockets (onSnapshot)</h2>
+          <p>
+            Stream instantaneous database mutations over persistent WebSocket connections. Handshakes enforce authentication tokens and multi-tenant project isolation:
+          </p>
+          <div class="code-box" data-filename="realtime-stream.ts">
+            <pre><code>import { getFirestore, doc, onSnapshot } from '@syntrabase/client-sdk';
+
+const db = getFirestore(app);
+const liveDocRef = doc(db, 'live_auctions', 'item_101');
+
+// Listen to sub-10ms change events
+const unsubscribe = onSnapshot(liveDocRef, (snapshot) => {
+  const data = snapshot.data();
+  console.log('Instantaneous Bid Update:', data.currentPrice, data.topBidder);
+  renderLiveAuctionPrice(data.currentPrice);
+});
+
+// Cleanly disconnect WebSocket subscription on view unmount
+// unsubscribe();</code></pre>
+            <button class="btn-copy-code" data-copy="import { getFirestore, doc, onSnapshot } from '@syntrabase/client-sdk';">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 13: Client Storage -->
+        <div class="doc-block" id="doc-client-storage">
+          <div class="doc-badge badge-amber">Client SDK • Object Storage</div>
+          <h2 class="doc-title">Storage & Signed Download URLs</h2>
+          <p>
+            Secure object storage backed by standard cloud buckets or local disk volumes. Access is protected by HMAC-SHA256 signed download tokens and path traversal guards:
+          </p>
+          <div class="code-box" data-filename="storage-service.ts">
+            <pre><code>import { getStorage, ref, uploadBytes, getDownloadURL } from '@syntrabase/client-sdk';
+
+const storage = getStorage(app);
+const avatarRef = ref(storage, 'avatars/user_42.png');
+
+// 1. Upload File with Quota & Content-Type Enforcement
+const fileBlob = new Blob(['avatar_image_bytes'], { type: 'image/png' });
+const uploadResult = await uploadBytes(avatarRef, fileBlob);
+console.log('Uploaded size:', uploadResult.size, 'bytes');
+
+// 2. Generate HMAC-Signed Download URL (Expires in 3600 seconds)
+const downloadUrl = await getDownloadURL(avatarRef);
+console.log('Signed download URL:', downloadUrl);</code></pre>
+            <button class="btn-copy-code" data-copy="import { getStorage, ref, uploadBytes, getDownloadURL } from '@syntrabase/client-sdk';">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 14: Admin Init -->
+        <div class="doc-block" id="doc-admin-init">
+          <div class="doc-badge badge-crimson">Admin SDK • Privileged</div>
+          <h2 class="doc-title">Privileged Initialization (Server Only)</h2>
+          <p>
+            The Admin SDK is strictly designed for Node.js environments. It uses a privileged <code>sk_live_...</code> secret key and bypasses client security rules:
+          </p>
+          <div class="code-box" data-filename="admin-app.ts">
+            <pre><code>import { initializeAdminApp } from '@syntrabase/admin-sdk';
+
+export const adminApp = initializeAdminApp({
+  apiUrl: process.env.SYNTRABASE_API_URL || 'https://api.yourdomain.com',
+  projectId: 'saas-production-app',
+  secretKey: process.env.SYNTRABASE_SECRET_KEY // sk_live_...
+});</code></pre>
+            <button class="btn-copy-code" data-copy="import { initializeAdminApp } from '@syntrabase/admin-sdk';">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 15: Admin Users -->
+        <div class="doc-block" id="doc-admin-users">
+          <div class="doc-badge badge-violet">Admin SDK • Identity</div>
+          <h2 class="doc-title">User Management & Claims</h2>
+          <p>
+            Manage users, assign custom claims for Role-Based Access Control (RBAC), and programmatically revoke user sessions across all devices:
+          </p>
+          <div class="code-box" data-filename="admin-users.ts">
+            <pre><code>import { getAdminAuth } from '@syntrabase/admin-sdk';
+
+const adminAuth = getAdminAuth(adminApp);
+
+// 1. Assign Enterprise Role & Custom Claims
+await adminAuth.setCustomUserClaims('user_123', {
+  role: 'super_admin',
+  organizationId: 'org_enterprise_42',
+  canAccessBilling: true
+});
+
+// 2. Fetch User Record
+const userRecord = await adminAuth.getUser('user_123');
+console.log('User Claims:', userRecord.customClaims);
+
+// 3. Immediately Revoke All Active Sessions
+await adminAuth.revokeAllUserSessions('user_123');</code></pre>
+            <button class="btn-copy-code" data-copy="import { getAdminAuth } from '@syntrabase/admin-sdk';">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 16: Admin Actions -->
+        <div class="doc-block" id="doc-admin-actions">
+          <div class="doc-badge badge-rose">Admin SDK • Security Gating</div>
+          <h2 class="doc-title">User Actions & Gating Policy</h2>
+          <p>
+            Programmatically configure enterprise user action policies to prevent account enumeration, spam registrations, and self-deletion:
+          </p>
+          <div class="code-box" data-filename="admin-policies.ts">
+            <pre><code>import { getAdminAuth } from '@syntrabase/admin-sdk';
+
+const adminAuth = getAdminAuth(adminApp);
+
+// Configure User Action Security Policies
+await adminAuth.setUserActions({
+  emailEnumerationProtection: true, // Returns identical timing responses for existing vs non-existing emails
+  enableCreate: true,                // Allow public end-user sign-ups
+  enableDelete: false                // Disallow end-users from self-deleting accounts
+});</code></pre>
+            <button class="btn-copy-code" data-copy="import { getAdminAuth } from '@syntrabase/admin-sdk';">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 17: Admin MFA -->
+        <div class="doc-block" id="doc-admin-mfa">
+          <div class="doc-badge badge-emerald">Admin SDK • MFA Policy</div>
+          <h2 class="doc-title">Project MFA & Factor Admin</h2>
+          <p>
+            Configure organization-wide two-factor enforcement policies and specify authorized MFA factors:
+          </p>
+          <div class="code-box" data-filename="mfa-policy.ts">
+            <pre><code>import { getAdminAuth } from '@syntrabase/admin-sdk';
+
+const adminAuth = getAdminAuth(adminApp);
+
+// Enforce Organization-Wide MFA Requirements
+await adminAuth.setMfaPolicy({
+  state: 'enforced',                 // 'enforced' | 'optional' | 'disabled'
+  enforceAllUsers: true,             // Requires all members to enroll before granting tokens
+  allowedFactors: ['totp', 'passkey']
+});</code></pre>
+            <button class="btn-copy-code" data-copy="import { getAdminAuth } from '@syntrabase/admin-sdk';">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 18: Admin Audit -->
+        <div class="doc-block" id="doc-admin-audit">
+          <div class="doc-badge badge-cyan">Admin SDK • Audit Ledger</div>
+          <h2 class="doc-title">Cryptographic Audit Ledger</h2>
+          <p>
+            Syntrabase records all privileged administrative operations into an immutable, append-only HMAC-SHA256 ledger. Any attempt to modify audit rows invalidates the cryptographic hash chain:
+          </p>
+          <div class="doc-callout callout-security">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <div>
+              <strong>Compliance Ready:</strong> Built-in tamper detection verifies ledger cryptographic validity for SOC 2, HIPAA, and ISO 27001 compliance standards.
+            </div>
+          </div>
+          <div class="code-box" data-filename="audit-verify.ts">
+            <pre><code>import { getAdminAudit } from '@syntrabase/admin-sdk';
+
+const audit = getAdminAudit(adminApp);
+
+// Cryptographically verify entire audit ledger hash chain
+const status = await audit.verifyLedger();
+console.log('Audit Integrity Verified:', status.valid, 'Total Records:', status.count);</code></pre>
+            <button class="btn-copy-code" data-copy="import { getAdminAudit } from '@syntrabase/admin-sdk';">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 19: Admin Guardrail -->
+        <div class="doc-block" id="doc-admin-guardrail">
+          <div class="doc-badge badge-fuchsia">Security Guardrail</div>
+          <h2 class="doc-title">Browser Runtime Safety Guardrail</h2>
+          <p>
+            To prevent developers from accidentally bundling server master secrets (<code>sk_live_...</code>) into browser client bundles, <code>@syntrabase/admin-sdk</code> includes an active runtime environment check:
+          </p>
+          <div class="code-box" data-filename="packages/admin-sdk/src/app.ts">
+            <pre><code>// Active browser guardrail (Packages/admin-sdk)
+if (typeof window !== 'undefined' || typeof document !== 'undefined') {
+  throw new Error(
+    '[@syntrabase/admin-sdk] FATAL: Admin SDK cannot be executed in browser environments. ' +
+    'Use @syntrabase/client-sdk with publishable keys (pk_live_...) for client-side applications.'
+  );
+}</code></pre>
+            <button class="btn-copy-code" data-copy="// Active browser guardrail
+if (typeof window !== 'undefined' || typeof document !== 'undefined') {
+  throw new Error('[@syntrabase/admin-sdk] FATAL: Admin SDK cannot be executed in browser environments.');
+}">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 20: Testing Bench -->
+        <div class="doc-block" id="doc-testing">
+          <div class="doc-badge badge-blue">Quality Assurance • Gates</div>
+          <h2 class="doc-title">Automated Test Bench & Gates</h2>
+          <p>
+            All Syntrabase packages and services are covered by strict automated regression suites using native Node.js test runners (zero extra test dependencies):
+          </p>
+          <div class="code-box" data-filename="terminal.sh">
+            <pre><code># Run unit, integration, and security suites
+npm run test
+
+# Run isolated client bundle browser guardrail checks
+npm run test:security --workspace=@syntrabase/client-sdk
+
+# Run privileged admin SDK test runner
+npm run test:unit --workspace=@syntrabase/admin-sdk</code></pre>
+            <button class="btn-copy-code" data-copy="npm run test
+npm run test:security --workspace=@syntrabase/client-sdk
+npm run test:unit --workspace=@syntrabase/admin-sdk">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 21: Release Readiness -->
+        <div class="doc-block" id="doc-release">
+          <div class="doc-badge badge-emerald">Release Verification</div>
+          <h2 class="doc-title">Release & Staging Readiness (v1.2.0)</h2>
+          <p>
+            Syntrabase v1.2.0 is fully verified for production deployments. Run the database migration script to apply updated schema definitions:
+          </p>
+          <div class="code-box" data-filename="terminal.sh">
+            <pre><code># Run PostgreSQL 16 schema migrations
+npm run db:migrate --workspace=apps/api
+
+# Verify system health endpoint
+curl -f http://localhost:4000/api/v1/health</code></pre>
+            <button class="btn-copy-code" data-copy="npm run db:migrate --workspace=apps/api
+curl -f http://localhost:4000/api/v1/health">Copy</button>
+          </div>
+        </div>
+
+      </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================================================================= -->
+  <!-- SECTION 3: INTERACTIVE STUDIO & AUTOMATED TEST BENCH                      -->
+  <!-- ========================================================================= -->
+  <section id="section-studio" class="page-section">
+    <div class="app-container">
+      
+      <!-- Studio Intro Header -->
+      <div class="studio-header glass-card">
+        <div>
+          <h2>Syntrabase SDK Studio & Test Bench</h2>
+          <p>Execute live automated regression tests or interactively verify Client & Admin SDK operations in real-time.</p>
+        </div>
+        <div class="header-status">
+          <div class="status-indicator online" id="status-pill" title="Syntrabase SDK Connection Status">
+            <span class="status-dot"></span>
+            <span id="sdk-status-text">Client SDK v1.2.0 Ready</span>
+          </div>
+          <div class="auth-pill" id="current-user-pill">
+            <span class="user-avatar" id="header-avatar">?</span>
+            <span class="user-email" id="header-user-email">Unauthenticated</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Global Connection Config Bar -->
+      <div class="config-bar glass-card">
+        <div class="config-group">
+          <label for="cfg-api-url">API Gateway URL</label>
+          <input type="text" id="cfg-api-url" value="http://localhost:4000">
+        </div>
+        <div class="config-group">
+          <label for="cfg-project-id">Target Project Slug / ID</label>
+          <input type="text" id="cfg-project-id" value="default-project">
+        </div>
+        <div class="config-group">
+          <label for="cfg-api-key">Publishable API Key</label>
+          <input type="text" id="cfg-api-key" value="pk_live_syntrabase_demo_key_12345">
+        </div>
+        <div class="config-group">
+          <label for="cfg-env-id">Environment</label>
+          <select id="cfg-env-id">
+            <option value="default" selected>default</option>
+            <option value="development">development</option>
+            <option value="staging">staging</option>
+            <option value="production">production</option>
+          </select>
+        </div>
+        <button id="btn-reinit-sdk" class="btn btn-secondary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          Re-initialize SDK
+        </button>
+      </div>
+
+      <!-- Studio Layout: Left Test/Playground Pane + Right Terminal -->
+      <div class="main-layout">
+        
+        <!-- Left Pane -->
+        <div class="feature-pane">
+          
+          <!-- Navigation Tabs -->
+          <nav class="feature-nav glass-card">
+            <button class="nav-tab active" data-tab="tab-automated">🧪 1-Click Client Suite</button>
+            <button class="nav-tab" data-tab="tab-admin">⚡ Admin SDK Suite</button>
+            <button class="nav-tab" data-tab="tab-auth">🔐 Auth Playground</button>
+            <button class="nav-tab" data-tab="tab-firestore">🗄️ Firestore Playground</button>
+            <button class="nav-tab" data-tab="tab-realtime">⚡ Realtime onSnapshot</button>
+            <button class="nav-tab" data-tab="tab-storage">📦 Storage Playground</button>
+          </nav>
+
+          <!-- Tab 1: Automated Client Test Suite -->
+          <section id="tab-automated" class="tab-content active glass-card">
+            <div class="tab-header">
+              <div>
+                <h3>Client SDK 1-Click Automated Verification</h3>
+                <p>Sequentially runs 10 deep verification steps testing Auth, CRUD, Transforms, Batch, Transactions, MFA & Storage.</p>
+              </div>
+              <button id="btn-run-all-tests" class="btn btn-primary pulse-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Run 10-Step Client Suite
+              </button>
+            </div>
+
+            <div class="test-progress-bar-wrap">
+              <div id="test-progress-bar" class="test-progress-bar" style="width: 0%"></div>
+            </div>
+
+            <div class="test-suite-list" id="auto-test-list">
+              <!-- Dynamically populated test cards -->
+            </div>
+          </section>
+
+          <!-- Tab 2: Admin SDK Privileged Verification -->
+          <section id="tab-admin" class="tab-content glass-card">
+            <div class="tab-header">
+              <div>
+                <h3>Admin SDK Privileged Verification Suite</h3>
+                <p>Validates privileged server execution with <code>sk_live_...</code> master secret key, audit ledger, and browser guardrails.</p>
+              </div>
+              <button id="btn-run-admin-tests" class="btn btn-primary pulse-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Run Admin SDK Suite
+              </button>
+            </div>
+
+            <div class="test-progress-bar-wrap">
+              <div id="admin-test-progress-bar" class="test-progress-bar" style="width: 0%"></div>
+            </div>
+
+            <div class="test-suite-list" id="admin-test-list">
+              <!-- Dynamically populated admin test cards -->
+            </div>
+          </section>
+
+          <!-- Tab 3: Auth Playground -->
+          <section id="tab-auth" class="tab-content glass-card">
+            <div class="tab-header">
+              <h3>Authentication & MFA Playground</h3>
+              <p>Test registration, login, anonymous auth, TOTP visual QR code enrollment, and WebAuthn passkeys.</p>
+            </div>
+
+            <div class="form-grid">
+              <div class="input-field">
+                <label for="auth-email">Email Address</label>
+                <input type="email" id="auth-email" value="tester@example.com">
+              </div>
+              <div class="input-field">
+                <label for="auth-password">Password</label>
+                <input type="password" id="auth-password" value="SyntrabasePass123!">
+              </div>
+            </div>
+
+            <div class="button-wrap">
+              <button id="btn-auth-signup" class="btn btn-primary">Sign Up</button>
+              <button id="btn-auth-signin" class="btn btn-secondary">Sign In</button>
+              <button id="btn-auth-anonymous" class="btn btn-outline">Anonymous Sign In</button>
+              <button id="btn-auth-signout" class="btn btn-danger">Sign Out</button>
+            </div>
+
+            <div class="divider"></div>
+
+            <h4>MFA, WebAuthn & Recovery</h4>
+            <div class="button-wrap">
+              <button id="btn-auth-mfa-enroll" class="btn btn-outline">Enroll TOTP MFA (Generate QR)</button>
+              <button id="btn-auth-passkey-register" class="btn btn-outline">Register WebAuthn Passkey</button>
+              <button id="btn-auth-send-reset" class="btn btn-outline">Send Password Reset</button>
+            </div>
+
+            <!-- Visual QR Code Container -->
+            <div id="mfa-qr-container" style="display: none; margin-top: 16px; padding: 16px; background: rgba(0,0,0,0.3); border-radius: 8px;">
+              <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">Scan this QR code in Google Authenticator, 1Password, or Authy:</p>
+              <img id="mfa-qr-image" src="" alt="TOTP QR Code" width="160" height="160" style="border-radius: 6px; background: white; padding: 6px;" />
+              <p id="mfa-secret-text" style="font-family: var(--font-mono); font-size: 12px; margin-top: 6px; color: #38bdf8;"></p>
+            </div>
+
+            <div class="inline-action-row" id="mfa-verify-row" style="display: none; margin-top: 12px;">
+              <input type="text" id="mfa-token-input" placeholder="Enter 6-digit TOTP code" maxlength="6">
+              <button id="btn-auth-mfa-verify" class="btn btn-primary">Verify TOTP Code</button>
+            </div>
+          </section>
+
+          <!-- Tab 4: Firestore Playground -->
+          <section id="tab-firestore" class="tab-content glass-card">
+            <div class="tab-header">
+              <h3>Firestore Document & Query Playground</h3>
+              <p>Test modular v9/v10 CRUD, queries, atomic field transforms, write batch, and transactions.</p>
+            </div>
+
+            <div class="form-grid">
+              <div class="input-field">
+                <label for="fs-collection">Collection Path</label>
+                <input type="text" id="fs-collection" value="notes">
+              </div>
+              <div class="input-field">
+                <label for="fs-doc-id">Document ID (optional)</label>
+                <input type="text" id="fs-doc-id" placeholder="auto-generated or note_1">
+              </div>
+            </div>
+
+            <div class="input-field">
+              <label for="fs-data-payload">Document JSON Data</label>
+              <textarea id="fs-data-payload" rows="4">{
+  "title": "Syntrabase Architecture Note",
+  "priority": 1,
+  "tags": ["cloud", "database", "fastify"],
+  "likes": 10
+}</textarea>
+            </div>
+
+            <div class="button-wrap">
+              <button id="btn-fs-add" class="btn btn-primary">addDoc (Auto-ID)</button>
+              <button id="btn-fs-set" class="btn btn-secondary">setDoc</button>
+              <button id="btn-fs-get" class="btn btn-outline">getDoc</button>
+              <button id="btn-fs-update" class="btn btn-outline">updateDoc</button>
+              <button id="btn-fs-delete" class="btn btn-danger">deleteDoc</button>
+            </div>
+
+            <div class="divider"></div>
+
+            <h4>Advanced Capabilities</h4>
+            <div class="button-wrap">
+              <button id="btn-fs-query" class="btn btn-outline">Query (where + limit)</button>
+              <button id="btn-fs-batch" class="btn btn-outline">WriteBatch (3 Atomic Ops)</button>
+              <button id="btn-fs-transaction" class="btn btn-outline">runTransaction (Atomic Math)</button>
+              <button id="btn-fs-transforms" class="btn btn-outline">Transforms (serverTimestamp + increment)</button>
+            </div>
+          </section>
+
+          <!-- Tab 5: Realtime Playground -->
+          <section id="tab-realtime" class="tab-content glass-card">
+            <div class="tab-header">
+              <h3>Realtime WebSocket Listener (onSnapshot)</h3>
+              <p>Establish real-time WebSocket subscription to instantly receive document update broadcasts.</p>
+            </div>
+
+            <div class="form-grid">
+              <div class="input-field">
+                <label for="rt-path">Target Document / Collection Path</label>
+                <input type="text" id="rt-path" value="live_feed/broadcast_doc">
+              </div>
+            </div>
+
+            <div class="button-wrap">
+              <button id="btn-rt-subscribe" class="btn btn-primary">Start onSnapshot Listener</button>
+              <button id="btn-rt-unsubscribe" class="btn btn-secondary" disabled>Unsubscribe Listener</button>
+              <button id="btn-rt-trigger-update" class="btn btn-outline">Trigger Remote Change</button>
+            </div>
+
+            <div class="realtime-status-card" id="rt-live-box">
+              <div class="live-pulse"></div>
+              <div>
+                <strong>Listener Status:</strong> <span id="rt-listener-status">Idle (Not Connected)</span>
+                <p id="rt-last-payload" style="margin-top: 6px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-muted);">Awaiting subscription...</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- Tab 6: Storage Playground -->
+          <section id="tab-storage" class="tab-content glass-card">
+            <div class="tab-header">
+              <h3>Storage Object Playground</h3>
+              <p>Test isomorphic uploadBytes with File / Blob, getDownloadURL signed tokens, listAll, and deleteObject.</p>
+            </div>
+
+            <div class="form-grid">
+              <div class="input-field">
+                <label for="st-file-input">Choose Local File</label>
+                <input type="file" id="st-file-input">
+              </div>
+              <div class="input-field">
+                <label for="st-object-path">Remote Storage Path</label>
+                <input type="text" id="st-object-path" value="uploads/sample_upload.txt">
+              </div>
+            </div>
+
+            <div class="button-wrap">
+              <button id="btn-st-upload" class="btn btn-primary">uploadBytes</button>
+              <button id="btn-st-download-url" class="btn btn-secondary">getDownloadURL</button>
+              <button id="btn-st-list" class="btn btn-outline">listAll Objects</button>
+              <button id="btn-st-delete" class="btn btn-danger">deleteObject</button>
+            </div>
+
+            <div id="storage-preview-container" style="display: none; margin-top: 16px;" class="preview-box">
+              <strong>Signed Download Preview:</strong>
+              <a id="storage-preview-link" href="#" target="_blank" rel="noopener">Open Signed URL</a>
+            </div>
+          </section>
+
+        </div>
+
+        <!-- Right Terminal Console -->
+        <div class="terminal-pane glass-card">
+          <div class="terminal-header">
+            <div class="terminal-dots">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+            </div>
+            <div class="terminal-title-row">
+              <span class="terminal-title">SYNTRABASE LIVE STREAM</span>
+              <span class="terminal-badge" id="terminal-event-badge">● Live</span>
+            </div>
+            <div class="terminal-actions">
+              <button id="btn-copy-terminal" class="btn-icon" title="Copy Log Stream">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              </button>
+              <button id="btn-clear-terminal" class="btn-icon" title="Clear Logs">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="terminal-body" id="terminal-output">
+            <div class="log-line info"><span class="log-tag">[INIT]</span> Syntrabase Client SDK Studio loaded. Ready to test.</div>
+          </div>
+          <div class="terminal-footer">
+            <span id="terminal-footer-status">● Gateway: http://localhost:4000</span>
+            <span id="terminal-log-counter">1 Log Entry</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ========================================================================= -->
+  <!-- SECTION 4: ARCHITECTURE & COMPARISON                                      -->
+  <!-- ========================================================================= -->
+  <section id="section-architecture" class="page-section">
+    <div class="app-container">
+      <div class="section-heading text-center">
+        <h2 class="section-title">Syntrabase vs Google Firebase vs Supabase</h2>
+        <p class="section-subtitle">Architectural comparison showing why developers choose Syntrabase for production sovereign control.</p>
+      </div>
+
+      <div class="comparison-table-wrap glass-card">
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th>Feature Capability</th>
+              <th>Google Firebase</th>
+              <th>Supabase</th>
+              <th>Syntrabase</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Database Engine</strong></td>
+              <td>Proprietary Google NoSQL</td>
+              <td>PostgreSQL (Row-oriented)</td>
+              <td><span class="badge-success">PostgreSQL 16 JSONB + GIN</span></td>
+            </tr>
+            <tr>
+              <td><strong>Firebase v9/v10 API Compatibility</strong></td>
+              <td>Native (Vendor-Locked)</td>
+              <td>No (Requires rewriting to supabase-js)</td>
+              <td><span class="badge-success">100% Drop-In Compatible</span></td>
+            </tr>
+            <tr>
+              <td><strong>Self-Hosting & Independence</strong></td>
+              <td>Impossible (Google Cloud Only)</td>
+              <td>Complex (30+ microservices)</td>
+              <td><span class="badge-success">1-Click Coolify / Single Docker</span></td>
+            </tr>
+            <tr>
+              <td><strong>Pricing Model</strong></td>
+              <td>Uncapped Pay-Per-Read / Write</td>
+              <td>Tiered + Egress Overages</td>
+              <td><span class="badge-success">Fixed $5/mo VPS (Unlimited Reads)</span></td>
+            </tr>
+            <tr>
+              <td><strong>FIDO2 WebAuthn Passkeys</strong></td>
+              <td>Paid Google Identity add-on</td>
+              <td>Enterprise Tier</td>
+              <td><span class="badge-success">Native Built-In (SimpleWebAuthn)</span></td>
+            </tr>
+            <tr>
+              <td><strong>Visual TOTP MFA QR Codes</strong></td>
+              <td>SMS / Cloud Add-ons</td>
+              <td>Limited</td>
+              <td><span class="badge-success">Native Base64 Data URI QR Codes</span></td>
+            </tr>
+            <tr>
+              <td><strong>Email Infrastructure</strong></td>
+              <td>Cloud Functions needed</td>
+              <td>Basic SMTP</td>
+              <td><span class="badge-success">Built-in Brevo HTTPS + DNS Verification</span></td>
+            </tr>
+            <tr>
+              <td><strong>Cryptographic Audit Ledger</strong></td>
+              <td>Paid Cloud Audit Logging</td>
+              <td>No built-in chain</td>
+              <td><span class="badge-success">Tamper-Evident HMAC Forward Chain</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Global Footer -->
+  <footer class="app-footer glass-card">
+    <div class="app-container footer-inner">
+      <div class="footer-brand">
+        <div class="logo-area">
+          <div class="logo-badge">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </div>
+          <div>
+            <strong style="font-size: 16px;">Syntrabase</strong>
+            <p style="font-size: 12px; color: var(--text-muted);">The Open-Source Firebase Alternative</p>
+          </div>
+        </div>
+        <p class="footer-desc">
+          Architected for sovereign developers, high-scale applications, and pre-production release confidence. Released under the MIT License.
+        </p>
+      </div>
+
+      <div class="footer-links">
+        <div class="link-column">
+          <h4>Navigation</h4>
+          <a href="#overview">Overview</a>
+          <a href="#docs">Documentation</a>
+          <a href="#studio">Interactive Studio</a>
+          <a href="#architecture">Architecture</a>
+        </div>
+        <div class="link-column">
+          <h4>Open Source</h4>
+          <a href="https://github.com/Animeki004/Syntrabase" target="_blank" rel="noopener noreferrer">GitHub Repository</a>
+          <a href="https://github.com/Animeki004/Syntrabase/issues" target="_blank" rel="noopener noreferrer">Issue Tracker</a>
+          <a href="https://github.com/Animeki004/Syntrabase/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>
+        </div>
+        <div class="link-column">
+          <h4>Packages</h4>
+          <a href="#doc-install">@syntrabase/client-sdk</a>
+          <a href="#doc-admin-init">@syntrabase/admin-sdk</a>
+          <a href="#doc-testing">Automated Verification</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 Syntrabase Project. Built with PostgreSQL 16 JSONB, Fastify & TypeScript.</p>
+    </div>
+  </footer>
+
+  <script src="qrcode.min.js"></script>
+  <script type="module" src="app.js?v=1.2.0"></script>
+</body>
+</html>

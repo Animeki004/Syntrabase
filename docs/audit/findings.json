@@ -370,5 +370,65 @@
     "rootCause": "Missing developer authentication middleware on rules simulation route and unbounded sourceCode schema definition.",
     "remediation": "Enforced AuthService.requireProjectAccess(req, projectId) in production and staging, and bounded SimulateRuleSchema.sourceCode to 100KB.",
     "verification": "VERIFIED (security-assessment-verification.test.ts 100/100 passed: HTTP 401 returned)"
+  },
+  {
+    "id": "SYN-P6-001",
+    "title": "MFA Challenge Token Secret Key Divergence and Malformed JWT Error",
+    "severity": "HIGH",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/services/mfa.service.ts",
+    "status": "REMEDIATED",
+    "description": "MfaService signed challenge tokens with an optional or mismatched config key (config.mfa?.jwtSecret) while AuthService verified incoming challenge tokens using canonical config.jwt.secret, causing valid MFA challenges to fail verification with 'jwt malformed' or 'invalid signature'.",
+    "rootCause": "Inconsistent configuration references between MfaService and AuthService for MFA temporary challenge JWTs.",
+    "remediation": "Unified signing and verification across MfaService and AuthService to strictly utilize config.jwt.secret with single-use session nonces.",
+    "verification": "VERIFIED (user-actions-and-mfa-security.test.ts 110/110 passed)"
+  },
+  {
+    "id": "SYN-P6-002",
+    "title": "MFA Primary Credentials Verification Step-Up Token Leak Risk",
+    "severity": "CRITICAL",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/services/auth.service.ts:462-488",
+    "status": "REMEDIATED",
+    "description": "Primary password login previously returned fully authenticated access and refresh tokens without intercepting user TOTP/passkey enrollment or project-level MFA enforcement policies, allowing attackers with compromised passwords to bypass second factors.",
+    "rootCause": "Missing server-side step-up authentication interceptor during primary credential verification.",
+    "remediation": "Implemented step-up interceptor in AuthService.loginWithEmail: if user or project mandates MFA, primary login strictly withholds access tokens and returns { mfaRequired: true, mfaToken: ... } requiring TOTP or passkey validation to exchange for tokens.",
+    "verification": "VERIFIED (user-actions-and-mfa-security.test.ts: Subtest 'MFA Gating' passed 100%)"
+  },
+  {
+    "id": "SYN-P6-003",
+    "title": "WebAuthn Passkey Challenge Replay and Nonce Scope Isolation",
+    "severity": "HIGH",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/services/webauthn.service.ts",
+    "status": "REMEDIATED",
+    "description": "WebAuthn passkey registration and authentication challenges lacked database-backed single-use nonce tracking and origin binding, introducing risks of replay attacks or cross-origin challenge harvesting.",
+    "rootCause": "Absence of a dedicated challenge tracking ledger with TTL and consumption burning.",
+    "remediation": "Implemented WebAuthnService using SimpleWebAuthn with 32-byte cryptographically secure nonces recorded in app_user_passkeys_challenges with 5-minute TTL, immediate post-verification deletion, and strict WEBAUTHN_RP_ID / WEBAUTHN_ORIGINS validation.",
+    "verification": "VERIFIED (user-actions-and-mfa-security.test.ts: Subtest 'WebAuthn Engine' passed 100%)"
+  },
+  {
+    "id": "SYN-P6-004",
+    "title": "Super Admin Custom Sender Domains UI Card Choking (Flex Shrink Bug)",
+    "severity": "MEDIUM",
+    "confidence": "CONFIRMED",
+    "component": "apps/super-admin/src/app/email/page.tsx:501-525",
+    "status": "REMEDIATED",
+    "description": "Rendering hundreds of custom sender domain cards inside a constrained height container with CSS flex-direction: column caused Flexbox default flex-shrink: 1 to compress domain cards down to ~15px slivers, breaking visibility of status badges, DNS record tables, and action buttons.",
+    "rootCause": "Unspecified flex-shrink property inside constrained scroll container with flexbox layout.",
+    "remediation": "Applied flexShrink: 0 and explicit minHeight: '68px' to <Card> and inner row elements, ensuring full readability and expanding DNS accordion tables seamlessly regardless of card count.",
+    "verification": "VERIFIED (Live browser inspection at http://localhost:3001/email?tab=domains confirmed full 74px card height with verified screenshot artifacts)"
+  },
+  {
+    "id": "SYN-P6-005",
+    "title": "Client SDK Privilege Boundary and Server Secret Exclusion",
+    "severity": "CRITICAL",
+    "confidence": "CONFIRMED",
+    "component": "packages/client-sdk/src/auth.ts, packages/admin-sdk/src/auth.ts",
+    "status": "REMEDIATED",
+    "description": "Risk of client-facing SDK bundle exporting administrative capabilities or bundling server secrets into public browser bundles, and admin SDK running in untrusted browser contexts.",
+    "rootCause": "Lack of architectural separation and runtime environment guardrails across SDK packages.",
+    "remediation": "Enforced strict segregation: @syntrabase/client-sdk exports only public client operations (MFA verification, passkeys, sessions, password reset); @syntrabase/admin-sdk includes runtime browser guardrail throwing fatal error if initialized inside a browser window. Added automated AST and export security tests.",
+    "verification": "VERIFIED (client-bundle.test.ts 4/4 passed; admin-sdk.test.ts 5/5 passed with browser guardrail validation)"
   }
 ]

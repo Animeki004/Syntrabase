@@ -55,6 +55,18 @@ The system enforces six explicit trust boundaries:
 | `POST` | `/api/v1/projects/:id/auth/verify-email`| Action Token | Single-use | End-user email verification |
 | `POST` | `/api/v1/projects/:id/auth/forgot-password` | Constant-Time | Rate limited | End-user password reset dispatch |
 | `POST` | `/api/v1/projects/:id/auth/reset-password` | Action Token | Single-use | End-user password reset execution |
+| `POST` | `/api/v1/projects/:id/auth/mfa/totp/setup` | User Access Token | Yes | Generate TOTP secret and QR code URI |
+| `POST` | `/api/v1/projects/:id/auth/mfa/totp/verify` | Challenge Token / User Token | Single-use nonce | Verify TOTP code, enroll factor, issue recovery codes |
+| `POST` | `/api/v1/projects/:id/auth/mfa/totp/challenge` | Challenge Token | Rate limited | Request TOTP second-factor challenge |
+| `GET` | `/api/v1/projects/:id/auth/mfa/factors` | User Access Token | Scoped | List enrolled MFA factors |
+| `DELETE` | `/api/v1/projects/:id/auth/mfa/factors/:factorId` | User Access Token | Audit logged | Delete enrolled MFA factor |
+| `POST` | `/api/v1/projects/:id/auth/passkeys/register-options` | User Access Token | 5-min TTL nonce | Generate WebAuthn passkey registration options |
+| `POST` | `/api/v1/projects/:id/auth/passkeys/register-verify` | User Access Token | Single-use burn | Verify WebAuthn attestation & persist credential |
+| `POST` | `/api/v1/projects/:id/auth/passkeys/auth-options` | Email / Context | 5-min TTL nonce | Generate WebAuthn authentication assertion options |
+| `POST` | `/api/v1/projects/:id/auth/passkeys/auth-verify` | Challenge Token | Single-use burn | Verify WebAuthn signature assertion & issue tokens |
+| `GET` | `/api/v1/projects/:id/auth/sessions` | User Access Token | Scoped | Enumerate active user device sessions |
+| `DELETE` | `/api/v1/projects/:id/auth/sessions/:sessionId` | User Access Token | Immediate invalidation | Revoke specific device session |
+| `PATCH` | `/api/v1/projects/:id/auth/users/:userId/actions` | Project Developer | Audit logged | Configure enableCreate and enableDelete user actions |
 
 ### 2.2 Document Database & Rules Engine
 | HTTP Method | Route | Authorization Required | Verification Control |

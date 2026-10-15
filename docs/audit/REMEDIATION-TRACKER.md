@@ -73,7 +73,19 @@
 
 ---
 
-## 6. Test Suite Alignment & Assertion Fixes
+## 6. Phase 6 Remediation Track (MFA, WebAuthn, SDK Parity & UI Integrity)
+
+| ID | Title | Severity | CVSS | Component | Root Cause | Exploit Mechanics / Verification | Fix Implemented | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **SYN-P6-001** | MFA Challenge Secret Key Divergence | **HIGH** | 7.5 | `apps/api/src/services/mfa.service.ts` | Secret key mismatch between challenge generation (`mfa.jwtSecret`) and verification (`jwt.secret`). | Valid TOTP challenge tokens failed verification with `jwt malformed` / `invalid signature`. | Unified token signing and verification to canonical `config.jwt.secret`. | **REMEDIATED & VERIFIED** |
+| **SYN-P6-002** | MFA Primary Credentials Step-Up Token Leak Risk | **CRITICAL** | 9.1 | `apps/api/src/services/auth.service.ts:462-488` | Primary login issued full session tokens even when user or project required MFA. | Attacker with victim password directly acquired session tokens bypassing 2FA. | Intercepted primary credentials verification: withholds tokens and returns `{ mfaRequired: true, mfaToken: ... }`. | **REMEDIATED & VERIFIED** |
+| **SYN-P6-003** | WebAuthn Passkey Challenge Replay & Nonce Isolation | **HIGH** | 7.8 | `apps/api/src/services/webauthn.service.ts` | Challenges were ephemeral in-memory objects lacking DB TTL tracking or single-use burning. | Potential replay or cross-tenant challenge confusion. | Implemented 32-byte nonces in `app_user_passkeys_challenges` table with 5-minute TTL, single-use burn, and origin verification. | **REMEDIATED & VERIFIED** |
+| **SYN-P6-004** | Super Admin Custom Sender Domains UI Card Choking | **MEDIUM** | 4.5 | `apps/super-admin/src/app/email/page.tsx:501-525` | Default `flex-shrink: 1` inside fixed-height flex container squished hundreds of cards down to ~15px slivers. | Admin unable to view domain names, status badges, DNS tables, or action buttons. | Added `flexShrink: 0`, explicit `minHeight: '68px'`, and decoupled scrolling layout. Live Chrome verified. | **REMEDIATED & VERIFIED** |
+| **SYN-P6-005** | Client SDK Privilege Boundary & Secret Leakage Guardrail | **CRITICAL** | 9.0 | `packages/client-sdk/src/auth.ts`, `packages/admin-sdk/src/auth.ts` | Risk of client bundle leaking privileged symbols and admin SDK running in browser contexts. | Client applications could accidentally bundle administrative API routes; admin credentials exposed in client bundles. | Segregated client SDK to client-only operations; added runtime guardrail in admin SDK throwing fatal error if loaded in browser `window`. Verified by automated test suites. | **REMEDIATED & VERIFIED** |
+
+---
+
+## 7. Test Suite Alignment & Assertion Fixes
 
 | ID | Title | Category | Component | Description & Remediation | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -81,12 +93,14 @@
 | **TEST-002** | Defense simulation case sensitivity | Test Defect | `apps/api/src/test/api-integration.test.ts:115` | Assertion checked for lowercase `'throttled'`. Updated to case-insensitive match for `'throttle'`. | **VERIFIED FIXED** |
 | **TEST-003** | Domain registration rejection regex | Test Defect | `apps/api/src/test/brevo-email-and-contact.test.ts:153` | Assertion expected literal `for this project`. Updated regex to `/Selected domain is not registered for/`. | **VERIFIED FIXED** |
 | **TEST-004** | Project database developer authentication | Test Defect | `apps/api/src/test/project-database.test.ts` | Tests called protected endpoints without active session. Seeded session in `auth_sessions` and passed Bearer token. | **VERIFIED FIXED** |
+| **TEST-005** | WebAuthn and User Actions Test Suite Integration | Test Enhancement | `apps/api/src/test/user-actions-and-mfa-security.test.ts` | Added 10 dedicated subtests covering single-use nonces, MFA gating, policy criteria, and WebAuthn registration/login options. | **VERIFIED PASSING** |
 
 ---
 
-## 5. Technical Debt & Accepted Risks
+## 8. Technical Debt & Accepted Risks
 
 | ID | Title | Component | Analysis & Mitigation Strategy |
 | :--- | :--- | :--- | :--- |
 | **DEBT-001** | Upstream Next.js and Fastify CVEs | `node_modules` | Breaking changes prevent blind `npm audit fix --force`. Frontends run behind Traefik reverse-proxy with request size controls; Fastify stream APIs are unexposed. Plan minor version bump post-launch. |
 | **DEBT-002** | External Registrar DNS Verification | Cloud Boundary | Live DNS propagation and external email delivery require live registrar and Brevo production credentials post-deployment. |
+| **DEBT-003** | Live Physical FIDO2 Hardware Prompts | Client Device Boundary | Local automated testing verifies SimpleWebAuthn payload generation and challenge nonces; physical hardware key touch prompts require live browser client on staging. |

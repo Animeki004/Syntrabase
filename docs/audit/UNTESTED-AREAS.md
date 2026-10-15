@@ -50,6 +50,10 @@ The following boundaries and environments remain outside local testing capabilit
 - **Status:** **VERIFIED BY SCRIPT / REQUIRES OPERATIONAL DRILL**
 - **Reason:** Script `infrastructure/database/scripts/test-backup-restore.js` verifies schema dump and restore integrity locally. A live failover drill simulating a hard-drive crash or container eviction with live customer write traffic must be conducted prior to General Availability (GA).
 
+### 2.6 Physical FIDO2 / WebAuthn Hardware Authenticator Prompts
+- **Status:** **SIMULATED IN SOFTWARE / REQUIRES LIVE BROWSER HARDWARE TEST**
+- **Reason:** SimpleWebAuthn payload generation, base64url attestation parsing, signature validation, and database challenge nonces are 100% verified in automated unit test suites. However, physical hardware token interaction (e.g. YubiKey tap, TouchID, Windows Hello biometric prompt) requires a live browser on a registered HTTPS origin (`WEBAUTHN_ORIGINS`) on Staging.
+
 ---
 
 ## 3. Recommended Staging Verification Protocol
@@ -60,3 +64,4 @@ Prior to production traffic release, execute the following non-destructive check
 2. **Super Admin Isolation:** Confirm that non-whitelisted developer accounts receive HTTP 403 on all `/api/v1/admin/*` routes.
 3. **Outbox Ingestion:** Trigger a password reset from the staging console and observe successful receipt via Brevo webhook.
 4. **Rules Compilation:** Publish a new security rule version and verify that forbidden operations are immediately rejected by the rules engine with HTTP 403.
+5. **Physical Passkey Registration:** Register a physical YubiKey or TouchID device on the staging HTTPS console origin and verify end-to-end passwordless sign-in.

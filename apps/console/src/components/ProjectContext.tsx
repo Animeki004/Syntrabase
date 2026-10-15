@@ -93,7 +93,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-      if (!token) {
+      if (!token || token === 'undefined' || token === 'null' || token.trim() === '') {
         setIsLoading(false);
         return;
       }
@@ -108,7 +108,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
           localStorage.removeItem('auth_developer');
           localStorage.removeItem('syntrabase_active_project_id');
           localStorage.removeItem('syntrabase_cached_projects');
-          window.location.href = '/login?reason=session_revoked';
+          window.location.href = '/login?reason=session_expired';
         }
         return;
       }

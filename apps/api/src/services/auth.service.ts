@@ -7,6 +7,8 @@ import { EmailService } from './email.service.js';
 import { AuthConfigService } from './auth-config.service.js';
 import { TemplateService } from './template.service.js';
 import { ProjectService } from './project.service.js';
+import { MfaService } from './mfa.service.js';
+import { WebAuthnService } from './webauthn.service.js';
 import { AuthResponse, AppUser, Developer, TokenPayload } from '@syntrabase/shared-types';
 
 export class AuthService {
@@ -156,6 +158,29 @@ export class AuthService {
       createdAt: devRow.created_at,
       updatedAt: devRow.updated_at,
     };
+
+    // Developer MFA Check: If TOTP or Passkey enrolled, gate with single-use challenge session
+    const devTotp = await MfaService.isDeveloperTotpEnrolled(dev.id);
+    const devPasskeys = await WebAuthnService.listDeveloperPasskeys(dev.id);
+    if (devTotp || devPasskeys.length > 0) {
+      const allowedFactors: ('totp' | 'passkey')[] = [];
+      if (devTotp) allowedFactors.push('totp');
+      if (devPasskeys.length > 0) allowedFactors.push('passkey');
+
+      const mfaSession = await MfaService.createChallengeSession(
+        dev.id,
+        'developer',
+        'platform',
+        'global',
+        allowedFactors
+      );
+
+      return {
+        mfaRequired: true,
+        mfaSession,
+        allowedFactors,
+      };
+    }
 
     const accessToken = this.generateAccessToken({
       uid: dev.id,
@@ -312,6 +337,9 @@ export class AuthService {
   ): Promise<AppUser> {
     const envId = await this.resolveEnvironmentId(projectId, environmentId);
 
+    // 0. Authoritative Backend Enforcement: Public Sign-up must be permitted!
+    await AuthConfigService.assertUserActionAllowed(projectId, 'create');
+
     // 1. Authoritative Backend Enforcement: Provider must be enabled!
     await AuthConfigService.assertProviderEnabled(projectId, 'email_password');
 
@@ -460,6 +488,54 @@ export class AuthService {
       throw err;
     }
 
+    // Authoritative MFA Policy & Enrollment Evaluation
+    const mfaPolicy = authConfig.mfaPolicy;
+    const totpEnrolled = await MfaService.isTotpEnrolled(userRow.id);
+    const passkeys = await WebAuthnService.listAppUserPasskeys(userRow.id, projectId);
+    const hasPasskey = passkeys.length > 0;
+    const isEnrolled = totpEnrolled || hasPasskey;
+
+    let requireMfa = false;
+    if (mfaPolicy?.enabled || mfaPolicy?.enforcement === 'required_all' || mfaPolicy?.enforcement === 'required_selected') {
+      if (mfaPolicy.enforcement === 'required_all') {
+        requireMfa = true;
+      } else if (mfaPolicy.enforcement === 'required_selected' || mfaPolicy.enforceForAdmins) {
+        const claims = userRow.custom_claims || {};
+        const userRoles = Array.isArray(claims.roles) ? claims.roles : (claims.role ? [claims.role] : []);
+        const selectedRoles = mfaPolicy.selectedCriteria?.roles || ['admin'];
+        const hasMatchingRole = selectedRoles.some((r: string) => userRoles.includes(r));
+        const hasMatchingClaim = (mfaPolicy.selectedCriteria?.customClaims || ['mfaRequired']).some((c: string) => claims[c] === true);
+        if (hasMatchingRole || hasMatchingClaim) {
+          requireMfa = true;
+        }
+      } else if (mfaPolicy.enforcement === 'optional' && isEnrolled) {
+        requireMfa = true;
+      }
+    } else if (isEnrolled) {
+      requireMfa = true;
+    }
+
+    if (requireMfa) {
+      const allowedFactors: ('totp' | 'passkey')[] = isEnrolled
+        ? [totpEnrolled && 'totp', hasPasskey && 'passkey'].filter(Boolean) as any
+        : (mfaPolicy?.allowedFactors || ['totp', 'passkey']).filter((f): f is 'totp' | 'passkey' => f === 'totp' || f === 'passkey');
+
+      const factorsToUse = allowedFactors.length > 0 ? allowedFactors : (['totp'] as ('totp' | 'passkey')[]);
+      const mfaSession = await MfaService.createChallengeSession(
+        userRow.id,
+        'app_user',
+        projectId,
+        envId,
+        factorsToUse
+      );
+
+      return {
+        mfaRequired: true,
+        mfaSession,
+        allowedFactors: factorsToUse,
+      };
+    }
+
     // Update last sign-in timestamp
     await query('UPDATE app_users SET last_sign_in_at = NOW() WHERE id = $1', [userRow.id]).catch(() => {});
 
@@ -590,6 +666,10 @@ export class AuthService {
 
     const user = res.rows[0];
     if (!user) {
+      const authConfig = await AuthConfigService.getProjectAuthConfig(projectId).catch(() => null);
+      if (authConfig?.userActions?.emailEnumerationProtection !== false) {
+        return { success: true, message: 'Password reset link sent if account exists.' };
+      }
       const err: any = new Error(`No user account found with email '${cleanEmail}'. Please verify your email or sign up.`);
       err.code = 'USER_NOT_FOUND';
       err.statusCode = 404;
@@ -631,6 +711,9 @@ export class AuthService {
    * Strict Backend Enforcement: Checks anonymous auth enabled on project!
    */
   public static async registerAnonymousUser(projectId: string, environmentId = 'default'): Promise<AuthResponse> {
+    // Authoritative Backend Enforcement: Public Sign-up must be permitted!
+    await AuthConfigService.assertUserActionAllowed(projectId, 'create');
+
     // Authoritative Backend Enforcement: Anonymous provider must be enabled!
     await AuthConfigService.assertProviderEnabled(projectId, 'anonymous');
 
@@ -1184,5 +1267,224 @@ export class AuthService {
     } catch (err: any) {
       console.warn('[AUTH BOOTSTRAP] Failed to bootstrap platform admin:', err.message);
     }
+  }
+
+  /**
+   * Self-service account deletion for authenticated app user.
+   * Enforces project-level user action permission (enableDelete).
+   */
+  public static async deleteAppUserSelf(projectId: string, userId: string): Promise<void> {
+    await AuthConfigService.assertUserActionAllowed(projectId, 'delete');
+    const resolvedProjectId = await ProjectService.resolveProjectId(projectId);
+    await query('DELETE FROM auth_sessions WHERE user_id = $1', [userId]);
+    await query('DELETE FROM app_users WHERE id = $1 AND project_id = $2', [userId, resolvedProjectId]);
+  }
+
+  /**
+   * Completes two-stage MFA challenge for an application user.
+   * Atomically burns single-use session nonce and issues access + refresh tokens.
+   */
+  public static async completeAppUserMfaChallenge(
+    mfaSession: string,
+    factor: 'totp' | 'passkey',
+    codeOrResponse: any
+  ): Promise<AuthResponse> {
+    let payload: any;
+    try {
+      payload = jwt.verify(mfaSession, config.jwt.secret);
+    } catch {
+      const err: any = new Error('MFA challenge session expired or invalid');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    if (payload.type !== 'mfa_challenge' || !payload.nonce) {
+      const err: any = new Error('Invalid MFA challenge token');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    const session = await MfaService.consumeChallengeSession(payload.nonce);
+    if (session.userType !== 'app_user') {
+      const err: any = new Error('Invalid MFA session user type');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    if (factor === 'totp') {
+      const isValid = await MfaService.validateTotpChallenge(session.userId, codeOrResponse);
+      if (!isValid) {
+        const err: any = new Error('INVALID_MFA_CODE: Verification code or backup code is invalid.');
+        err.statusCode = 401;
+        throw err;
+      }
+    } else if (factor === 'passkey') {
+      const result = await WebAuthnService.verifyAppUserAuthentication(session.projectId, codeOrResponse);
+      if (result.userId !== session.userId) {
+        const err: any = new Error('Passkey credential does not match user session');
+        err.statusCode = 401;
+        throw err;
+      }
+    } else {
+      const err: any = new Error(`Unsupported MFA factor: ${factor}`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const res = await query<any>('SELECT * FROM app_users WHERE id = $1', [session.userId]);
+    const userRow = res.rows[0];
+    if (!userRow || userRow.disabled) {
+      const err: any = new Error('User account is disabled or missing');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    await query('UPDATE app_users SET last_sign_in_at = NOW() WHERE id = $1', [userRow.id]).catch(() => {});
+
+    const appUser: AppUser = {
+      id: userRow.id,
+      projectId: userRow.project_id,
+      environmentId: userRow.environment_id,
+      email: userRow.email,
+      displayName: userRow.display_name,
+      emailVerified: userRow.email_verified,
+      disabled: userRow.disabled,
+      customClaims: userRow.custom_claims || {},
+      createdAt: userRow.created_at,
+      updatedAt: userRow.updated_at,
+    };
+
+    const accessToken = this.generateAccessToken({
+      uid: appUser.id,
+      email: appUser.email,
+      projectId: appUser.projectId,
+      environmentId: appUser.environmentId,
+      claims: appUser.customClaims,
+    });
+
+    const rawRefreshToken = CryptoUtil.generateSecureToken(32);
+    const refreshTokenHash = CryptoUtil.sha256(rawRefreshToken);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    await query(
+      `INSERT INTO auth_sessions (user_id, refresh_token_hash, expires_at)
+       VALUES ($1, $2, $3)`,
+      [appUser.id, refreshTokenHash, expiresAt]
+    );
+
+    await AuthConfigService.logAuthActivity(
+      session.projectId,
+      session.environmentId,
+      appUser.id,
+      appUser.email,
+      'auth.mfa_login_success',
+      { factor }
+    ).catch(() => {});
+
+    return {
+      user: appUser,
+      accessToken,
+      refreshToken: rawRefreshToken,
+      expiresIn: 900,
+    };
+  }
+
+  /**
+   * Completes two-stage MFA challenge for a developer.
+   * Atomically burns single-use session nonce and issues developer tokens.
+   */
+  public static async completeDeveloperMfaChallenge(
+    mfaSession: string,
+    factor: 'totp' | 'passkey',
+    codeOrResponse: any
+  ): Promise<AuthResponse> {
+    let payload: any;
+    try {
+      payload = jwt.verify(mfaSession, config.jwt.secret);
+    } catch {
+      const err: any = new Error('Developer MFA challenge session expired or invalid');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    if (payload.type !== 'mfa_challenge' || !payload.nonce) {
+      const err: any = new Error('Invalid developer MFA challenge token');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    const session = await MfaService.consumeChallengeSession(payload.nonce);
+    if (session.userType !== 'developer') {
+      const err: any = new Error('Invalid developer MFA session');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    if (factor === 'totp') {
+      const isValid = await MfaService.validateDeveloperTotpChallenge(session.userId, codeOrResponse);
+      if (!isValid) {
+        const err: any = new Error('INVALID_MFA_CODE: Verification code or backup code is invalid.');
+        err.statusCode = 401;
+        throw err;
+      }
+    } else if (factor === 'passkey') {
+      const result = await WebAuthnService.verifyDeveloperAuthentication(codeOrResponse);
+      if (result.developerId !== session.userId) {
+        const err: any = new Error('Passkey does not match developer');
+        err.statusCode = 401;
+        throw err;
+      }
+    } else {
+      const err: any = new Error(`Unsupported factor: ${factor}`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const devRes = await query<any>('SELECT * FROM developers WHERE id = $1', [session.userId]);
+    const devRow = devRes.rows[0];
+    if (!devRow || devRow.status === 'suspended') {
+      const err: any = new Error('Developer account is suspended or missing');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const adminCheck = await query('SELECT developer_id FROM platform_admins WHERE developer_id = $1', [devRow.id]);
+    const isPlatformAdmin = adminCheck.rows.length > 0 || devRow.is_platform_admin;
+
+    const dev: Developer = {
+      id: devRow.id,
+      email: devRow.email,
+      displayName: devRow.display_name,
+      emailVerified: devRow.email_verified,
+      isPlatformAdmin,
+      status: (devRow.status as 'active' | 'suspended') || 'active',
+      createdAt: devRow.created_at,
+      updatedAt: devRow.updated_at,
+    };
+
+    const accessToken = this.generateAccessToken({
+      uid: dev.id,
+      email: dev.email,
+      projectId: 'platform',
+      environmentId: 'global',
+      isPlatformAdmin,
+    });
+
+    const rawRefreshToken = CryptoUtil.generateSecureToken(32);
+    const refreshTokenHash = CryptoUtil.sha256(rawRefreshToken);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    await query(
+      `INSERT INTO auth_sessions (user_id, refresh_token_hash, expires_at)
+       VALUES ($1, $2, $3)`,
+      [dev.id, refreshTokenHash, expiresAt]
+    );
+
+    return {
+      user: dev,
+      accessToken,
+      refreshToken: rawRefreshToken,
+      expiresIn: 900,
+    };
   }
 }
