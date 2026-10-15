@@ -668,3 +668,66 @@ test('SYN-NEW-010: Support inquiry subject is HTML-escaped to prevent email inje
   assert.ok(code.includes('${safeSubjectHtml}'), 'Contact service must interpolate safeSubjectHtml into HTML');
 });
 
+test('SYN-P3-001 & SYN-P3-002 & SYN-P3-003: Collections management endpoints strictly enforce developer project authentication', async () => {
+  const server = await buildServer();
+  const targetProject = '00000000-0000-0000-0000-000000000001';
+
+  // 1. SYN-P3-003: GET /collections unauthenticated must return 401
+  const resCollections = await server.inject({
+    method: 'GET',
+    url: `/api/v1/projects/${targetProject}/databases/(default)/collections`,
+  });
+  assert.equal(resCollections.statusCode, 401, 'GET /collections unauthenticated must return 401');
+
+  // 2. SYN-P3-002: GET /collections/:path/documents unauthenticated must return 401
+  const resDocs = await server.inject({
+    method: 'GET',
+    url: `/api/v1/projects/${targetProject}/databases/(default)/collections/users/documents`,
+  });
+  assert.equal(resDocs.statusCode, 401, 'GET /collections/:path/documents unauthenticated must return 401');
+
+  // 3. SYN-P3-001: DELETE /collections/:path unauthenticated must return 401
+  const resDeleteCol = await server.inject({
+    method: 'DELETE',
+    url: `/api/v1/projects/${targetProject}/databases/(default)/collections/users`,
+  });
+  assert.equal(resDeleteCol.statusCode, 401, 'DELETE /collections/:path unauthenticated must return 401');
+});
+
+test('SYN-P3-004: Collection group query enforces security rules (default-deny when unauthenticated in production)', async () => {
+  await withSimulatedProduction(async () => {
+    const server = await buildServer();
+    const targetProject = '00000000-0000-0000-0000-000000000001';
+
+    const res = await server.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${targetProject}/databases/(default)/collectionGroups/messages?limit=10`,
+    });
+    assert.equal(res.statusCode, 403, 'Unauthenticated collectionGroup query in production must return 403');
+    const body = JSON.parse(res.body);
+    assert.ok(body.error?.includes('PERMISSION_DENIED'), 'Response must explain permission denied');
+  });
+});
+
+test('SYN-P3-005 & SYN-P3-006: Project plan telemetry and project metadata require authentication in production', async () => {
+  await withSimulatedProduction(async () => {
+    const server = await buildServer();
+    const targetProject = '00000000-0000-0000-0000-000000000001';
+
+    // SYN-P3-005: GET /projects/:id/plan without token must return 401 in production
+    const resPlan = await server.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${targetProject}/plan`,
+    });
+    assert.equal(resPlan.statusCode, 401, 'GET /projects/:id/plan unauthenticated must return 401 in production');
+
+    // SYN-P3-006: GET /projects/:id without token must return 401 in production
+    const resProject = await server.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${targetProject}`,
+    });
+    assert.equal(resProject.statusCode, 401, 'GET /projects/:id unauthenticated must return 401 in production');
+  });
+});
+
+

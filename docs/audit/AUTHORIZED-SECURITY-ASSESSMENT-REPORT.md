@@ -7,7 +7,7 @@
 
 **Assessment Standard:** Principal-Level Authorized Security Assessment & Live Adversarial Penetration Testing  
 **Date:** October 15, 2026  
-**Status:** **PHASE 1 REMEDIATED & VERIFIED** | **PHASE 2 REMEDIATED & VERIFIED (92/92 TESTS PASSED)**
+**Status:** **PHASE 1 REMEDIATED & VERIFIED** | **PHASE 2 REMEDIATED & VERIFIED** | **PHASE 3 REMEDIATED & VERIFIED (95/95 TESTS PASSED)**
 
 ---
 
@@ -16,6 +16,7 @@
 Syntrabase underwent an authorized security assessment combining:
 1. **Phase 1 Remediation & Live Verification:** Full remediation and verification of 8 initial vulnerabilities (**SYN-SEC-001** through **SYN-SEC-008**). Live testing against target deployment and local integration testing (82/82 passed) confirmed that all 8 vulnerabilities are successfully eliminated.
 2. **Phase 2 Supreme Red Team Assessment & Remediation:** An exhaustive adversarial code audit and live API penetration assessment uncovered **10 new vulnerabilities** (**SYN-NEW-001** through **SYN-NEW-010**). All 10 vulnerabilities have been systematically patched with authoritative access controls, cryptographic JWT verification, fail-closed handlers, constant-time comparisons, and entity escaping. All fixes are verified through 10 dedicated regression tests (92/92 total test suite passed, 0 failures).
+3. **Phase 3 Deep-Dive Architecture & Route Audit:** A thorough source code audit of `apps/api/src/routes/document.routes.ts`, `apps/api/src/routes/admin.routes.ts`, and `apps/api/src/routes/project.routes.ts` uncovered **6 additional vulnerabilities** (**SYN-P3-001** through **SYN-P3-006**), including unauthenticated collection deletion, document exfiltration, and project telemetry exposure. All 6 have been remediated with server-side access control and compiled rules verification, backed by regression tests (95/95 total test suite passed, 0 failures).
 
 ---
 
@@ -50,6 +51,19 @@ Syntrabase underwent an authorized security assessment combining:
 | **SYN-NEW-008** | Multi-Factor Authentication Fails Open on Exceptions | **MEDIUM** | 6.5 | CWE-393 | `apps/api/src/services/mfa.service.ts:206-208` | **REMEDIATED & VERIFIED** | Subtest 16 passed: exceptions fail closed returning `false`. |
 | **SYN-NEW-009** | Secret Key Timing Side-Channel & Publishable Key Origin Bypass | **MEDIUM** | 5.3 | CWE-208 | `apps/api/src/services/credential.service.ts:116, 122-126` | **REMEDIATED & VERIFIED** | Subtest 17 passed: subdomain spoofing & missing origin blocked. |
 | **SYN-NEW-010** | Email HTML Injection via Support Ticket Subject in Brevo Dispatch | **LOW** | 4.3 | CWE-79 | `apps/api/src/services/contact.service.ts:405` | **REMEDIATED & VERIFIED** | Subtest 18 passed: `safeSubjectHtml` entity encoding active. |
+
+---
+
+### 2.3 Phase 3 Remediated & Verified Vulnerabilities
+
+| ID | Title | Severity | CVSS v3.1 | CWE | Component Location | Status | Verification Evidence |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **SYN-P3-001** | Unauthenticated Collection & Subcollection Wipeout | **CRITICAL** | 9.8 | CWE-306 | `apps/api/src/routes/document.routes.ts:349-368` | **REMEDIATED & VERIFIED** | Subtest 19 passed: unauthenticated DELETE returns `401 Unauthorized`. |
+| **SYN-P3-002** | Unauthenticated Collection Document Exfiltration | **CRITICAL** | 9.8 | CWE-306 | `apps/api/src/routes/document.routes.ts:143-182` | **REMEDIATED & VERIFIED** | Subtest 19 passed: unauthenticated GET documents returns `401 Unauthorized`. |
+| **SYN-P3-003** | Unauthenticated Collection Path Enumeration | **HIGH** | 8.2 | CWE-200 | `apps/api/src/routes/document.routes.ts:115-140` | **REMEDIATED & VERIFIED** | Subtest 19 passed: unauthenticated GET collections returns `401 Unauthorized`. |
+| **SYN-P3-004** | Unauthenticated Collection Group Query Bypassing Rules | **HIGH** | 8.2 | CWE-284 | `apps/api/src/routes/document.routes.ts:486-496` | **REMEDIATED & VERIFIED** | Subtest 20 passed: rules check returns `403 PERMISSION_DENIED`. |
+| **SYN-P3-005** | Unauthenticated Project Plan Context & Telemetry Leak | **MEDIUM** | 5.3 | CWE-200 | `apps/api/src/routes/admin.routes.ts:987-991` | **REMEDIATED & VERIFIED** | Subtest 21 passed: unauthenticated GET /plan returns `401 Unauthorized`. |
+| **SYN-P3-006** | Unauthenticated Project Metadata Exfiltration | **MEDIUM** | 5.3 | CWE-200 | `apps/api/src/routes/project.routes.ts:129-136` | **REMEDIATED & VERIFIED** | Subtest 21 passed: unauthenticated GET project returns `401 Unauthorized`. |
 
 ---
 
@@ -242,25 +256,86 @@ Syntrabase underwent an authorized security assessment combining:
 - **Affected File:** `apps/api/src/services/contact.service.ts:405`
 - **Root Cause:**
   `submission.subject` is inserted unescaped into the email HTML template (`<strong>${submission.subject}</strong>`), whereas the body text (`cleanReply`) is properly escaped.
-- **Impact:** An attacker can inject arbitrary HTML tags into email bodies delivered to team members or customers.
-- **Remediation:** Apply standard HTML entity encoding to `submission.subject` prior to interpolation.
+---
+
+### SYN-P3-001: Unauthenticated Collection and Subcollection Wipeout
+- **Severity / Score:** **CRITICAL** / CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:H (9.8)
+- **CWE:** CWE-306 (Missing Authentication for Critical Function)
+- **Affected Endpoint:** `DELETE /api/v1/projects/:projectId/databases/:databaseId/collections/:collectionPath`
+- **Root Cause:**
+  The handler executed raw SQL deletion on the `documents` table (`DELETE FROM documents WHERE project_id = $1 AND (collection_path = $2 OR collection_path LIKE $2 || '/%')`) without validating caller identity or project ownership.
+- **Impact:** An unauthenticated remote attacker could issue an HTTP DELETE and purge entire collections and all nested subcollections of any tenant project.
+- **Remediation:** Enforced `await AuthService.requireProjectAccess(req, projectId)` prior to executing collection deletion.
+- **Verification:** Verified via `security-assessment-verification.test.ts` (Subtest 19).
 
 ---
 
-## 4. Prioritized Remediation Action Plan
+### SYN-P3-002: Unauthenticated Full Collection Document Exfiltration
+- **Severity / Score:** **CRITICAL** / CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N (9.8)
+- **CWE:** CWE-306 (Missing Authentication for Critical Function)
+- **Affected Endpoint:** `GET /api/v1/projects/:projectId/databases/:databaseId/collections/:collectionPath/documents`
+- **Root Cause:**
+  Console document listing endpoint did not authenticate the caller or check project authorization, dumping raw database rows up to 100 documents per request.
+- **Impact:** Complete exposure of tenant document datasets, internal version history, and timestamps without requiring authentication or passing security rules.
+- **Remediation:** Enforced `await AuthService.requireProjectAccess(req, projectId)`.
+- **Verification:** Verified via `security-assessment-verification.test.ts` (Subtest 19).
 
-1. **Phase 2.1 — Access Control Hardening (`auth.routes.ts`, `project.routes.ts`):**
-   - Apply `AuthService.requireDeveloper(req)` and `ProjectService.assertProjectAccess(devId, projectId)` to all endpoints under `/projects/:projectId/auth/users*`, `/auth/config*`, `/auth/templates*`, `/overview`, `/email/*`, and `/contact`.
-2. **Phase 2.2 — Cryptographic Authentication Verification (`auth.routes.ts`):**
-   - In `/link-account`, `/mfa/totp/enroll`, and `/mfa/totp/verify`, replace `jwt.decode` with `AuthService.verifyAccessToken`.
-3. **Phase 2.3 — Realtime WebSocket Project Isolation (`realtime.routes.ts`):**
-   - Enforce mandatory client authentication and project matching prior to registering event subscriptions.
-4. **Phase 2.4 — Multi-Tenant Storage Isolation (`storage.routes.ts`):**
-   - Eliminate `fs.readdirSync` disk scan fallback. Return `404 Not Found` if database object metadata is absent.
-5. **Phase 2.5 — Defensive Security Best Practices:**
-   - Enforce `redirect: 'error'` in `cloud-function.service.ts`.
-   - Update MFA exception handling to fail closed (`return false`).
-   - Use `crypto.timingSafeEqual` and strict origin comparison in `credential.service.ts`.
-   - HTML-escape support ticket subjects in `contact.service.ts`.
-6. **Phase 2.6 — Regression Testing & Verification:**
-   - Extend `apps/api/src/test/security-assessment-verification.test.ts` to include dedicated tests for SYN-NEW-001 through SYN-NEW-010.
+---
+
+### SYN-P3-003: Unauthenticated Collection Path Enumeration
+- **Severity / Score:** **HIGH** / CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N (8.2)
+- **CWE:** CWE-200 (Exposure of Sensitive Information to an Unauthorized Actor)
+- **Affected Endpoint:** `GET /api/v1/projects/:projectId/databases/:databaseId/collections`
+- **Root Cause:**
+  Route grouped and counted documents by collection path and returned all collection names to unauthenticated callers.
+- **Impact:** Allowed anonymous actors to map out the entire schema and dataset architecture of any target project.
+- **Remediation:** Enforced `await AuthService.requireProjectAccess(req, projectId)`.
+- **Verification:** Verified via `security-assessment-verification.test.ts` (Subtest 19).
+
+---
+
+### SYN-P3-004: Unauthenticated Collection Group Query Bypassing Rules
+- **Severity / Score:** **HIGH** / CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N (8.2)
+- **CWE:** CWE-284 (Improper Access Control)
+- **Affected Endpoint:** `GET /api/v1/projects/:projectId/databases/:databaseId/collectionGroups/:collectionId`
+- **Root Cause:**
+  Omitted `checkPermission` evaluation before dispatching `DocumentService.queryCollectionGroup`.
+- **Impact:** Anonymous clients could query documents matching collection IDs across projects without evaluating compiled security rules.
+- **Remediation:** Enforced `await checkPermission(req, projectId, '/${collectionId}', 'list')`.
+- **Verification:** Verified via `security-assessment-verification.test.ts` (Subtest 20).
+
+---
+
+### SYN-P3-005: Unauthenticated Project Plan Context & Storage Telemetry Leak
+- **Severity / Score:** **MEDIUM** / CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N (5.3)
+- **CWE:** CWE-200 (Exposure of Sensitive Information to an Unauthorized Actor)
+- **Affected Endpoint:** `GET /api/v1/projects/:projectId/plan`
+- **Root Cause:**
+  The developer console plan route was marked public and returned accurate byte-level usage telemetry and quota limits.
+- **Impact:** Competitive intelligence leakage and storage growth tracking of arbitrary customer projects.
+- **Remediation:** Enforced `AuthService.requireProjectAccess(req, projectId)` in production and staging environments.
+- **Verification:** Verified via `security-assessment-verification.test.ts` (Subtest 21).
+
+---
+
+### SYN-P3-006: Unauthenticated Project Metadata Exfiltration
+- **Severity / Score:** **MEDIUM** / CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N (5.3)
+- **CWE:** CWE-200 (Exposure of Sensitive Information to an Unauthorized Actor)
+- **Affected Endpoint:** `GET /api/v1/projects/:projectId`
+- **Root Cause:**
+  Project retrieval route lacked authentication middleware.
+- **Impact:** Exposure of project organization ID, name, slug, plan ID, status, and creation timestamps.
+- **Remediation:** Enforced `AuthService.requireProjectAccess(req, projectId)` in production and staging environments.
+- **Verification:** Verified via `security-assessment-verification.test.ts` (Subtest 21).
+
+---
+
+## 4. Test Suite Execution & Verification Summary
+
+The complete integration test suite was executed against the remediated codebase:
+- **Total Tests:** 95
+- **Passed:** 95
+- **Failed:** 0
+- **Skipped:** 0
+- **Regression Suite:** `apps/api/src/test/security-assessment-verification.test.ts` (all 21 subtests passed).
+

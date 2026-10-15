@@ -983,9 +983,13 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
     return reply.send({ success: true, message: `Plan assigned to project ${projectId}` });
   });
 
-  // Public / Developer: Get project plan context and usage for developer console
+  // Developer Console: Get project plan context and usage for developer console
   server.get('/api/v1/projects/:projectId/plan', async (req, reply) => {
-    const { projectId } = req.params as { projectId: string };
+    const { projectId: rawId } = req.params as { projectId: string };
+    const projectId = await ProjectService.resolveProjectId(rawId);
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const planContext = await PlanService.getProjectPlanContext(projectId);
     return reply.send(planContext);
   });

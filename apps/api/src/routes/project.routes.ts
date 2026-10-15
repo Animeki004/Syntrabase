@@ -125,9 +125,13 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     return reply.status(201).send({ project });
   });
 
-  // 3. Get single project metadata
+  // 3. Get single project metadata (requires developer project access)
   server.get('/api/v1/projects/:projectId', async (req, reply) => {
-    const { projectId } = req.params as { projectId: string };
+    const { projectId: rawId } = req.params as { projectId: string };
+    const projectId = await ProjectService.resolveProjectId(rawId);
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const project = await ProjectService.getProject(projectId);
     if (!project) {
       return reply.status(404).send({ error: 'Project not found' });

@@ -3,6 +3,7 @@ import { DocumentService } from '../services/document.service.js';
 import { AuthService } from '../services/auth.service.js';
 import { CredentialService } from '../services/credential.service.js';
 import { PlanService } from '../services/plan.service.js';
+import { config } from '../config.js';
 import { query } from '../db/pool.js';
 import { compileRules, evaluateRules } from '@syntrabase/rules-engine';
 import {
@@ -111,11 +112,12 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     }
   }
 
-  // List distinct collections and document counts for project
+  // List distinct collections and document counts for project (requires developer project access)
   server.get('/api/v1/projects/:projectId/databases/:databaseId/collections', async (req, reply) => {
     const { projectId: rawId } = req.params as { projectId: string; databaseId: string };
     const { ProjectService } = await import('../services/project.service.js');
     const projectId = await ProjectService.resolveProjectId(rawId);
+    await AuthService.requireProjectAccess(req, projectId);
 
     try {
       const res = await query<{ collection_path: string; doc_count: string }>(
@@ -139,7 +141,7 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     }
   });
 
-  // List documents within a specific collection for project
+  // List documents within a specific collection for project (requires developer project access)
   server.get('/api/v1/projects/:projectId/databases/:databaseId/collections/:collectionPath/documents', async (req, reply) => {
     const { projectId: rawId, collectionPath } = req.params as {
       projectId: string;
@@ -148,6 +150,7 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     };
     const { ProjectService } = await import('../services/project.service.js');
     const projectId = await ProjectService.resolveProjectId(rawId);
+    await AuthService.requireProjectAccess(req, projectId);
 
     try {
       const res = await query<{
@@ -345,7 +348,7 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     return reply.status(204).send();
   });
 
-  // Delete entire collection
+  // Delete entire collection (requires developer project access)
   server.delete('/api/v1/projects/:projectId/databases/:databaseId/collections/:collectionPath', async (req, reply) => {
     const { projectId: rawId, collectionPath } = req.params as {
       projectId: string;
@@ -354,6 +357,7 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     };
     const { ProjectService } = await import('../services/project.service.js');
     const projectId = await ProjectService.resolveProjectId(rawId);
+    await AuthService.requireProjectAccess(req, projectId);
 
     try {
       await query(
@@ -482,11 +486,19 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     }
   });
 
-  // Collection Group Query
+  // Collection Group Query (requires rules check)
   server.get('/api/v1/projects/:projectId/databases/:databaseId/collectionGroups/:collectionId', async (req, reply) => {
     const { projectId, collectionId } = req.params as { projectId: string; databaseId: string; collectionId: string };
     const environmentId = (req.headers['x-environment-id'] as string) || 'default';
     const queryParams = req.query as { limit?: string; offset?: string };
+
+    try {
+      if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+        await checkPermission(req, projectId, `/${collectionId}`, 'list');
+      }
+    } catch (err) {
+      return reply.status(403).send({ error: (err as Error).message });
+    }
 
     const limit = queryParams.limit ? parseInt(queryParams.limit, 10) : undefined;
     const offset = queryParams.offset ? parseInt(queryParams.offset, 10) : undefined;

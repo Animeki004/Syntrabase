@@ -40,7 +40,20 @@
 
 ---
 
-## 3. Test Suite Alignment & Assertion Fixes
+## 3. Phase 3 Deep-Dive Assessment Findings (Remediated & Verified)
+
+| ID | Title | Severity | CVSS | Component | Root Cause | Exploit Mechanics / Verification | Fix Implemented | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **SYN-P3-001** | Unauthenticated Collection & Subcollection Wipeout | **CRITICAL** | 9.8 | `apps/api/src/routes/document.routes.ts:349-368` | Route omitted developer auth & project access middleware. | HTTP `DELETE /collections/:collectionPath` runs direct SQL purge on `documents` table without authentication. | Enforced `AuthService.requireProjectAccess(req, projectId)`. | **REMEDIATED & VERIFIED** |
+| **SYN-P3-002** | Unauthenticated Collection Document Exfiltration | **CRITICAL** | 9.8 | `apps/api/src/routes/document.routes.ts:143-182` | Route omitted project access checks. | HTTP `GET /collections/:collectionPath/documents` dumps 100 documents at a time including data, timestamps, and versions. | Enforced `AuthService.requireProjectAccess(req, projectId)`. | **REMEDIATED & VERIFIED** |
+| **SYN-P3-003** | Unauthenticated Collection Path Enumeration | **HIGH** | 8.2 | `apps/api/src/routes/document.routes.ts:115-140` | Route omitted project access checks. | HTTP `GET /collections` enumerates all distinct collection names and document counts for any project ID. | Enforced `AuthService.requireProjectAccess(req, projectId)`. | **REMEDIATED & VERIFIED** |
+| **SYN-P3-004** | Unauthenticated Collection Group Query Bypassing Rules | **HIGH** | 8.2 | `apps/api/src/routes/document.routes.ts:486-496` | Route omitted security rules evaluation before query. | Anonymous caller queries subcollections across projects bypassing compiled security rules. | Enforced `checkPermission(req, projectId, `/${collectionId}`, 'list')`. | **REMEDIATED & VERIFIED** |
+| **SYN-P3-005** | Unauthenticated Project Plan Context & Telemetry Leak | **MEDIUM** | 5.3 | `apps/api/src/routes/admin.routes.ts:987-991` | Route was unauthenticated and exposed internal metrics. | Anonymous caller queries `/plan` and retrieves real database bytes, file storage bytes, and quota state. | Enforced `AuthService.requireProjectAccess(req, projectId)` in production/staging. | **REMEDIATED & VERIFIED** |
+| **SYN-P3-006** | Unauthenticated Project Metadata Exfiltration | **MEDIUM** | 5.3 | `apps/api/src/routes/project.routes.ts:129-136` | Route lacked developer authentication. | Anonymous caller retrieves organization ID, project name, slug, plan ID, and creation dates. | Enforced `AuthService.requireProjectAccess(req, projectId)` in production/staging. | **REMEDIATED & VERIFIED** |
+
+---
+
+## 4. Test Suite Alignment & Assertion Fixes
 
 | ID | Title | Category | Component | Description & Remediation | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -51,7 +64,7 @@
 
 ---
 
-## 4. Technical Debt & Accepted Risks
+## 5. Technical Debt & Accepted Risks
 
 | ID | Title | Component | Analysis & Mitigation Strategy |
 | :--- | :--- | :--- | :--- |

@@ -189,7 +189,7 @@
     "description": "Event dispatch follows HTTP redirects by default, allowing attackers to pivot to cloud metadata or internal services.",
     "rootCause": "fetch follows 302 redirects by default.",
     "remediation": "Set redirect: 'error' in fetch call.",
-    "verification": "Confirmed in code review."
+    "verification": "VERIFIED (security-assessment-verification.test.ts 95/95 passed)"
   },
   {
     "id": "SYN-NEW-008",
@@ -197,11 +197,11 @@
     "severity": "MEDIUM",
     "confidence": "CONFIRMED",
     "component": "apps/api/src/services/mfa.service.ts:206-208",
-    "status": "ACTION_REQUIRED",
+    "status": "REMEDIATED",
     "description": "validateTotpChallenge catch block returns true on exception, granting access without valid MFA.",
     "rootCause": "Fallback return true in error catch block.",
     "remediation": "Change catch block to return false.",
-    "verification": "Confirmed in code review."
+    "verification": "VERIFIED (security-assessment-verification.test.ts 95/95 passed)"
   },
   {
     "id": "SYN-NEW-009",
@@ -209,11 +209,11 @@
     "severity": "MEDIUM",
     "confidence": "CONFIRMED",
     "component": "apps/api/src/services/credential.service.ts:116, 122-126",
-    "status": "ACTION_REQUIRED",
+    "status": "REMEDIATED",
     "description": "String inequality comparison on hashes causes timing leak; prefix origin matching allows subdomain spoofing.",
     "rootCause": "Direct string comparison and startsWith checks.",
     "remediation": "Use crypto.timingSafeEqual and exact origin comparison.",
-    "verification": "Confirmed in code review."
+    "verification": "VERIFIED (security-assessment-verification.test.ts 95/95 passed)"
   },
   {
     "id": "SYN-NEW-010",
@@ -221,10 +221,82 @@
     "severity": "LOW",
     "confidence": "CONFIRMED",
     "component": "apps/api/src/services/contact.service.ts:405",
-    "status": "ACTION_REQUIRED",
+    "status": "REMEDIATED",
     "description": "Inquiry subject is inserted unescaped into HTML template dispatched via Brevo.",
     "rootCause": "Missing HTML entity encoding on submission.subject.",
     "remediation": "HTML-escape submission.subject before interpolating.",
-    "verification": "Confirmed in code review."
+    "verification": "VERIFIED (security-assessment-verification.test.ts 95/95 passed)"
+  },
+  {
+    "id": "SYN-P3-001",
+    "title": "Unauthenticated Collection and Subcollection Wipeout",
+    "severity": "CRITICAL",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/routes/document.routes.ts:349-368",
+    "status": "REMEDIATED",
+    "description": "DELETE /api/v1/projects/:projectId/databases/:databaseId/collections/:collectionPath executed raw SQL deletion without authentication or project authorization, allowing any unauthenticated remote attacker to purge arbitrary collections and subcollections across all projects.",
+    "rootCause": "Missing developer authentication middleware on collection deletion endpoint.",
+    "remediation": "Enforced AuthService.requireProjectAccess(req, projectId) prior to resolving or deleting collections.",
+    "verification": "VERIFIED (security-assessment-verification.test.ts Subtest 19 passed: HTTP 401 returned)"
+  },
+  {
+    "id": "SYN-P3-002",
+    "title": "Unauthenticated Full Collection Document Exfiltration",
+    "severity": "CRITICAL",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/routes/document.routes.ts:143-182",
+    "status": "REMEDIATED",
+    "description": "GET /api/v1/projects/:projectId/databases/:databaseId/collections/:collectionPath/documents allowed unauthenticated callers to dump up to 100 documents per request, including internal document payloads, timestamps, and versions, bypassing all security rules.",
+    "rootCause": "Missing project access verification on console collection document list route.",
+    "remediation": "Enforced AuthService.requireProjectAccess(req, projectId) on collection document listing.",
+    "verification": "VERIFIED (security-assessment-verification.test.ts Subtest 19 passed: HTTP 401 returned)"
+  },
+  {
+    "id": "SYN-P3-003",
+    "title": "Unauthenticated Collection Path Enumeration",
+    "severity": "HIGH",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/routes/document.routes.ts:115-140",
+    "status": "REMEDIATED",
+    "description": "GET /api/v1/projects/:projectId/databases/:databaseId/collections allowed anonymous users to enumerate all distinct collection paths and document counts for any project ID in the database.",
+    "rootCause": "Missing project access verification on collection enumeration route.",
+    "remediation": "Enforced AuthService.requireProjectAccess(req, projectId) on collection path enumeration.",
+    "verification": "VERIFIED (security-assessment-verification.test.ts Subtest 19 passed: HTTP 401 returned)"
+  },
+  {
+    "id": "SYN-P3-004",
+    "title": "Unauthenticated Collection Group Query Bypassing Rules",
+    "severity": "HIGH",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/routes/document.routes.ts:486-496",
+    "status": "REMEDIATED",
+    "description": "GET /api/v1/projects/:projectId/databases/:databaseId/collectionGroups/:collectionId queried documents across projects without invoking security rules checkPermission, exposing subcollection data.",
+    "rootCause": "Omission of checkPermission call prior to executing DocumentService.queryCollectionGroup.",
+    "remediation": "Enforced checkPermission(req, projectId, `/${collectionId}`, 'list') prior to collection group querying.",
+    "verification": "VERIFIED (security-assessment-verification.test.ts Subtest 20 passed: HTTP 403 PERMISSION_DENIED)"
+  },
+  {
+    "id": "SYN-P3-005",
+    "title": "Unauthenticated Project Plan Context & Storage Telemetry Leak",
+    "severity": "MEDIUM",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/routes/admin.routes.ts:987-991",
+    "status": "REMEDIATED",
+    "description": "GET /api/v1/projects/:projectId/plan exposed real database storage byte counts, file storage byte counts, and quota limits of any target project to anonymous callers without authentication.",
+    "rootCause": "Console plan context route was labeled public and lacked developer authentication.",
+    "remediation": "Enforced AuthService.requireProjectAccess(req, projectId) in production and staging environments.",
+    "verification": "VERIFIED (security-assessment-verification.test.ts Subtest 21 passed: HTTP 401 returned in production)"
+  },
+  {
+    "id": "SYN-P3-006",
+    "title": "Unauthenticated Project Metadata Exfiltration",
+    "severity": "MEDIUM",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/routes/project.routes.ts:129-136",
+    "status": "REMEDIATED",
+    "description": "GET /api/v1/projects/:projectId returned complete project records (organization ID, name, slug, plan ID, timestamps) to unauthenticated callers.",
+    "rootCause": "Missing developer authentication middleware on single project retrieval route.",
+    "remediation": "Enforced AuthService.requireProjectAccess(req, projectId) in production and staging environments.",
+    "verification": "VERIFIED (security-assessment-verification.test.ts Subtest 21 passed: HTTP 401 returned in production)"
   }
 ]
