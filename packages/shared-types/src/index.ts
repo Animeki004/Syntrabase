@@ -780,6 +780,9 @@ export interface EmailProviderAccount {
   }>;
   isSharedQuotaPool?: boolean;
   sharedWithAccountName?: string;
+  isPrimary?: boolean;
+  remainingCredits?: number;
+  totalDailyQuota?: number;
   createdAt: string;
   updatedAt: string;
 }

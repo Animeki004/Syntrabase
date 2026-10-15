@@ -1166,6 +1166,22 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
     }
   });
 
+  // Set Primary In-Use Provider Account
+  server.post('/api/v1/admin/email/accounts/:id/primary', async (req, reply) => {
+    const admin = await requireSuperAdmin(req);
+    const { id } = req.params as { id: string };
+
+    await EmailService.setPrimaryProviderAccount(id);
+    await AuditService.log({
+      actorId: admin.uid,
+      actorType: 'developer',
+      action: 'admin.email_provider_account_set_primary',
+      targetResource: `email_account:${id}`,
+    });
+
+    return reply.send({ success: true, message: 'Account designated as primary in-use dispatcher' });
+  });
+
   // Get Platform Email Policy
   server.get('/api/v1/admin/email/policy', async (req, reply) => {
     await requireSuperAdmin(req);

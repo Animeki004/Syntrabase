@@ -11,9 +11,10 @@
 ALTER TABLE projects 
   ADD COLUMN IF NOT EXISTS dedicated_brevo_enabled BOOLEAN NOT NULL DEFAULT FALSE;
 
--- 2. Add project_id to email_provider_accounts table (supports platform & tenant accounts)
+-- 2. Add project_id and is_primary to email_provider_accounts table (supports platform & tenant accounts)
 ALTER TABLE email_provider_accounts 
-  ADD COLUMN IF NOT EXISTS project_id VARCHAR(255);
+  ADD COLUMN IF NOT EXISTS project_id VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS is_primary BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_email_provider_accounts_project_id 
   ON email_provider_accounts (project_id);

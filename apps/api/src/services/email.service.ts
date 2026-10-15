@@ -435,10 +435,11 @@ export class EmailService {
                 daily_sent_count as "dailySentCount", monthly_sent_count as "monthlySentCount",
                 daily_reset_at as "dailyResetAt", monthly_reset_at as "monthlyResetAt",
                 paused_until as "pausedUntil", provider_plan_info as "providerPlanInfo",
+                COALESCE(is_primary, FALSE) as "isPrimary",
                 created_at as "createdAt", updated_at as "updatedAt"
          FROM email_provider_accounts
          ${whereClause}
-         ORDER BY created_at DESC`,
+         ORDER BY is_primary DESC, created_at DESC`,
         params
       );
 
@@ -495,16 +496,34 @@ export class EmailService {
 
       return res.rows.map((acc: any) => {
         const shared = acc.accountEmail ? (emailCount.get(acc.accountEmail.toLowerCase()) || []) : [];
+        const totalDailyQuota = acc.providerPlanInfo?.credits !== undefined ? Number(acc.providerPlanInfo.credits) : 300;
+        const dailySent = Number(acc.dailySentCount || 0);
+        const remainingCredits = Math.max(0, totalDailyQuota - dailySent);
+
         return {
           ...acc,
           associatedDomains: domainMap.get(acc.id) || [],
           authorizedSenders: senderMap.get(acc.id) || [],
           isSharedQuotaPool: shared.length > 1,
           sharedWithAccountName: shared.length > 1 ? shared.filter((n: string) => n !== acc.accountName).join(', ') : undefined,
+          isPrimary: Boolean(acc.isPrimary),
+          totalDailyQuota,
+          remainingCredits,
         };
       });
     } catch {
       return Array.from(inMemoryProviderAccounts.values()).map(({ rawApiKey, ...rest }) => rest);
+    }
+  }
+
+  public static async setPrimaryProviderAccount(id: string): Promise<void> {
+    try {
+      await query(`UPDATE email_provider_accounts SET is_primary = FALSE`);
+      await query(`UPDATE email_provider_accounts SET is_primary = TRUE, updated_at = NOW() WHERE id = $1`, [id]);
+    } catch {
+      for (const [accId, acc] of inMemoryProviderAccounts.entries()) {
+        acc.isPrimary = accId === id;
+      }
     }
   }
 
@@ -1500,6 +1519,12 @@ export class EmailService {
         if (boundAcc) {
           eligibleCandidates.push(boundAcc);
         }
+      }
+
+      // Prioritize primary in-use dispatcher account
+      const primaryAcc = availablePool.find((a) => a.isPrimary && !eligibleCandidates.some((c) => c.id === a.id));
+      if (primaryAcc) {
+        eligibleCandidates.push(primaryAcc);
       }
 
       // Add remaining eligible accounts sorted by observed daily usage

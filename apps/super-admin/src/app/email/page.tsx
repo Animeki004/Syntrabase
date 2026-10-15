@@ -23,7 +23,8 @@ import {
   Check,
   ExternalLink,
   ShieldCheck,
-  Zap
+  Zap,
+  Star
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -57,6 +58,7 @@ export default function GlobalEmailControlPage() {
   // Provider Accounts State
   const [accounts, setAccounts] = useState<EmailProviderAccount[]>([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
 
   // Add Account Modal State
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
@@ -517,6 +519,26 @@ export default function GlobalEmailControlPage() {
     }
   };
 
+  // Set Primary In-Use Dispatcher Account
+  const handleSetPrimaryAccount = async (id: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/admin/email/accounts/${id}/primary`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
+      });
+      if (res.ok) {
+        addToast('Account designated as primary in-use dispatcher', 'success');
+        setSelectedAccountId(id);
+        await fetchAccounts();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        addToast(err.error || 'Failed to designate primary account', 'error');
+      }
+    } catch {
+      addToast('Error updating primary account', 'error');
+    }
+  };
+
   // Toggle Account Enabled
   const handleToggleAccount = async (id: string, currentEnabled: boolean) => {
     try {
@@ -647,8 +669,21 @@ export default function GlobalEmailControlPage() {
     }
   };
 
-  const activeAccount = accounts.find((a) => a.status === 'healthy') || accounts[0];
-  const activeCredits = activeAccount?.providerPlanInfo?.credits !== undefined ? activeAccount.providerPlanInfo.credits : (accounts.length > 0 ? 300 : 0);
+  // Determine active in-use dispatcher account
+  const activeAccount = (selectedAccountId ? accounts.find((a) => a.id === selectedAccountId) : null)
+    || accounts.find((a) => a.isPrimary && a.isEnabled)
+    || accounts.find((a) => a.status === 'healthy' && (a.dailySentCount || 0) > 0)
+    || accounts.find((a) => a.status === 'healthy')
+    || accounts[0];
+
+  const totalDailyQuota = activeAccount?.totalDailyQuota !== undefined
+    ? Number(activeAccount.totalDailyQuota)
+    : (activeAccount?.providerPlanInfo?.credits !== undefined ? Number(activeAccount.providerPlanInfo.credits) : (accounts.length > 0 ? 300 : 0));
+
+  const dailyDispatched = Number(activeAccount?.dailySentCount || 0);
+  const remainingCredits = Math.max(0, totalDailyQuota - dailyDispatched);
+  const percentUsed = totalDailyQuota > 0 ? Math.min(100, Math.round((dailyDispatched / totalDailyQuota) * 100)) : 0;
+  const isQuotaExhausted = remainingCredits === 0 && totalDailyQuota > 0;
   const activePlanType = (activeAccount?.providerPlanInfo?.planType || (accounts.length > 0 ? 'free' : 'disconnected')).toUpperCase();
 
   return (
@@ -728,30 +763,85 @@ export default function GlobalEmailControlPage() {
       )}
 
       {/* Top Telemetry Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', alignItems: 'stretch' }}>
-        {/* Card 1: Provider Plan & Credits */}
-        <Card style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '140px' }}>
-          <div style={{ padding: '18px 20px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', alignItems: 'stretch' }}>
+        {/* Card 1: Provider Plan & Dynamic Credits Countdown */}
+        <Card style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '150px' }}>
+          <div style={{ padding: '16px 20px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Active Provider Quota
               </span>
-              <Badge variant={activeAccount?.status === 'healthy' ? 'outline' : 'warning'} size="sm" style={{ fontSize: '10px', color: activeAccount?.status === 'healthy' ? 'var(--success)' : 'var(--warning)', borderColor: activeAccount?.status === 'healthy' ? 'var(--success)' : 'var(--warning)' }}>
-                {activeAccount?.accountName ? `${activeAccount.accountName} (${activeAccount.status})` : 'No Account Connected'}
-              </Badge>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {accounts.length > 1 && (
+                  <select
+                    value={activeAccount?.id || ''}
+                    onChange={(e) => setSelectedAccountId(e.target.value)}
+                    style={{
+                      fontSize: '11px',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      backgroundColor: 'var(--bg-surface-subtle)',
+                      border: '1px solid var(--border-default)',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
+                      outline: 'none',
+                    }}
+                    title="Switch inspected Brevo account"
+                  >
+                    {accounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.accountName} {a.isPrimary ? '★' : ''} ({a.status})
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {activeAccount?.isPrimary ? (
+                  <Badge variant="warning" size="sm" style={{ fontSize: '10px' }}>
+                    <Star size={10} style={{ marginRight: '3px', fill: 'currentColor' }} /> Primary In-Use
+                  </Badge>
+                ) : (
+                  <Badge variant={activeAccount?.status === 'healthy' ? 'outline' : 'warning'} size="sm" style={{ fontSize: '10px', color: activeAccount?.status === 'healthy' ? 'var(--success)' : 'var(--warning)', borderColor: activeAccount?.status === 'healthy' ? 'var(--success)' : 'var(--warning)' }}>
+                    {activeAccount?.accountName ? `${activeAccount.accountName} (${activeAccount.status})` : 'No Account Connected'}
+                  </Badge>
+                )}
+              </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-              <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
-                {activeCredits.toLocaleString()}
+
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '2.1rem', fontWeight: 800, color: isQuotaExhausted ? 'var(--danger)' : 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+                {remainingCredits.toLocaleString()}
               </span>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                credits ({activePlanType} tier)
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isQuotaExhausted ? 'var(--danger)' : 'var(--text-secondary)' }}>
+                {isQuotaExhausted ? 'credits remaining (Daily Quota Reached!)' : 'credits remaining today'}
               </span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-muted)' }}>
+                ({activePlanType} tier • {totalDailyQuota.toLocaleString()} daily limit)
+              </span>
+            </div>
+
+            {/* Visual Quota Progress Bar */}
+            <div style={{ marginTop: '2px' }}>
+              <div style={{ height: '6px', width: '100%', backgroundColor: 'var(--bg-surface-subtle)', borderRadius: '3px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${percentUsed}%`,
+                    backgroundColor: isQuotaExhausted ? 'var(--danger)' : percentUsed > 80 ? 'var(--warning)' : 'var(--success)',
+                    transition: 'width 0.4s ease',
+                  }}
+                />
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                <span>{dailyDispatched} dispatched today ({percentUsed}% used)</span>
+                <span>{remainingCredits} available until quota reached</span>
+              </div>
             </div>
           </div>
-          <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
-            <span>Today's Dispatched: <strong style={{ color: 'var(--text-primary)' }}>{activeAccount?.dailySentCount ?? 0}</strong></span>
+
+          <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Today's Dispatched: <strong style={{ color: 'var(--text-primary)' }}>{dailyDispatched}</strong></span>
             <span>Monthly Total: <strong style={{ color: 'var(--text-primary)' }}>{activeAccount?.monthlySentCount ?? 0}</strong></span>
+            <span>Router Total: <strong style={{ color: 'var(--text-primary)' }}>{outboxItems.length}</strong></span>
           </div>
         </Card>
 
@@ -956,6 +1046,11 @@ export default function GlobalEmailControlPage() {
                       </TableCell>
                       <TableCell>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                          {acc.isPrimary && (
+                            <Badge variant="warning" style={{ fontSize: '10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <Star size={10} style={{ fill: 'currentColor' }} /> Primary In-Use
+                            </Badge>
+                          )}
                           {acc.status === 'healthy' ? (
                             <Badge variant="outline" style={{ color: 'var(--success)', borderColor: 'var(--success)' }}>
                               <CheckCircle2 size={12} style={{ marginRight: '4px' }} /> Healthy
@@ -989,13 +1084,15 @@ export default function GlobalEmailControlPage() {
                       </TableCell>
                       <TableCell>
                         <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                          Daily: {acc.dailySentCount ?? 0} / {acc.providerPlanInfo?.credits !== undefined ? acc.providerPlanInfo.credits : 300}
+                          Remaining: <span style={{ color: (acc.remainingCredits ?? Math.max(0, (acc.providerPlanInfo?.credits ?? 300) - (acc.dailySentCount || 0))) === 0 ? 'var(--danger)' : 'var(--success)' }}>
+                            {(acc.remainingCredits ?? Math.max(0, (acc.providerPlanInfo?.credits ?? 300) - (acc.dailySentCount || 0))).toLocaleString()}
+                          </span> / {(acc.totalDailyQuota ?? (acc.providerPlanInfo?.credits ?? 300)).toLocaleString()} daily
                         </div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                          Monthly: {acc.monthlySentCount ?? 0} sent
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          Today: {acc.dailySentCount ?? 0} sent • Monthly: {acc.monthlySentCount ?? 0} sent
                         </div>
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          Tier: {acc.providerPlanInfo?.planType ? `Brevo ${acc.providerPlanInfo.planType}` : 'Brevo Free'}
+                          Tier: {acc.providerPlanInfo?.planType ? `Brevo ${acc.providerPlanInfo.planType.toUpperCase()}` : 'Brevo FREE'}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -1031,6 +1128,15 @@ export default function GlobalEmailControlPage() {
                       </TableCell>
                       <TableCell style={{ textAlign: 'right' }}>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleSetPrimaryAccount(acc.id)}
+                            style={{ color: acc.isPrimary ? '#f59e0b' : 'var(--text-muted)', borderColor: acc.isPrimary ? '#f59e0b' : undefined }}
+                            title={acc.isPrimary ? 'Designated as Primary Dispatcher' : 'Set as Primary In-Use Dispatcher'}
+                          >
+                            <Star size={13} style={acc.isPrimary ? { fill: '#f59e0b' } : {}} />
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
