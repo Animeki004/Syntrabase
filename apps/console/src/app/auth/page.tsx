@@ -166,11 +166,19 @@ export default function SyntrabaseAuthPage() {
   const [newDomainInput, setNewDomainInput] = useState('');
   const [showAddDomainModal, setShowAddDomainModal] = useState(false);
 
+  // Helper to attach developer Bearer token from localStorage
+  const getAuthHeaders = useCallback((): Record<string, string> => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }, []);
+
   // Fetch Authorized Senders for project
   const fetchAuthorizedSenders = useCallback(async () => {
     setIsLoadingSenders(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/email/senders`);
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/email/senders`, {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) {
         const data = await res.json();
         const senders = data.senders || [];
@@ -188,12 +196,14 @@ export default function SyntrabaseAuthPage() {
     } finally {
       setIsLoadingSenders(false);
     }
-  }, [projectId, templateFromEmail]);
+  }, [projectId, templateFromEmail, getAuthHeaders]);
 
   // Load project configuration & users on mount or project switch
   const fetchAuthConfig = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/config`);
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/config`, {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) {
         const data = await res.json();
         setConfig(data.config);
@@ -229,13 +239,13 @@ export default function SyntrabaseAuthPage() {
     } catch {
       // Fallback
     }
-  }, [projectId]);
+  }, [projectId, getAuthHeaders]);
 
   const handleSaveVerificationSetting = async (required: boolean) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/config`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ requireEmailVerification: required }),
       });
       if (res.ok) {
@@ -261,7 +271,9 @@ export default function SyntrabaseAuthPage() {
       const url = userSearch
         ? `${API_BASE_URL}/api/v1/projects/${projectId}/auth/users?search=${encodeURIComponent(userSearch)}`
         : `${API_BASE_URL}/api/v1/projects/${projectId}/auth/users`;
-      const res = await fetch(url);
+      const res = await fetch(url, {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.users)) {
@@ -273,23 +285,30 @@ export default function SyntrabaseAuthPage() {
     } finally {
       setLoading(false);
     }
-  }, [projectId, userSearch]);
+  }, [projectId, userSearch, getAuthHeaders]);
 
   const fetchUsageTelemetry = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/usage`);
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/usage`, {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) {
         const data = await res.json();
-        if (data.telemetry) setUsageTelemetry(data.telemetry);
+        const telemetry = data.telemetry || data.usage;
+        if (telemetry) {
+          setUsageTelemetry(telemetry);
+        }
       }
     } catch {
       // Fallback
     }
-  }, [projectId]);
+  }, [projectId, getAuthHeaders]);
 
   const fetchActivityLogs = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/logs?limit=20`);
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/logs?limit=50`, {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.logs) setActivityLogs(data.logs);
@@ -297,7 +316,7 @@ export default function SyntrabaseAuthPage() {
     } catch {
       // Fallback
     }
-  }, [projectId]);
+  }, [projectId, getAuthHeaders]);
 
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
@@ -336,7 +355,7 @@ export default function SyntrabaseAuthPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/users`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           email: newEmail.trim(),
           password: newPassword,
@@ -402,7 +421,7 @@ export default function SyntrabaseAuthPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/config/providers/${editingProvider}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           provider: editingProvider,
           enabled: providerEnabled,
@@ -430,7 +449,7 @@ export default function SyntrabaseAuthPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/config`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           accountLinkingMode,
           passwordPolicy: {
@@ -462,7 +481,7 @@ export default function SyntrabaseAuthPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/users/${user.id}/status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ disabled: newStatus }),
       });
       if (res.ok) {
@@ -482,6 +501,7 @@ export default function SyntrabaseAuthPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/users/${deletingUser.id}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
       if (res.ok) {
         setUsers(users.filter((u) => u.id !== deletingUser.id));
@@ -503,7 +523,7 @@ export default function SyntrabaseAuthPage() {
       const parsed = JSON.parse(claimsJson);
       const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/users/${selectedUser.id}/claims`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ customClaims: parsed }),
       });
       if (res.ok) {
@@ -764,6 +784,121 @@ export default function SyntrabaseAuthPage() {
               <span>Argon2id + JWT Engine</span>
             </span>
           </div>
+        </div>
+
+        {/* Real-time Authentication & Telemetry Overview Cards */}
+        <div
+          id="auth-telemetry-overview-cards"
+          data-testid="auth-telemetry-overview-cards"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '12px',
+            marginBottom: '20px',
+          }}
+        >
+          {[
+            {
+              id: 'telemetry-total-users',
+              label: 'Total Users',
+              value: usageTelemetry.totalUsers || users.length,
+              icon: Users,
+              color: 'var(--primary, #6366f1)',
+              bg: 'rgba(99, 102, 241, 0.1)',
+            },
+            {
+              id: 'telemetry-active-users',
+              label: 'Active Users',
+              value: usageTelemetry.activeUsers || users.filter((u) => !u.disabled).length,
+              icon: CheckCircle2,
+              color: 'var(--success, #10b981)',
+              bg: 'rgba(16, 185, 129, 0.1)',
+            },
+            {
+              id: 'telemetry-anonymous-users',
+              label: 'Anonymous Users',
+              value: usageTelemetry.anonymousUsers || users.filter((u) => u.isAnonymous || (!u.email && !u.phoneNumber)).length,
+              icon: User,
+              color: 'var(--text-muted, #94a3b8)',
+              bg: 'var(--bg-surface-subtle, rgba(255, 255, 255, 0.05))',
+            },
+            {
+              id: 'telemetry-successful-signins',
+              label: 'Successful Sign-Ins',
+              value: usageTelemetry.successfulSignIns,
+              icon: ShieldCheck,
+              color: '#3b82f6',
+              bg: 'rgba(59, 130, 246, 0.1)',
+            },
+            {
+              id: 'telemetry-failed-signins',
+              label: 'Sign-In Failures',
+              value: usageTelemetry.failedSignIns,
+              icon: ShieldAlert,
+              color: 'var(--danger, #ef4444)',
+              bg: 'rgba(239, 68, 68, 0.1)',
+            },
+          ].map((m) => {
+            const Icon = m.icon;
+            return (
+              <div
+                key={m.label}
+                id={m.id}
+                data-testid={m.id}
+                style={{
+                  backgroundColor: 'var(--bg-surface)',
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 'var(--radius-lg, 12px)',
+                  padding: '14px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  boxShadow: 'var(--shadow-sm)',
+                }}
+              >
+                <div
+                  style={{
+                    padding: '10px',
+                    borderRadius: 'var(--radius-md, 8px)',
+                    background: m.bg,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Icon size={20} color={m.color} />
+                </div>
+                <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      fontSize: '0.72rem',
+                      color: 'var(--text-muted)',
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      whiteSpace: 'nowrap',
+                      textOverflow: 'ellipsis',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {m.label}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '1.4rem',
+                      fontWeight: 700,
+                      color: 'var(--text-primary)',
+                      lineHeight: 1.2,
+                      marginTop: '2px',
+                    }}
+                  >
+                    {m.value}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Top Tab Bar */}
@@ -1481,9 +1616,9 @@ export default function SyntrabaseAuthPage() {
           {/* Metric cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
             {[
-              { label: 'Total Users', value: usageTelemetry.totalUsers, icon: Users, color: 'var(--primary)' },
-              { label: 'Active Users', value: usageTelemetry.activeUsers, icon: CheckCircle2, color: 'var(--success)' },
-              { label: 'Anonymous Users', value: usageTelemetry.anonymousUsers, icon: User, color: 'var(--text-muted)' },
+              { label: 'Total Users', value: usageTelemetry.totalUsers || users.length, icon: Users, color: 'var(--primary)' },
+              { label: 'Active Users', value: usageTelemetry.activeUsers || users.filter((u) => !u.disabled).length, icon: CheckCircle2, color: 'var(--success)' },
+              { label: 'Anonymous Users', value: usageTelemetry.anonymousUsers || users.filter((u) => u.isAnonymous || (!u.email && !u.phoneNumber)).length, icon: User, color: 'var(--text-muted)' },
               { label: 'Successful Sign-Ins', value: usageTelemetry.successfulSignIns, icon: ShieldCheck, color: 'var(--primary)' },
               { label: 'Sign-In Failures', value: usageTelemetry.failedSignIns, icon: ShieldAlert, color: 'var(--danger)' },
             ].map((m) => {

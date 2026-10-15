@@ -653,6 +653,9 @@ export class AuthConfigService {
    */
   public static async getAuthUsageTelemetry(projectId: string): Promise<AuthUsageTelemetry> {
     try {
+      const { ProjectService } = await import('./project.service.js');
+      const resolvedProjectId = await ProjectService.resolveProjectId(projectId);
+
       const usersRes = await query<{
         total_users: string;
         active_users: string;
@@ -668,15 +671,15 @@ export class AuthConfigService {
           COUNT(*) FILTER (WHERE disabled = TRUE)::text as disabled_users
          FROM app_users
          WHERE project_id = $1`,
-        [projectId]
+        [resolvedProjectId]
       );
 
       const logsRes = await query<{ event_type: string; count: string }>(
         `SELECT event_type, COUNT(*)::text as count
          FROM auth_activity_logs
-         WHERE project_id = $1
+         WHERE project_id = $1 OR project_id = $2
          GROUP BY event_type`,
-        [projectId]
+        [resolvedProjectId, projectId]
       );
 
       const u = usersRes.rows[0] || {
@@ -701,8 +704,8 @@ export class AuthConfigService {
         successfulSignIns: eventMap.get('auth.login_success') || 0,
         failedSignIns: eventMap.get('auth.login_failed') || 0,
         totalSignups: eventMap.get('auth.sign_up') || parseInt(u.total_users, 10),
-        passwordResetsSent: eventMap.get('auth.password_reset_sent') || 0,
-        verificationsSent: eventMap.get('auth.verification_sent') || 0,
+        passwordResetsSent: eventMap.get('auth.password_reset_sent') || eventMap.get('email.password_reset_sent') || 0,
+        verificationsSent: eventMap.get('auth.verification_sent') || eventMap.get('email.verify_email_sent') || 0,
         rateLimitRejections: eventMap.get('auth.quota_exceeded') || 0,
         providerBreakdown: {
           email_password: parseInt(u.total_users, 10) - parseInt(u.anonymous_users, 10),
@@ -744,16 +747,18 @@ export class AuthConfigService {
    */
   public static async getAuthActivityLogs(projectId: string, limit = 50): Promise<AuthActivityLog[]> {
     try {
+      const { ProjectService } = await import('./project.service.js');
+      const resolvedProjectId = await ProjectService.resolveProjectId(projectId);
       const res = await query<any>(
         `SELECT id, project_id as "projectId", environment_id as "environmentId",
                 actor_id as "actorId", actor_email as "actorEmail", event_type as "eventType",
                 provider, ip_address as "ipAddress", user_agent as "userAgent", metadata,
                 created_at as "createdAt"
          FROM auth_activity_logs
-         WHERE project_id = $1
+         WHERE project_id = $1 OR project_id = $2
          ORDER BY created_at DESC
-         LIMIT $2`,
-        [projectId, limit]
+         LIMIT $3`,
+        [resolvedProjectId, projectId, limit]
       );
       return res.rows;
     } catch {

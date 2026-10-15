@@ -16,6 +16,11 @@ export class AdminAuth {
     return list.users.find((u) => u.id === uid) || null;
   }
 
+  public async getUserByEmail(email: string): Promise<AppUser | null> {
+    const list = await this.listUsers({ search: email.trim().toLowerCase(), limit: 5 });
+    return list.users.find((u) => u.email?.toLowerCase() === email.trim().toLowerCase()) || null;
+  }
+
   public async listUsers(options: { page?: number; limit?: number; search?: string } = {}): Promise<{
     users: AppUser[];
     total: number;
@@ -85,6 +90,26 @@ export class AdminAuth {
     const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/auth/users/${uid}`;
     const res = await fetch(url, { method: 'DELETE', headers: this.getHeaders() });
     if (!res.ok) throw new Error(`Admin deleteUser failed: ${res.statusText}`);
+  }
+
+  public async deleteUsers(uids: string[]): Promise<{ successCount: number; failureCount: number; errors?: any[] }> {
+    let successCount = 0;
+    let failureCount = 0;
+    const errors: any[] = [];
+    for (const uid of uids) {
+      try {
+        await this.deleteUser(uid);
+        successCount++;
+      } catch (err: any) {
+        failureCount++;
+        errors.push({ uid, error: err.message });
+      }
+    }
+    return { successCount, failureCount, errors: errors.length > 0 ? errors : undefined };
+  }
+
+  public async setCustomUserClaims(uid: string, customClaims: Record<string, unknown> | null): Promise<void> {
+    await this.updateUser(uid, { customClaims: customClaims || {} });
   }
 
   public async revokeRefreshTokens(uid: string): Promise<void> {

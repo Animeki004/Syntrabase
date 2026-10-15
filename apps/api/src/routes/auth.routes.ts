@@ -734,7 +734,7 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
       await AuthService.requireProjectAccess(req, projectId);
     }
     const telemetry = await AuthConfigService.getAuthUsageTelemetry(projectId);
-    return reply.send({ usage: telemetry });
+    return reply.send({ usage: telemetry, telemetry });
   });
 
   server.get('/api/v1/projects/:projectId/auth/logs', async (req, reply) => {
