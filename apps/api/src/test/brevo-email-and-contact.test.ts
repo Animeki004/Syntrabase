@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { BrevoEmailProvider } from '../services/email-providers/brevo.provider.js';
@@ -11,7 +11,7 @@ import { AuthService } from '../services/auth.service.js';
 import { AuthConfigService } from '../services/auth-config.service.js';
 import { TemplateService } from '../services/template.service.js';
 import { buildServer } from '../server.js';
-import { query } from '../db/pool.js';
+import { query, pool } from '../db/pool.js';
 
 test('1. Brevo Adapter — Rejects invalid or empty credentials cleanly', async () => {
   const brevo = new BrevoEmailProvider();
@@ -229,66 +229,70 @@ test('8. Contact Center — Decoupled Persistence During Email Shutdown', async 
 
 test('9. Super Admin Endpoints — Email Control Center and Notifications API', async () => {
   const server = await buildServer();
-  const superAdminToken = AuthService.generateAccessToken({
-    uid: 'super-admin-01',
-    email: 'ops@syntrabase.app',
-    role: 'super-admin',
-    isPlatformAdmin: true,
-  } as any);
-  const adminHeaders = {
-    authorization: `Bearer ${superAdminToken}`,
-  };
+  try {
+    const superAdminToken = AuthService.generateAccessToken({
+      uid: 'super-admin-01',
+      email: 'ops@syntrabase.app',
+      role: 'super-admin',
+      isPlatformAdmin: true,
+    } as any);
+    const adminHeaders = {
+      authorization: `Bearer ${superAdminToken}`,
+    };
 
-  // 1. Get Platform Email Policy
-  const policyRes = await server.inject({
-    method: 'GET',
-    url: '/api/v1/admin/email/policy',
-    headers: adminHeaders,
-  });
-  assert.equal(policyRes.statusCode, 200);
-  const policyData = JSON.parse(policyRes.body);
-  assert.ok(typeof policyData.policy.globalSendingEnabled === 'boolean');
+    // 1. Get Platform Email Policy
+    const policyRes = await server.inject({
+      method: 'GET',
+      url: '/api/v1/admin/email/policy',
+      headers: adminHeaders,
+    });
+    assert.equal(policyRes.statusCode, 200);
+    const policyData = JSON.parse(policyRes.body);
+    assert.ok(typeof policyData.policy.globalSendingEnabled === 'boolean');
 
-  // 2. List Provider Accounts
-  const accountsRes = await server.inject({
-    method: 'GET',
-    url: '/api/v1/admin/email/accounts',
-    headers: adminHeaders,
-  });
-  assert.equal(accountsRes.statusCode, 200);
-  const accountsData = JSON.parse(accountsRes.body);
-  assert.ok(Array.isArray(accountsData.accounts));
+    // 2. List Provider Accounts
+    const accountsRes = await server.inject({
+      method: 'GET',
+      url: '/api/v1/admin/email/accounts',
+      headers: adminHeaders,
+    });
+    assert.equal(accountsRes.statusCode, 200);
+    const accountsData = JSON.parse(accountsRes.body);
+    assert.ok(Array.isArray(accountsData.accounts));
 
-  // 3. List Outbox Queue
-  const queueRes = await server.inject({
-    method: 'GET',
-    url: '/api/v1/admin/email/queue',
-    headers: adminHeaders,
-  });
-  assert.equal(queueRes.statusCode, 200);
-  const queueData = JSON.parse(queueRes.body);
-  assert.ok(Array.isArray(queueData.items));
+    // 3. List Outbox Queue
+    const queueRes = await server.inject({
+      method: 'GET',
+      url: '/api/v1/admin/email/queue',
+      headers: adminHeaders,
+    });
+    assert.equal(queueRes.statusCode, 200);
+    const queueData = JSON.parse(queueRes.body);
+    assert.ok(Array.isArray(queueData.items));
 
-  // 4. List Internal Notifications
-  const notifRes = await server.inject({
-    method: 'GET',
-    url: '/api/v1/admin/notifications',
-    headers: adminHeaders,
-  });
-  assert.equal(notifRes.statusCode, 200);
-  const notifData = JSON.parse(notifRes.body);
-  assert.ok(Array.isArray(notifData.notifications));
-  assert.ok(typeof notifData.unreadCount === 'number');
+    // 4. List Internal Notifications
+    const notifRes = await server.inject({
+      method: 'GET',
+      url: '/api/v1/admin/notifications',
+      headers: adminHeaders,
+    });
+    assert.equal(notifRes.statusCode, 200);
+    const notifData = JSON.parse(notifRes.body);
+    assert.ok(Array.isArray(notifData.notifications));
+    assert.ok(typeof notifData.unreadCount === 'number');
 
-  // 5. List Contact Submissions (Super Admin)
-  const contactRes = await server.inject({
-    method: 'GET',
-    url: '/api/v1/admin/contact/inquiries',
-    headers: adminHeaders,
-  });
-  assert.equal(contactRes.statusCode, 200);
-  const contactData = JSON.parse(contactRes.body);
-  assert.ok(Array.isArray(contactData.submissions));
+    // 5. List Contact Submissions (Super Admin)
+    const contactRes = await server.inject({
+      method: 'GET',
+      url: '/api/v1/admin/contact/inquiries',
+      headers: adminHeaders,
+    });
+    assert.equal(contactRes.statusCode, 200);
+    const contactData = JSON.parse(contactRes.body);
+    assert.ok(Array.isArray(contactData.submissions));
+  } finally {
+    await server.close().catch(() => {});
+  }
 });
 
 test('10. Duplicate Account Detection & Credentials Update', async () => {
@@ -445,6 +449,7 @@ test('11. Authoritative Email Verification Project Setting — Enforced vs Optio
     assert.ok(verifiedData.accessToken);
   } finally {
     await query('DELETE FROM projects WHERE id = $1', [projectId]).catch(() => {});
+    await server.close().catch(() => {});
   }
 });
 
@@ -497,6 +502,7 @@ test('12. Resend Verification Flow with 60-second Rate Limiting', async () => {
     assert.ok(resendData2.message.includes('Please wait'));
   } finally {
     await query('DELETE FROM projects WHERE id = $1', [projectId]).catch(() => {});
+    await server.close().catch(() => {});
   }
 });
 
@@ -566,4 +572,8 @@ test('14. Server-Side Sender Identity Validation in TemplateService', async () =
   const items = await EmailService.getOutboxItems(10, projectId);
   assert.ok(items.length > 0);
   assert.equal(items[0].senderEmail, sender.emailAddress);
+});
+
+after(async () => {
+  await pool.end().catch(() => {});
 });

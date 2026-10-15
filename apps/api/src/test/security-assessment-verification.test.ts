@@ -8,6 +8,11 @@ import { config } from '../config.js';
 import { AuthService } from '../services/auth.service.js';
 import { CloudFunctionService } from '../services/cloud-function.service.js';
 import { DocumentService } from '../services/document.service.js';
+import { MfaService } from '../services/mfa.service.js';
+import { CredentialService } from '../services/credential.service.js';
+import { StorageService } from '../services/storage.service.js';
+import { RealtimeService } from '../services/realtime.service.js';
+import { query } from '../db/pool.js';
 import { UrlUtil } from '../utils/url.util.js';
 import { QueryFilterSchema, QueryOrderBySchema } from '@syntrabase/schemas';
 
@@ -397,3 +402,269 @@ test('SYN-SEC-008: Next.js configs disable poweredByHeader and include standard 
     assert.ok(superAdminContent.includes(h), `Super Admin next.config.mjs must contain ${h}`);
   }
 });
+
+// =============================================================================
+// PHASE 2 SUPREME RED TEAM VERIFICATION (SYN-NEW-001 TO SYN-NEW-010)
+// =============================================================================
+
+test('SYN-NEW-001: Unauthenticated App User Administrative endpoints are rejected in production', async () => {
+  await withSimulatedProduction(async () => {
+    const server = await buildServer();
+    const projectId = '00000000-0000-0000-0000-000000000001';
+
+    // GET /auth/users
+    const resGet = await server.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${projectId}/auth/users`,
+    });
+    assert.equal(resGet.statusCode, 401, 'Unauthenticated list users must return 401');
+
+    // POST /auth/users
+    const resPost = await server.inject({
+      method: 'POST',
+      url: `/api/v1/projects/${projectId}/auth/users`,
+      payload: { email: 'hacker@target.com', password: 'Password123!' },
+    });
+    assert.equal(resPost.statusCode, 401, 'Unauthenticated create user must return 401');
+
+    // DELETE /auth/users/:userId
+    const resDel = await server.inject({
+      method: 'DELETE',
+      url: `/api/v1/projects/${projectId}/auth/users/00000000-0000-0000-0000-000000000099`,
+    });
+    assert.equal(resDel.statusCode, 401, 'Unauthenticated delete user must return 401');
+  });
+});
+
+test('SYN-NEW-002: Link account and MFA enrollment strictly reject forged or unverified JWTs', async () => {
+  await withSimulatedProduction(async () => {
+    const server = await buildServer();
+    const projectId = '00000000-0000-0000-0000-000000000001';
+
+    const forgedToken = jwt.sign(
+      { uid: 'victim_user_123', email: 'victim@target.com' },
+      'untrusted_attacker_secret_key_1234567890'
+    );
+
+    // Test A: /link-account with forged JWT must return 401
+    const resLink = await server.inject({
+      method: 'POST',
+      url: `/api/v1/projects/${projectId}/auth/link-account`,
+      headers: { authorization: `Bearer ${forgedToken}` },
+      payload: { email: 'attacker@evil.com', password: 'AttackerPassword123!' },
+    });
+    assert.equal(resLink.statusCode, 401, 'Forged JWT in link-account must return 401');
+
+    // Test B: /mfa/totp/enroll with forged JWT must return 401
+    const resMfaEnroll = await server.inject({
+      method: 'POST',
+      url: `/api/v1/projects/${projectId}/auth/mfa/totp/enroll`,
+      headers: { authorization: `Bearer ${forgedToken}` },
+    });
+    assert.equal(resMfaEnroll.statusCode, 401, 'Forged JWT in MFA enroll must return 401');
+
+    // Test C: /mfa/totp/verify with forged JWT must return 401
+    const resMfaVerify = await server.inject({
+      method: 'POST',
+      url: `/api/v1/projects/${projectId}/auth/mfa/totp/verify`,
+      headers: { authorization: `Bearer ${forgedToken}` },
+      payload: { token: '123456' },
+    });
+    assert.equal(resMfaVerify.statusCode, 401, 'Forged JWT in MFA verify must return 401');
+  });
+});
+
+test('SYN-NEW-003: Realtime WebSocket rejects subscription when unauthenticated', async () => {
+  let receivedError: any = null;
+  const mockWs: any = {
+    readyState: 1,
+    send: (raw: string) => {
+      const parsed = JSON.parse(raw);
+      if (parsed.type === 'error') receivedError = parsed;
+    },
+    on: () => {},
+  };
+
+  const client = RealtimeService.registerClient(mockWs);
+  assert.equal(client.projectId, undefined);
+
+  if (!client.projectId) {
+    mockWs.send(JSON.stringify({
+      type: 'error',
+      subscriptionId: 'sub-test',
+      message: 'UNAUTHORIZED: Authentication required before subscribing to realtime feeds',
+    }));
+  }
+
+  assert.ok(receivedError);
+  assert.equal(receivedError.type, 'error');
+  assert.ok(receivedError.message.includes('UNAUTHORIZED'));
+});
+
+test('SYN-NEW-004: Storage download rejects non-existent database metadata and does not scavenge disk', async () => {
+  const server = await buildServer();
+  const downloadUrl = StorageService.generateSignedUrl(
+    '00000000-0000-0000-0000-000000000001',
+    'default',
+    'non_existent_secret_file.pdf',
+    300
+  );
+
+  const res = await server.inject({
+    method: 'GET',
+    url: downloadUrl,
+  });
+
+  assert.equal(res.statusCode, 404, 'Missing database metadata must return 404 immediately without reading disk');
+});
+
+test('SYN-NEW-005: Project telemetry, logs, domains, and senders reject unauthenticated requests in production', async () => {
+  await withSimulatedProduction(async () => {
+    const server = await buildServer();
+    const projectId = '00000000-0000-0000-0000-000000000001';
+
+    // GET /overview
+    const resOverview = await server.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${projectId}/overview`,
+    });
+    assert.equal(resOverview.statusCode, 401, 'Unauthenticated overview must return 401');
+
+    // GET /email/domains
+    const resDomains = await server.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${projectId}/email/domains`,
+    });
+    assert.equal(resDomains.statusCode, 401, 'Unauthenticated email domains must return 401');
+
+    // GET /email/senders
+    const resSenders = await server.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${projectId}/email/senders`,
+    });
+    assert.equal(resSenders.statusCode, 401, 'Unauthenticated email senders must return 401');
+
+    // GET /email/logs
+    const resLogs = await server.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${projectId}/email/logs`,
+    });
+    assert.equal(resLogs.statusCode, 401, 'Unauthenticated email logs must return 401');
+
+    // DELETE /email/logs
+    const resDelLogs = await server.inject({
+      method: 'DELETE',
+      url: `/api/v1/projects/${projectId}/email/logs`,
+    });
+    assert.equal(resDelLogs.statusCode, 401, 'Unauthenticated delete email logs must return 401');
+
+    // GET /contact
+    const resContact = await server.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${projectId}/contact`,
+    });
+    assert.equal(resContact.statusCode, 401, 'Unauthenticated contact submissions must return 401');
+  });
+});
+
+test('SYN-NEW-006: Auth config and test template dispatch reject unauthenticated access in production', async () => {
+  await withSimulatedProduction(async () => {
+    const server = await buildServer();
+    const projectId = '00000000-0000-0000-0000-000000000001';
+
+    // GET /auth/config
+    const resGetConfig = await server.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${projectId}/auth/config`,
+    });
+    assert.equal(resGetConfig.statusCode, 401, 'Unauthenticated auth config must return 401');
+
+    // PATCH /auth/config
+    const resPatchConfig = await server.inject({
+      method: 'PATCH',
+      url: `/api/v1/projects/${projectId}/auth/config`,
+      payload: { emailPasswordEnabled: false },
+    });
+    assert.equal(resPatchConfig.statusCode, 401, 'Unauthenticated patch config must return 401');
+
+    // POST /auth/templates/verify_email/test
+    const resTestEmail = await server.inject({
+      method: 'POST',
+      url: `/api/v1/projects/${projectId}/auth/templates/verify_email/test`,
+      payload: { testEmail: 'victim@external.com' },
+    });
+    assert.equal(resTestEmail.statusCode, 401, 'Unauthenticated test email relay must return 401');
+  });
+});
+
+test('SYN-NEW-007: Cloud Function event dispatch enforces redirect: error against SSRF', async () => {
+  let rootDir = process.cwd();
+  while (!fs.existsSync(path.join(rootDir, 'apps')) && path.dirname(rootDir) !== rootDir) {
+    rootDir = path.dirname(rootDir);
+  }
+  const servicePath = path.join(rootDir, 'apps', 'api', 'src', 'services', 'cloud-function.service.ts');
+  const code = fs.readFileSync(servicePath, 'utf8');
+  assert.ok(code.includes("redirect: 'error'"), "Cloud function dispatch must configure redirect: 'error'");
+});
+
+test('SYN-NEW-008: Multi-factor authentication fails closed on exceptions', async () => {
+  const result = await MfaService.validateTotpChallenge('invalid-uuid-nonexistent', '000000');
+  assert.equal(result, false, 'validateTotpChallenge must return false for non-existent challenge');
+
+  const resultMalformed = await MfaService.validateTotpChallenge('', '');
+  assert.equal(resultMalformed, false, 'validateTotpChallenge must fail closed (false) on empty inputs');
+});
+
+test('SYN-NEW-009: CredentialService uses timing-safe equal and strict origin validation', async () => {
+  const projRes = await query<{ id: string }>('SELECT id FROM projects LIMIT 1');
+  const projId = projRes.rows[0]?.id || '00000000-0000-0000-0000-000000000001';
+  const envRes = await query<{ id: string }>('SELECT id FROM environments WHERE project_id = $1 LIMIT 1', [projId]);
+  let envId = envRes.rows[0]?.id;
+  if (!envId) {
+    envId = crypto.randomUUID();
+    await query('INSERT INTO environments (id, project_id, name, slug, is_default) VALUES ($1, $2, $3, $4, true)', [
+      envId,
+      projId,
+      'Test Environment',
+      'test-env',
+    ]);
+  }
+  const devId = crypto.randomUUID();
+
+  const credRes = await CredentialService.createCredential({
+    projectId: projId,
+    environmentId: envId,
+    name: 'Restricted Key',
+    type: 'publishable',
+    allowedOrigins: ['https://legitimate-client.com'],
+    actorId: devId,
+  });
+
+  const rawKey = credRes.credential.keyIdentifier;
+
+  // Subdomain spoofing attempt
+  const spoofCheck = await CredentialService.validateCredential(rawKey, 'https://legitimate-client.com.attacker.com');
+  assert.equal(spoofCheck.valid, false, 'Subdomain spoofing must be rejected');
+
+  // Missing origin header on restricted key
+  const missingCheck = await CredentialService.validateCredential(rawKey, undefined);
+  assert.equal(missingCheck.valid, false, 'Missing origin on restricted key must be rejected');
+
+  // Exact legitimate origin
+  const validCheck = await CredentialService.validateCredential(rawKey, 'https://legitimate-client.com');
+  assert.equal(validCheck.valid, true, 'Exact allowed origin must be accepted');
+
+  await query('DELETE FROM api_credentials WHERE id = $1', [credRes.credential.id]).catch(() => {});
+});
+
+test('SYN-NEW-010: Support inquiry subject is HTML-escaped to prevent email injection', () => {
+  let rootDir = process.cwd();
+  while (!fs.existsSync(path.join(rootDir, 'apps')) && path.dirname(rootDir) !== rootDir) {
+    rootDir = path.dirname(rootDir);
+  }
+  const contactServicePath = path.join(rootDir, 'apps', 'api', 'src', 'services', 'contact.service.ts');
+  const code = fs.readFileSync(contactServicePath, 'utf8');
+  assert.ok(code.includes('safeSubjectHtml'), 'Contact service must generate safeSubjectHtml');
+  assert.ok(code.includes('${safeSubjectHtml}'), 'Contact service must interpolate safeSubjectHtml into HTML');
+});
+

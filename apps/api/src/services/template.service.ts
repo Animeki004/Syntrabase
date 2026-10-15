@@ -96,16 +96,9 @@ export class TemplateService {
       if (fallbackEmail) {
         senderEmail = fallbackEmail;
       } else {
-        const accs = await EmailService.getProviderAccounts().catch(() => []);
-        const activeAcc = accs.find((a) => a.status === 'healthy' && a.accountEmail);
-        if (activeAcc?.accountEmail) {
-          senderEmail = activeAcc.accountEmail;
-          senderName = activeAcc.accountName || senderName;
-        } else {
-          throw new Error(
-            `Cannot send '${templateType}' email: No verified authorized sender identity configured for project '${projectId}' or platform. Please configure a verified custom domain and authorized sender in Super Admin or Project Settings -> Email.`
-          );
-        }
+        throw new Error(
+          `Cannot send '${templateType}' email: No verified authorized sender identity configured for project '${projectId}' or platform. Please configure a verified custom domain and authorized sender in Super Admin or Project Settings -> Email.`
+        );
       }
     }
 

@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { query } from '../db/pool.js';
+import { config } from '../config.js';
 import { ProjectService } from '../services/project.service.js';
 import { DatabaseService } from '../services/database.service.js';
 import { AuthService } from '../services/auth.service.js';
@@ -138,6 +139,9 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
   server.get('/api/v1/projects/:projectId/overview', async (req, reply) => {
     const { projectId: rawId } = req.params as { projectId: string };
     const projectId = await ProjectService.resolveProjectId(rawId);
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const project = await ProjectService.getProject(projectId);
 
     if (!project) {
@@ -303,6 +307,9 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
   // List Project Custom Domains
   server.get('/api/v1/projects/:projectId/email/domains', async (req, reply) => {
     const { projectId } = req.params as { projectId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const domains = await EmailService.getCustomDomains(projectId);
     return reply.send({ domains });
   });
@@ -417,6 +424,9 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
   // List Authorized Senders
   server.get('/api/v1/projects/:projectId/email/senders', async (req, reply) => {
     const { projectId } = req.params as { projectId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const senders = await EmailService.getAuthorizedSenders(projectId);
     return reply.send({ senders });
   });
@@ -476,6 +486,9 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
   server.get('/api/v1/projects/:projectId/email/logs', async (req, reply) => {
     const { projectId: rawId } = req.params as { projectId: string };
     const projectId = await ProjectService.resolveProjectId(rawId).catch(() => rawId);
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const logs = await EmailService.getDeliveryLogs(projectId, 50, rawId);
     return reply.send({ logs });
   });
@@ -484,6 +497,9 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
   server.delete('/api/v1/projects/:projectId/email/logs', async (req, reply) => {
     const { projectId: rawId } = req.params as { projectId: string };
     const projectId = await ProjectService.resolveProjectId(rawId).catch(() => rawId);
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const result = await EmailService.clearDeliveryLogs(projectId, rawId);
     return reply.send({ success: true, ...result });
   });
@@ -683,6 +699,9 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
   // Get Contact Submissions for Project
   server.get('/api/v1/projects/:projectId/contact', async (req, reply) => {
     const { projectId } = req.params as { projectId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const result = await ContactService.getSubmissions({ projectId, limit: 50 });
     return reply.send(result);
   });

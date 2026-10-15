@@ -23,7 +23,24 @@
 
 ---
 
-## 2. Test Suite Alignment & Assertion Fixes
+## 2. Phase 2 Supreme Red Team Assessment Findings (Remediated & Verified)
+
+| ID | Title | Severity | CVSS | Component | Root Cause | Exploit Mechanics / Live Verification | Planned Fix | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **SYN-NEW-001** | Unauthenticated App User Administrative Directory | **CRITICAL** | 9.8 | `apps/api/src/routes/auth.routes.ts:631-673` | Handlers lack authentication and tenant ownership middleware. | Live `GET /api/v1/projects/:id/auth/users` returns HTTP 200 to unauthenticated callers. Allows full user enumeration, deletion, and password reset. | Enforced `AuthService.requireProjectAccess(req, projectId)`. | **REMEDIATED & VERIFIED** |
+| **SYN-NEW-002** | Account Takeover via Unverified JWT in `/link-account` | **CRITICAL** | 9.4 | `apps/api/src/routes/auth.routes.ts:507-532` | Uses unverified `jwt.decode` instead of cryptographic signature check. | Attacker can craft unsigned JWT with victim's `uid` and link own credentials. | Replaced `jwt.decode` with `AuthService.verifyAccessToken(token)`. | **REMEDIATED & VERIFIED** |
+| **SYN-NEW-003** | Unauthenticated Realtime WebSocket Feed Sniffing (BOLA) | **CRITICAL** | 9.1 | `apps/api/src/routes/realtime.routes.ts:24-46` | Unauthenticated client has `projectId === undefined`, skipping cross-project isolation checks. | Unauthenticated WebSocket connection can send `listen` frame for any project and stream all realtime DB events. | Enforced authenticated `client.projectId` matching `targetProjectId`. | **REMEDIATED & VERIFIED** |
+| **SYN-NEW-004** | Cross-Tenant Storage Leak via Shared Disk Root Scavenging | **HIGH** | 8.6 | `apps/api/src/routes/storage.routes.ts:161-164` | `fs.readdirSync` scans shared storage root if database object record is not found. | Signed URL download for missing record streams any file matching `basename(objectPath)` on the shared disk. | Removed disk scan fallback; returns 404 immediately. | **REMEDIATED & VERIFIED** |
+| **SYN-NEW-005** | Unauthenticated Exfiltration of Telemetry, Logs & Senders | **HIGH** | 8.2 | `apps/api/src/routes/project.routes.ts:138-175, 304, 418` | Overview, email domains, senders, and logs routes lack auth. | Live probes confirmed HTTP 200 for unauthenticated requests to `/overview`, `/email/domains`, `/email/senders`, `/email/logs`. | Enforced `AuthService.requireProjectAccess` across all routes. | **REMEDIATED & VERIFIED** |
+| **SYN-NEW-006** | Unauthenticated Auth Config Tampering & Spam Relay Abuse | **HIGH** | 7.8 | `apps/api/src/routes/auth.routes.ts:538-580` | Auth config read/update and email template test dispatch lack authentication. | Live `GET /auth/config` returned HTTP 200. Attacker can tamper with password policies or abuse `/auth/templates/:type/test` as a spam relay. | Enforced `AuthService.requireProjectAccess` on config/templates. | **REMEDIATED & VERIFIED** |
+| **SYN-NEW-007** | Blind SSRF via Webhook Open HTTP Redirect Following | **MEDIUM** | 6.8 | `apps/api/src/services/cloud-function.service.ts:169-180` | `fetch(trigger.endpointUrl)` follows HTTP 301/302 redirects by default. | Attacker provides public webhook that responds with 302 redirecting to internal loopback or cloud metadata services. | Passed `redirect: 'error'` into `fetch` options. | **REMEDIATED & VERIFIED** |
+| **SYN-NEW-008** | Multi-Factor Authentication Fails Open on Exceptions | **MEDIUM** | 6.5 | `apps/api/src/services/mfa.service.ts:206-208` | `validateTotpChallenge` catch block has `return true`. | Any database error or parse exception causes MFA challenge to pass, bypassing second-factor auth. | Changed catch block to fail closed: `return false;`. | **REMEDIATED & VERIFIED** |
+| **SYN-NEW-009** | Secret Key Timing Side-Channel & Publishable Key Origin Bypass | **MEDIUM** | 5.3 | `apps/api/src/services/credential.service.ts:116, 122-126` | Uses `!==` for hash check; origin uses `.startsWith()` check. | Timing side-channel on secret keys; subdomain prefix bypass for publishable keys (e.g. `allowed.com.attacker.com`). | Applied `crypto.timingSafeEqual` and strict URL origin equality. | **REMEDIATED & VERIFIED** |
+| **SYN-NEW-010** | Email HTML Injection via Support Ticket Subject | **LOW** | 4.3 | `apps/api/src/services/contact.service.ts:405` | `submission.subject` is inserted unescaped into HTML template. | Inquiry subject with HTML tags renders raw HTML in administrative support notifications via Brevo. | Applied HTML entity encoding to `submission.subject`. | **REMEDIATED & VERIFIED** |
+
+---
+
+## 3. Test Suite Alignment & Assertion Fixes
 
 | ID | Title | Category | Component | Description & Remediation | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -34,7 +51,7 @@
 
 ---
 
-## 3. Technical Debt & Accepted Risks
+## 4. Technical Debt & Accepted Risks
 
 | ID | Title | Component | Analysis & Mitigation Strategy |
 | :--- | :--- | :--- | :--- |

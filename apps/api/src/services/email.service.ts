@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { config } from '../config.js';
 import { query } from '../db/pool.js';
 import {
   EmailActionToken,
@@ -1375,10 +1376,12 @@ export class EmailService {
       inMemoryOutboxQueue.set(id, item);
     }
 
-    // Trigger asynchronous queue processor immediately
-    this.processOutboxQueue().catch((err) => {
-      console.error('[EMAIL QUEUE WORKER ERROR]', err);
-    });
+    // Trigger asynchronous queue processor immediately in non-test environments
+    if (config.env !== 'test') {
+      this.processOutboxQueue().catch((err) => {
+        console.error('[EMAIL QUEUE WORKER ERROR]', err);
+      });
+    }
 
     return item;
   }

@@ -25,7 +25,16 @@ export const realtimeRoutes: FastifyPluginAsync = async (server: FastifyInstance
           const { subscriptionId, projectId, environmentId, collectionPath, documentId, lastCheckpointId } = msg;
 
           const targetProjectId = projectId || client.projectId || '';
-          if (client.projectId && targetProjectId && client.projectId !== targetProjectId) {
+          if (!client.projectId) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              subscriptionId,
+              message: 'UNAUTHORIZED: Authentication required before subscribing to realtime feeds',
+            }));
+            return;
+          }
+
+          if (client.projectId !== targetProjectId) {
             ws.send(JSON.stringify({
               type: 'error',
               subscriptionId,

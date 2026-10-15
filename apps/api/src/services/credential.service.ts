@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { query } from '../db/pool.js';
 import { CryptoUtil } from '../utils/crypto.js';
 import { AuditService } from './audit.service.js';
@@ -110,19 +111,38 @@ export class CredentialService {
       return { valid: false, error: 'API key has expired' };
     }
 
-    // For secret keys, verify hash
+    // For secret keys, verify hash with timingSafeEqual
     if (isSecret) {
       const computedHash = CryptoUtil.sha256(rawKey);
-      if (computedHash !== cred.hashed_secret) {
+      if (
+        !cred.hashed_secret ||
+        computedHash.length !== cred.hashed_secret.length ||
+        !crypto.timingSafeEqual(Buffer.from(computedHash, 'utf8'), Buffer.from(cred.hashed_secret, 'utf8'))
+      ) {
         return { valid: false, error: 'Invalid secret key' };
       }
     }
 
     // For publishable keys, verify origin if restricted
-    if (isPublishable && cred.allowed_origins.length > 0 && requestOrigin) {
-      const originAllowed = cred.allowed_origins.some((allowed) =>
-        requestOrigin.toLowerCase().startsWith(allowed.toLowerCase())
-      );
+    if (isPublishable && cred.allowed_origins.length > 0) {
+      if (!requestOrigin) {
+        return { valid: false, error: 'Origin header required for restricted publishable key' };
+      }
+      let reqOriginParsed: string;
+      try {
+        reqOriginParsed = new URL(requestOrigin).origin.toLowerCase();
+      } catch {
+        return { valid: false, error: 'Invalid origin header' };
+      }
+
+      const originAllowed = cred.allowed_origins.some((allowed) => {
+        try {
+          const allowedParsed = new URL(allowed).origin.toLowerCase();
+          return reqOriginParsed === allowedParsed;
+        } catch {
+          return reqOriginParsed === allowed.toLowerCase();
+        }
+      });
       if (!originAllowed) {
         return { valid: false, error: 'Origin not allowed by key policy' };
       }

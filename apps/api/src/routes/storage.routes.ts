@@ -156,15 +156,10 @@ export const storageRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     ).catch(() => ({ rows: [] }));
 
     const storageRoot = path.resolve(config.storage.localRoot);
-    let matching = objRes.rows[0]?.metadata?.internalFilename;
+    const matching = objRes.rows[0]?.metadata?.internalFilename;
 
     if (!matching) {
-      const files = fs.readdirSync(storageRoot);
-      matching = files.find((f) => f.includes(path.basename(validation.objectPath!)));
-    }
-
-    if (!matching) {
-      return reply.status(404).send({ error: 'Object not found on disk' });
+      return reply.status(404).send({ error: 'Object not found' });
     }
 
     const fullFilePath = path.join(storageRoot, matching);

@@ -388,6 +388,13 @@ export class ContactService {
         .replace(/>/g, '&gt;')
         .replace(/\n/g, '<br/>');
 
+      const safeSubjectHtml = (submission.subject || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
       const consoleBaseUrl = UrlUtil.resolveConsoleUrl();
       const { email: platformFromEmail, name: platformFromName } = await UrlUtil.resolvePlatformSender();
 
@@ -402,7 +409,7 @@ export class ContactService {
               <div style="margin-bottom:16px;">
                 <h2 style="color:#2563eb;margin:0;font-size:20px;letter-spacing:-0.02em;">Syntrabase Support Team</h2>
               </div>
-              <p style="font-size:14px;color:#334155;line-height:1.6;">An official response has been issued for your ticket <strong style="font-family:monospace;color:#2563eb;">${submission.ticketReference}</strong> (<strong>${submission.subject}</strong>):</p>
+              <p style="font-size:14px;color:#334155;line-height:1.6;">An official response has been issued for your ticket <strong style="font-family:monospace;color:#2563eb;">${submission.ticketReference}</strong> (<strong>${safeSubjectHtml}</strong>):</p>
               <div style="background:#f8fafc;border-left:4px solid #2563eb;padding:16px;border-radius:6px;font-size:14px;line-height:1.6;color:#1e293b;margin:20px 0;">
                 ${safeReplyHtml}
               </div>

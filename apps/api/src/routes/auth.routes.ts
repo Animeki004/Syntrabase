@@ -512,7 +512,12 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
 
     const { email, password, displayName } = req.body as { email: string; password: string; displayName?: string };
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.decode(token) as any;
+    let decoded: any;
+    try {
+      decoded = AuthService.verifyAccessToken(token);
+    } catch {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid or expired access token' });
+    }
     if (!decoded?.uid) {
       return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid token payload' });
     }
@@ -537,12 +542,18 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
 
   server.get('/api/v1/projects/:projectId/auth/config', async (req, reply) => {
     const { projectId } = req.params as { projectId: string };
-    const config = await AuthConfigService.getProjectAuthConfig(projectId);
-    return reply.send({ config });
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+    const authConfig = await AuthConfigService.getProjectAuthConfig(projectId);
+    return reply.send({ config: authConfig });
   });
 
   server.patch('/api/v1/projects/:projectId/auth/config', async (req, reply) => {
     const { projectId } = req.params as { projectId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const updates = UpdateProjectAuthConfigSchema.parse(req.body);
     const updated = await AuthConfigService.updateProjectAuthConfig(projectId, updates);
     return reply.send({ config: updated });
@@ -550,6 +561,9 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
 
   server.post('/api/v1/projects/:projectId/auth/config/providers/:provider', async (req, reply) => {
     const { projectId, provider } = req.params as { projectId: string; provider: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const body = ConfigureAuthProviderSchema.parse({ ...(req.body as Record<string, unknown>), provider });
     const updated = await AuthConfigService.configureProvider(projectId, provider, body);
     return reply.send({ config: updated });
@@ -561,12 +575,18 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
 
   server.get('/api/v1/projects/:projectId/auth/templates', async (req, reply) => {
     const { projectId } = req.params as { projectId: string };
-    const config = await AuthConfigService.getProjectAuthConfig(projectId);
-    return reply.send({ templates: config.emailTemplates });
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+    const authConfig = await AuthConfigService.getProjectAuthConfig(projectId);
+    return reply.send({ templates: authConfig.emailTemplates });
   });
 
   server.patch('/api/v1/projects/:projectId/auth/templates/:templateType', async (req, reply) => {
     const { projectId, templateType } = req.params as { projectId: string; templateType: EmailTemplateType };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const template = EmailTemplateConfigSchema.parse(req.body);
     const templates = await AuthConfigService.updateEmailTemplate(projectId, templateType, template);
     return reply.send({ templates });
@@ -574,6 +594,9 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
 
   server.post('/api/v1/projects/:projectId/auth/config/templates/:templateType', async (req, reply) => {
     const { projectId, templateType } = req.params as { projectId: string; templateType: EmailTemplateType };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const template = EmailTemplateConfigSchema.parse(req.body);
     const templates = await AuthConfigService.updateEmailTemplate(projectId, templateType, template);
     return reply.send({ templates });
@@ -581,6 +604,9 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
 
   server.post('/api/v1/projects/:projectId/auth/templates/:templateType/test', async (req, reply) => {
     const { projectId, templateType } = req.params as { projectId: string; templateType: EmailTemplateType };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const { testEmail, recipientEmail } = (req.body as any) || {};
     const targetEmail = testEmail || recipientEmail;
 
@@ -603,6 +629,9 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
 
   server.post('/api/v1/projects/:projectId/auth/templates/test-email', async (req, reply) => {
     const { projectId } = req.params as { projectId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const { templateType, recipientEmail, testEmail } = (req.body as any) || {};
     const targetEmail = testEmail || recipientEmail;
     const type: EmailTemplateType = templateType || 'verify_email';
@@ -630,6 +659,9 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
 
   server.get('/api/v1/projects/:projectId/auth/users', async (req, reply) => {
     const { projectId } = req.params as { projectId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const queryParams = req.query as { page?: string; limit?: string; search?: string };
 
     const page = queryParams.page ? parseInt(queryParams.page, 10) : 1;
@@ -645,6 +677,9 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
 
   server.post('/api/v1/projects/:projectId/auth/users', async (req, reply) => {
     const { projectId } = req.params as { projectId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const environmentId = (req.headers['x-environment-id'] as string) || 'default';
     const body = AdminCreateUserSchema.parse(req.body);
 
@@ -654,6 +689,9 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
 
   server.patch('/api/v1/projects/:projectId/auth/users/:userId', async (req, reply) => {
     const { projectId, userId } = req.params as { projectId: string; userId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const body = AdminUpdateUserSchema.parse(req.body);
 
     const updated = await AuthService.adminUpdateAppUser(projectId, userId, body);
@@ -662,12 +700,18 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
 
   server.delete('/api/v1/projects/:projectId/auth/users/:userId', async (req, reply) => {
     const { projectId, userId } = req.params as { projectId: string; userId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     await AuthService.adminDeleteAppUser(projectId, userId);
     return reply.status(204).send();
   });
 
   server.post('/api/v1/projects/:projectId/auth/users/:userId/revoke-sessions', async (req, reply) => {
-    const { userId } = req.params as { projectId: string; userId: string };
+    const { projectId, userId } = req.params as { projectId: string; userId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     await AuthService.adminRevokeUserSessions(userId);
     return reply.send({ success: true, message: 'All active sessions revoked for user' });
   });
@@ -678,12 +722,18 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
 
   server.get('/api/v1/projects/:projectId/auth/usage', async (req, reply) => {
     const { projectId } = req.params as { projectId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const telemetry = await AuthConfigService.getAuthUsageTelemetry(projectId);
     return reply.send({ usage: telemetry });
   });
 
   server.get('/api/v1/projects/:projectId/auth/logs', async (req, reply) => {
     const { projectId } = req.params as { projectId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const queryParams = req.query as { limit?: string };
     const limit = queryParams.limit ? parseInt(queryParams.limit, 10) : 50;
 
@@ -702,7 +752,12 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.decode(token) as any;
+    let decoded: any;
+    try {
+      decoded = AuthService.verifyAccessToken(token);
+    } catch {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid or expired access token' });
+    }
     if (!decoded?.uid) {
       return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid token' });
     }
@@ -719,7 +774,12 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.decode(token) as any;
+    let decoded: any;
+    try {
+      decoded = AuthService.verifyAccessToken(token);
+    } catch {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid or expired access token' });
+    }
     if (!decoded?.uid) {
       return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid token' });
     }

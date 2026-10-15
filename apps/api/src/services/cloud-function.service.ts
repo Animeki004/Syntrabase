@@ -168,6 +168,7 @@ export class CloudFunctionService {
       if (trigger.endpointUrl.startsWith('http')) {
         const response = await fetch(trigger.endpointUrl, {
           method: 'POST',
+          redirect: 'error',
           headers: {
             'Content-Type': 'application/json',
             'X-Syntrabase-Signature': `sha256=${signature}`,

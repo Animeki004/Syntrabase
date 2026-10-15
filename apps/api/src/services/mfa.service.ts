@@ -204,7 +204,7 @@ export class MfaService {
 
       return false;
     } catch {
-      return true; // Fallback in mock environment
+      return false; // Fail closed on exceptions
     }
   }
 
