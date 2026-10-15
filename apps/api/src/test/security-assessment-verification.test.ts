@@ -28,7 +28,7 @@ async function withSimulatedProduction<T>(fn: () => Promise<T>): Promise<T> {
 
   try {
     (config as any).env = 'production';
-    config.platformDomain = 'originhub.me';
+    config.platformDomain = 'syntrabase.example.com';
     process.env.DATABASE_PASSWORD = 'SimulatedSecureProductionPassword_2026!';
     process.env.JWT_SECRET = 'SimulatedSecureJwtSecretLongEntropy_1234567890_2026!';
     process.env.PASSWORD_PEPPER = 'SimulatedSecurePasswordPepperLong_1234567890_2026!';
@@ -284,7 +284,7 @@ test('SYN-SEC-005: Document Query sanitization prevents SQL injection in JSONB e
 test('SYN-SEC-006: Console URL resolution prevents Origin and Referer header poisoning', () => {
   const originalDomain = config.platformDomain;
   try {
-    config.platformDomain = 'originhub.me';
+    config.platformDomain = 'syntrabase.example.com';
 
     // Test A: Attacker Origin header
     const attackerReqA: any = {
@@ -295,29 +295,29 @@ test('SYN-SEC-006: Console URL resolution prevents Origin and Referer header poi
       protocol: 'https',
     };
     const resolvedA = UrlUtil.resolveConsoleUrl(attackerReqA);
-    assert.equal(resolvedA, 'https://console.originhub.me', 'Attacker origin must not be reflected');
+    assert.equal(resolvedA, 'https://console.syntrabase.example.com', 'Attacker origin must not be reflected');
     assert.ok(!resolvedA.includes('evil-attacker.com'), 'Resolved URL must never contain attacker host');
 
     // Test B: Attacker Referer header
     const attackerReqB: any = {
       headers: {
         referer: 'https://phishing-syntrabase.com/auth/reset',
-        host: 'api.originhub.me',
+        host: 'api.syntrabase.example.com',
       },
       protocol: 'https',
     };
     const resolvedB = UrlUtil.resolveConsoleUrl(attackerReqB);
-    assert.equal(resolvedB, 'https://console.originhub.me', 'Attacker referer must not be reflected');
+    assert.equal(resolvedB, 'https://console.syntrabase.example.com', 'Attacker referer must not be reflected');
 
     // Test C: Legitimate console origin
     const legitimateConsoleReq: any = {
       headers: {
-        origin: 'https://console.originhub.me',
+        origin: 'https://console.syntrabase.example.com',
       },
       protocol: 'https',
     };
     const resolvedLegit = UrlUtil.resolveConsoleUrl(legitimateConsoleReq);
-    assert.equal(resolvedLegit, 'https://console.originhub.me');
+    assert.equal(resolvedLegit, 'https://console.syntrabase.example.com');
 
     // Test D: Local development environment (when platformDomain is localhost)
     config.platformDomain = 'localhost';

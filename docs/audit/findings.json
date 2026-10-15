@@ -66,10 +66,10 @@
     "confidence": "CONFIRMED",
     "component": "apps/super-admin, apps/console, apps/api",
     "status": "REMEDIATED",
-    "description": "Hardcoded production domain originhub.me existed in Super Admin copy and tests. Console auth templates referenced legacy SMTP settings.",
+    "description": "Hardcoded production domains existed in Super Admin copy and tests. Console auth templates referenced legacy SMTP settings.",
     "rootCause": "Legacy development placeholders retained in frontend forms and auth template documentation.",
-    "remediation": "Purged all occurrences of originhub.me across the codebase with generic example.com and env fallbacks. Removed all SMTP references from Console templates and connected test dispatch to the modern Brevo EmailService pipeline.",
-    "verification": "VERIFIED (0 grep matches for originhub.me; Next.js builds clean)"
+    "remediation": "Purged all occurrences of hardcoded production domains across the codebase with generic example.com and env fallbacks. Removed all SMTP references from Console templates and connected test dispatch to the modern Brevo EmailService pipeline.",
+    "verification": "VERIFIED (0 grep matches for hardcoded production domains; Next.js builds clean)"
   },
   {
     "id": "SYN-FIND-007",

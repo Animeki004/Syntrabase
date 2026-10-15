@@ -1,9 +1,9 @@
 # SYNTRABASE AUTHORIZED SECURITY ASSESSMENT & SUPREME RED TEAM REPORT
 
 **Target Systems:**
-- `https://api.originhub.me/` (API Gateway & Core Engine)
-- `https://admin.originhub.me/` (Platform Super Admin Center)
-- `https://console.originhub.me/` (Developer Multi-Tenant Console)
+- `https://api.example.com/` (API Gateway & Core Engine)
+- `https://admin.example.com/` (Platform Super Admin Center)
+- `https://console.example.com/` (Developer Multi-Tenant Console)
 
 **Assessment Standard:** Principal-Level Authorized Security Assessment & Live Adversarial Penetration Testing  
 **Date:** October 15, 2026  
@@ -14,7 +14,7 @@
 ## 1. Executive Summary
 
 Syntrabase underwent an authorized security assessment combining:
-1. **Phase 1 Remediation & Live Verification:** Full remediation and verification of 8 initial vulnerabilities (**SYN-SEC-001** through **SYN-SEC-008**). Live testing against `https://api.originhub.me/` and local integration testing (82/82 passed) confirmed that all 8 vulnerabilities are successfully eliminated.
+1. **Phase 1 Remediation & Live Verification:** Full remediation and verification of 8 initial vulnerabilities (**SYN-SEC-001** through **SYN-SEC-008**). Live testing against target deployment and local integration testing (82/82 passed) confirmed that all 8 vulnerabilities are successfully eliminated.
 2. **Phase 2 Supreme Red Team Assessment & Remediation:** An exhaustive adversarial code audit and live API penetration assessment uncovered **10 new vulnerabilities** (**SYN-NEW-001** through **SYN-NEW-010**). All 10 vulnerabilities have been systematically patched with authoritative access controls, cryptographic JWT verification, fail-closed handlers, constant-time comparisons, and entity escaping. All fixes are verified through 10 dedicated regression tests (92/92 total test suite passed, 0 failures).
 
 ---
@@ -69,7 +69,7 @@ Syntrabase underwent an authorized security assessment combining:
 - **Live Verification Evidence:**
   ```http
   GET /api/v1/projects/00000000-0000-0000-0000-000000000001/auth/users HTTP/1.1
-  Host: api.originhub.me
+  Host: api.example.com
 
   HTTP/1.1 200 OK
   {"users":[],"total":0,"page":1,"limit":20}
@@ -156,15 +156,15 @@ Syntrabase underwent an authorized security assessment combining:
 - **Live Verification Evidence:**
   ```http
   GET /api/v1/projects/00000000-0000-0000-0000-000000000001/email/domains HTTP/1.1
-  Host: api.originhub.me
+  Host: api.example.com
   -> HTTP/1.1 200 OK {"domains":[]}
 
   GET /api/v1/projects/00000000-0000-0000-0000-000000000001/email/senders HTTP/1.1
-  Host: api.originhub.me
+  Host: api.example.com
   -> HTTP/1.1 200 OK {"senders":[]}
 
   GET /api/v1/projects/00000000-0000-0000-0000-000000000001/email/logs HTTP/1.1
-  Host: api.originhub.me
+  Host: api.example.com
   -> HTTP/1.1 200 OK {"logs":[]}
   ```
 - **Remediation:** Enforce `requireDeveloperId(req)` and `ProjectService.assertProjectAccess(devId, projectId)` across all telemetry, email, and contact endpoints in `project.routes.ts`.
@@ -182,7 +182,7 @@ Syntrabase underwent an authorized security assessment combining:
 - **Live Verification Evidence:**
   ```http
   GET /api/v1/projects/00000000-0000-0000-0000-000000000001/auth/config HTTP/1.1
-  Host: api.originhub.me
+  Host: api.example.com
 
   HTTP/1.1 200 OK
   {"config":{"id":"...","projectId":"00000000-0000-0000-0000-000000000001","passwordPolicy":{...},"emailTemplates":{...}}}
