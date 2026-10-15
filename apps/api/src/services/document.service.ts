@@ -264,35 +264,44 @@ export class DocumentService {
       WHERE project_id = $1 AND environment_id = $2 AND collection_path = $3
     `;
 
+    const safeIdentRegex = /^[a-zA-Z0-9_.]+$/;
+
     // Add JSONB query filters
     for (const f of filters) {
+      if (!safeIdentRegex.test(f.field)) {
+        const err: any = new Error(`INVALID_FIELD: Query filter field '${f.field}' contains invalid characters`);
+        err.statusCode = 400;
+        throw err;
+      }
+      const safeField = f.field.replace(/'/g, "''");
+
       params.push(f.value);
       const paramIndex = params.length;
 
       switch (f.operator) {
         case '==':
-          querySql += ` AND data->>'${f.field}' = $${paramIndex}::text`;
+          querySql += ` AND data->>'${safeField}' = $${paramIndex}::text`;
           break;
         case '!=':
-          querySql += ` AND data->>'${f.field}' != $${paramIndex}::text`;
+          querySql += ` AND data->>'${safeField}' != $${paramIndex}::text`;
           break;
         case '<':
-          querySql += ` AND (data->>'${f.field}')::numeric < $${paramIndex}::numeric`;
+          querySql += ` AND (data->>'${safeField}')::numeric < $${paramIndex}::numeric`;
           break;
         case '<=':
-          querySql += ` AND (data->>'${f.field}')::numeric <= $${paramIndex}::numeric`;
+          querySql += ` AND (data->>'${safeField}')::numeric <= $${paramIndex}::numeric`;
           break;
         case '>':
-          querySql += ` AND (data->>'${f.field}')::numeric > $${paramIndex}::numeric`;
+          querySql += ` AND (data->>'${safeField}')::numeric > $${paramIndex}::numeric`;
           break;
         case '>=':
-          querySql += ` AND (data->>'${f.field}')::numeric >= $${paramIndex}::numeric`;
+          querySql += ` AND (data->>'${safeField}')::numeric >= $${paramIndex}::numeric`;
           break;
         case 'array-contains':
-          querySql += ` AND data->'${f.field}' @> jsonb_build_array($${paramIndex})`;
+          querySql += ` AND data->'${safeField}' @> jsonb_build_array($${paramIndex})`;
           break;
         case 'in':
-          querySql += ` AND data->>'${f.field}' = ANY($${paramIndex}::text[])`;
+          querySql += ` AND data->>'${safeField}' = ANY($${paramIndex}::text[])`;
           break;
       }
     }
@@ -305,7 +314,16 @@ export class DocumentService {
 
     // Ordering
     if (orderBy.length > 0) {
-      const orderClauses = orderBy.map((o) => `data->>'${o.field}' ${o.direction.toUpperCase()}`);
+      const orderClauses = orderBy.map((o) => {
+        if (!safeIdentRegex.test(o.field)) {
+          const err: any = new Error(`INVALID_FIELD: OrderBy field '${o.field}' contains invalid characters`);
+          err.statusCode = 400;
+          throw err;
+        }
+        const safeField = o.field.replace(/'/g, "''");
+        const safeDir = o.direction.toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+        return `data->>'${safeField}' ${safeDir}`;
+      });
       querySql += ` ORDER BY ${orderClauses.join(', ')}`;
     } else {
       querySql += ` ORDER BY document_id ASC`;

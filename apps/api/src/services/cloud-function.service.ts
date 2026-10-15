@@ -4,6 +4,81 @@ import { CloudTrigger, CloudExecution } from '@syntrabase/shared-types';
 
 export class CloudFunctionService {
   /**
+   * Validates trigger endpoint URL to prevent Server-Side Request Forgery (SSRF).
+   * Rejects loopback (127.0.0.1, localhost), link-local cloud metadata (169.254.169.254),
+   * private RFC 1918 networks, and internal Docker container names.
+   */
+  public static validateEndpointUrl(urlString: string): void {
+    let parsed: URL;
+    try {
+      parsed = new URL(urlString);
+    } catch {
+      const err: any = new Error('INVALID_URL: Cloud function endpoint must be a valid HTTP/HTTPS URL');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      const err: any = new Error('INVALID_PROTOCOL: Cloud function endpoint must use HTTPS or HTTP');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+
+    // Check prohibited hostnames
+    const blockedHosts = [
+      'localhost',
+      '127.0.0.1',
+      '::1',
+      '0.0.0.0',
+      '169.254.169.254', // AWS / GCP / Cloud metadata
+      'metadata.google.internal',
+      'syntrabase-db',
+      'postgres',
+      'redis',
+      'traefik',
+    ];
+
+    if (
+      blockedHosts.includes(host) ||
+      host === '::1' ||
+      host.endsWith('.internal') ||
+      host.endsWith('.local') ||
+      !host.includes('.') || // Internal container/host name (e.g. syntrabase-postgres)
+      host.startsWith('127.') ||
+      host.startsWith('169.254.') ||
+      host.startsWith('fe80:') || // IPv6 Link-Local
+      host.startsWith('fc00:') || // IPv6 Unique Local
+      host.startsWith('fd00:')
+    ) {
+      const err: any = new Error('SSRF_PROTECTION: Endpoint URL cannot point to loopback, private container, or cloud metadata');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Check private IPv4 ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16)
+    const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+    const match = host.match(ipv4Regex);
+    if (match) {
+      const b0 = parseInt(match[1], 10);
+      const b1 = parseInt(match[2], 10);
+      if (
+        b0 === 10 || // 10.0.0.0/8
+        b0 === 127 || // 127.0.0.0/8
+        (b0 === 172 && b1 >= 16 && b1 <= 31) || // 172.16.0.0/12
+        (b0 === 192 && b1 === 168) || // 192.168.0.0/16
+        (b0 === 169 && b1 === 254) || // 169.254.0.0/16
+        b0 === 0
+      ) {
+        const err: any = new Error('SSRF_PROTECTION: Endpoint URL cannot point to internal/private IP address ranges');
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+  }
+
+  /**
    * Registers a new Cloud Function trigger for document events.
    */
   public static async registerTrigger(
@@ -15,6 +90,9 @@ export class CloudFunctionService {
     endpointUrl: string,
     secretKey?: string
   ): Promise<CloudTrigger> {
+    // Validate endpoint against SSRF
+    this.validateEndpointUrl(endpointUrl);
+
     const id = crypto.randomUUID();
     const secret = secretKey || crypto.randomBytes(32).toString('hex');
 
@@ -83,6 +161,9 @@ export class CloudFunctionService {
     let errorMessage: string | undefined;
 
     try {
+      // Validate against SSRF before invoking external request
+      this.validateEndpointUrl(trigger.endpointUrl);
+
       // If endpoint is reachable or in live environment
       if (trigger.endpointUrl.startsWith('http')) {
         const response = await fetch(trigger.endpointUrl, {

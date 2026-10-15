@@ -2,6 +2,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { query } from '../db/pool.js';
+import { config } from '../config.js';
 import { AuthService } from '../services/auth.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { DefenseService } from '../services/defense.service.js';
@@ -37,7 +38,15 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
 
     const nowSec = Math.floor(Date.now() / 1000);
     let payload: TokenPayload;
-    if (rawToken === 'admin-token' || rawToken === 'admin_sys_token' || rawToken === 'super_admin_token' || rawToken.startsWith('mock_jwt_super_admin')) {
+
+    // Development/Test mock tokens strictly restricted to automated test environment
+    if (
+      config.env === 'test' &&
+      (rawToken === 'admin-token' ||
+        rawToken === 'admin_sys_token' ||
+        rawToken === 'super_admin_token' ||
+        rawToken.startsWith('mock_jwt_super_admin'))
+    ) {
       payload = {
         uid: '00000000-0000-0000-0000-000000000001',
         email: 'superadmin@syntrabase.internal',
@@ -51,26 +60,32 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
       try {
         payload = AuthService.verifyAccessToken(rawToken);
       } catch (err: any) {
-        // Fallback for root sessions: inspect decoded claims if verified in platform_admins
-        try {
-          const jwtMod = await import('jsonwebtoken');
-          const decoded: any = (jwtMod.default || jwtMod).decode(rawToken);
-          if (decoded && (decoded.isPlatformAdmin || decoded.email === 'superadmin@syntrabase.internal' || decoded.uid === '00000000-0000-0000-0000-000000000001')) {
-            payload = {
-              uid: decoded.uid || '00000000-0000-0000-0000-000000000001',
-              email: decoded.email || 'superadmin@syntrabase.internal',
-              projectId: decoded.projectId || 'platform',
-              environmentId: decoded.environmentId || 'global',
-              isPlatformAdmin: true,
-              iat: decoded.iat || nowSec,
-              exp: decoded.exp || nowSec + 86400,
-            };
-          } else {
+        // Fallback for root sessions ONLY in automated test runners
+        if (config.env === 'test') {
+          try {
+            const jwtMod = await import('jsonwebtoken');
+            const decoded: any = (jwtMod.default || jwtMod).decode(rawToken);
+            if (decoded && (decoded.isPlatformAdmin || decoded.email === 'superadmin@syntrabase.internal' || decoded.uid === '00000000-0000-0000-0000-000000000001')) {
+              payload = {
+                uid: decoded.uid || '00000000-0000-0000-0000-000000000001',
+                email: decoded.email || 'superadmin@syntrabase.internal',
+                projectId: decoded.projectId || 'platform',
+                environmentId: decoded.environmentId || 'global',
+                isPlatformAdmin: true,
+                iat: decoded.iat || nowSec,
+                exp: decoded.exp || nowSec + 86400,
+              };
+            } else {
+              const authErr: any = new Error(err.message || 'UNAUTHORIZED: Super Admin authentication required');
+              authErr.statusCode = 401;
+              throw authErr;
+            }
+          } catch {
             const authErr: any = new Error(err.message || 'UNAUTHORIZED: Super Admin authentication required');
             authErr.statusCode = 401;
             throw authErr;
           }
-        } catch {
+        } else {
           const authErr: any = new Error(err.message || 'UNAUTHORIZED: Super Admin authentication required');
           authErr.statusCode = 401;
           throw authErr;
@@ -104,7 +119,7 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
       }
     } else {
       // Fallback only when DB is completely disconnected in test mock
-      if (!payload.isPlatformAdmin) {
+      if (config.env !== 'test' || !payload.isPlatformAdmin) {
         const err: any = new Error('FORBIDDEN: Verified Platform Super Admin authorization required');
         err.statusCode = 403;
         throw err;

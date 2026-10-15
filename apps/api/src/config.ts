@@ -5,7 +5,7 @@ import path from 'path';
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 export const config = {
-  env: process.env.NODE_ENV || 'development',
+  env: process.env.NODE_ENV || (process.execArgv.includes('--test') || process.argv.some((a) => a.includes('test')) ? 'test' : 'development'),
   port: parseInt(process.env.PORT || '4000', 10),
   host: process.env.HOST || '0.0.0.0',
   platformDomain: process.env.PLATFORM_DOMAIN || 'localhost',

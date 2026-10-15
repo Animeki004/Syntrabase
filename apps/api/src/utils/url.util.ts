@@ -1,15 +1,12 @@
 import { FastifyRequest } from 'fastify';
 import { query } from '../db/pool.js';
+import { config } from '../config.js';
 
 export class UrlUtil {
   /**
    * Dynamically resolves the Developer Console base URL without hardcoding any domain.
-   * Priority:
-   * 1. req.headers.origin (if sent by client browser)
-   * 2. req.headers.referer origin
-   * 3. CONSOLE_URL or CONSOLE_DOMAIN environment variables
-   * 4. Inferred dynamically from the incoming request host (e.g., api.domain.com -> console.domain.com)
-   * 5. Local development fallback
+   * Strictly validates incoming Origin/Referer headers against platformDomain to prevent
+   * Host Header Injection and Password Reset Link Poisoning (CWE-640).
    */
   public static resolveConsoleUrl(req?: FastifyRequest | any): string {
     // 1. Explicitly configured environment variables from .env
@@ -27,29 +24,63 @@ export class UrlUtil {
       return (d.startsWith('http://') || d.startsWith('https://') ? d : `https://${d}`).replace(/\/$/, '');
     }
 
-    // 2. Dynamic resolution from incoming HTTP request headers
+    // Helper: Validates that candidate hostname belongs to platformDomain or localhost
+    const isAllowedHost = (hostname: string): boolean => {
+      const host = hostname.toLowerCase();
+      const platformDomain = (config.platformDomain || 'localhost').toLowerCase();
+
+      // Allowed in development/test
+      if (config.env !== 'production' && config.env !== 'staging') {
+        if (host === 'localhost' || host === '127.0.0.1') return true;
+      }
+
+      if (platformDomain !== 'localhost') {
+        if (host === platformDomain || host.endsWith('.' + platformDomain)) {
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    // 2. Dynamic resolution from incoming HTTP request headers with strict domain validation
     if (req) {
       const origin = req.headers?.origin as string;
       if (origin && typeof origin === 'string' && origin.startsWith('http')) {
-        return origin.replace(/\/$/, '');
-      }
-
-      const referer = req.headers?.referer as string;
-      if (referer && typeof referer === 'string') {
         try {
-          return new URL(referer).origin.replace(/\/$/, '');
+          const parsed = new URL(origin);
+          if (isAllowedHost(parsed.hostname)) {
+            return parsed.origin;
+          }
         } catch {}
       }
 
-      const proto = (req.headers?.['x-forwarded-proto'] as string) || req.protocol || 'https';
+      const referer = req.headers?.referer as string;
+      if (referer && typeof referer === 'string' && referer.startsWith('http')) {
+        try {
+          const parsed = new URL(referer);
+          if (isAllowedHost(parsed.hostname)) {
+            return parsed.origin;
+          }
+        } catch {}
+      }
+
       const host = (req.headers?.['x-forwarded-host'] as string) || req.headers?.host;
       if (host && typeof host === 'string') {
-        const consoleHost = host.startsWith('api.') ? host.replace(/^api\./, 'console.') : host;
-        return `${proto}://${consoleHost}`;
+        const cleanHost = host.split(':')[0].trim();
+        if (isAllowedHost(cleanHost)) {
+          const proto = (req.headers?.['x-forwarded-proto'] as string) || req.protocol || 'https';
+          const consoleHost = cleanHost.startsWith('api.') ? cleanHost.replace(/^api\./, 'console.') : cleanHost;
+          return `${proto}://${consoleHost}`;
+        }
       }
     }
 
-    // 3. Fallback for local development
+    // 3. Fallback based on platformDomain or local development
+    if (config.platformDomain && config.platformDomain !== 'localhost') {
+      return `https://console.${config.platformDomain}`;
+    }
+
     return 'http://localhost:3000';
   }
 

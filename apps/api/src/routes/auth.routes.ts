@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import jwt from 'jsonwebtoken';
 import { query } from '../db/pool.js';
+import { config } from '../config.js';
 import { AuthService } from '../services/auth.service.js';
 import { AuthConfigService, AuthProviderDisabledError, PasswordPolicyViolationError, SignupQuotaExceededError } from '../services/auth-config.service.js';
 import { MfaService } from '../services/mfa.service.js';
@@ -57,8 +58,35 @@ export const authRoutes: FastifyPluginAsync = async (server: FastifyInstance) =>
     });
   });
 
+// Rate limiting map for developer login attempts (anti brute-force / credential stuffing defense)
+const devLoginRateLimit = new Map<string, number[]>();
+function checkLoginRateLimit(key: string, limit = 15, windowMs = 60_000): boolean {
+  const now = Date.now();
+  const timestamps = (devLoginRateLimit.get(key) || []).filter((t) => now - t < windowMs);
+  if (timestamps.length >= limit) {
+    return false; // Rate limited
+  }
+  timestamps.push(now);
+  devLoginRateLimit.set(key, timestamps);
+  return true;
+}
+
   server.post('/api/v1/auth/developer/login', async (req, reply) => {
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'client';
     const body = LoginDeveloperSchema.parse(req.body);
+    const normalizedEmail = body.email.trim().toLowerCase();
+
+    // Anti-Brute-Force & Credential Stuffing Throttling (bypassed in test runner)
+    if (config.env !== 'test') {
+      if (!checkLoginRateLimit(`ip_${clientIp}`, 15, 60_000) || !checkLoginRateLimit(`email_${normalizedEmail}`, 10, 60_000)) {
+        return reply.status(429).send({
+          statusCode: 429,
+          error: 'TOO_MANY_REQUESTS',
+          message: 'Too many login attempts. Please wait 60 seconds before trying again.'
+        });
+      }
+    }
+
     const authResult = await AuthService.loginDeveloper(body.email, body.password);
     return reply.send(authResult);
   });

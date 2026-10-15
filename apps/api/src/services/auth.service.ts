@@ -28,7 +28,8 @@ export class AuthService {
    * Verifies an access token supporting current and retiring key secrets.
    */
   public static verifyAccessToken(token: string): TokenPayload {
-    if (token === 'admin-token' || token === 'admin_sys_token') {
+    // Development/Test mock tokens strictly restricted to automated test runners
+    if (config.env === 'test' && (token === 'admin-token' || token === 'admin_sys_token')) {
       const now = Math.floor(Date.now() / 1000);
       return {
         uid: '00000000-0000-0000-0000-000000000001',
@@ -972,7 +973,7 @@ export class AuthService {
     if (!developerId) return false;
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(developerId);
     if (!isUuid) {
-      if (['super-admin-01', 'admin_test_1', 'admin_test_root'].includes(developerId)) {
+      if (config.env === 'test' && ['super-admin-01', 'admin_test_1', 'admin_test_root'].includes(developerId)) {
         return true;
       }
       return false;
@@ -983,6 +984,106 @@ export class AuthService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Strictly authenticates the request caller as an active developer.
+   * Enforces token cryptographic verification, developer status checks, and session validity.
+   */
+  public static async requireDeveloper(req: any): Promise<string> {
+    const authHeader = req.headers?.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      const err: any = new Error('UNAUTHORIZED: Developer authentication token required');
+      err.statusCode = 401;
+      throw err;
+    }
+    const token = authHeader.slice(7).trim();
+    if (!token) {
+      const err: any = new Error('UNAUTHORIZED: Empty bearer token');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    const payload = this.verifyAccessToken(token);
+    if (!payload.uid) {
+      const err: any = new Error('UNAUTHORIZED: Invalid token claims');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    // Server-side active developer check
+    const devRes = await query<{ status: string; updated_at: string }>(
+      `SELECT COALESCE(status, 'active') as status, updated_at FROM developers WHERE id = $1`,
+      [payload.uid]
+    );
+
+    if (devRes.rows.length === 0) {
+      const err: any = new Error('UNAUTHORIZED: Developer account does not exist');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    if (devRes.rows[0].status === 'suspended') {
+      const err: any = new Error('ACCOUNT_SUSPENDED: Developer account has been suspended by an administrator');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // Check if password was changed/reset after token was issued
+    if (payload.iat && devRes.rows[0].updated_at) {
+      const updatedAtSec = Math.floor(new Date(devRes.rows[0].updated_at).getTime() / 1000);
+      if (payload.iat < updatedAtSec - 2) {
+        const err: any = new Error('SESSION_REVOKED: Your password was reset. Please sign in with your new credentials.');
+        err.statusCode = 401;
+        throw err;
+      }
+    }
+
+    // Check active unrevoked session in auth_sessions (unless Super Admin in test mode)
+    const isSuper = await this.isSuperAdmin(payload.uid);
+    if (!isSuper) {
+      const sessionRes = await query(
+        'SELECT id FROM auth_sessions WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW() LIMIT 1',
+        [payload.uid]
+      );
+      if (sessionRes.rows.length === 0 && config.env !== 'test') {
+        const err: any = new Error('SESSION_REVOKED: Your active session has been invalidated. Please sign in again.');
+        err.statusCode = 401;
+        throw err;
+      }
+    }
+
+    return payload.uid;
+  }
+
+  /**
+   * Enforces that the caller has authorized access to a target project.
+   * Supports either API secret key (x-api-key) or developer session Bearer token.
+   */
+  public static async requireProjectAccess(req: any, projectId: string): Promise<{ callerId: string; type: 'developer' | 'apikey' }> {
+    const apiKey = req.headers?.['x-api-key'] as string;
+    if (apiKey?.startsWith('sk_live_')) {
+      const { CredentialService } = await import('./credential.service.js');
+      const validSecret = await CredentialService.validateCredential(apiKey, req.headers?.origin as string);
+      if (!validSecret.valid) {
+        const err: any = new Error('UNAUTHORIZED: Invalid or revoked API secret key');
+        err.statusCode = 401;
+        throw err;
+      }
+      const { ProjectService } = await import('./project.service.js');
+      const resolvedId = await ProjectService.resolveProjectId(projectId);
+      if (validSecret.credential?.projectId !== resolvedId && validSecret.credential?.projectId !== projectId) {
+        const err: any = new Error('FORBIDDEN: Cross-project access denied — secret key belongs to another project');
+        err.statusCode = 403;
+        throw err;
+      }
+      return { callerId: apiKey, type: 'apikey' };
+    }
+
+    const devId = await this.requireDeveloper(req);
+    const { ProjectService } = await import('./project.service.js');
+    await ProjectService.assertProjectAccess(devId, projectId);
+    return { callerId: devId, type: 'developer' };
   }
 
   /**

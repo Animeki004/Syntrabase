@@ -90,14 +90,16 @@ export const QueryFilterOperatorSchema = z.enum([
   'array-contains-any',
 ]);
 
+export const SafeIdentifierRegex = /^[a-zA-Z0-9_.]+$/;
+
 export const QueryFilterSchema = z.object({
-  field: z.string().min(1).max(255),
+  field: z.string().min(1).max(255).regex(SafeIdentifierRegex, 'Field name must be alphanumeric characters, underscores, or dots'),
   operator: QueryFilterOperatorSchema,
   value: z.unknown(),
 });
 
 export const QueryOrderBySchema = z.object({
-  field: z.string().min(1).max(255),
+  field: z.string().min(1).max(255).regex(SafeIdentifierRegex, 'Field name must be alphanumeric characters, underscores, or dots'),
   direction: z.enum(['asc', 'desc']).default('asc'),
 });
 

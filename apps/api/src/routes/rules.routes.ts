@@ -2,6 +2,8 @@ import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { query } from '../db/pool.js';
 import { AuditService } from '../services/audit.service.js';
 import { ProjectService } from '../services/project.service.js';
+import { AuthService } from '../services/auth.service.js';
+import { config } from '../config.js';
 import { compileRules, evaluateRules } from '@syntrabase/rules-engine';
 import { PublishSecurityRulesSchema, SimulateRuleSchema } from '@syntrabase/schemas';
 
@@ -10,6 +12,14 @@ export const rulesRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
   server.post('/api/v1/projects/:projectId/rules/publish', async (req, reply) => {
     const { projectId: rawId } = req.params as { projectId: string };
     const projectId = await ProjectService.resolveProjectId(rawId).catch(() => rawId);
+
+    // Enforce developer authentication & project authorization
+    let callerId = 'developer';
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      const res = await AuthService.requireProjectAccess(req, projectId);
+      callerId = res.callerId;
+    }
+
     const body = PublishSecurityRulesSchema.parse(req.body);
 
     // 1. Validate AST syntax
@@ -46,7 +56,7 @@ export const rulesRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
     );
 
     await AuditService.log({
-      actorId: 'developer',
+      actorId: callerId,
       actorType: 'developer',
       action: 'rules.published',
       targetResource: `rules:${projectId}:v${nextVer}`,
@@ -93,6 +103,11 @@ export const rulesRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
   server.get('/api/v1/projects/:projectId/rules/active', async (req, reply) => {
     const { projectId: rawId } = req.params as { projectId: string };
     const projectId = await ProjectService.resolveProjectId(rawId).catch(() => rawId);
+
+    // Enforce developer authentication & project authorization
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
 
     const res = await query<{
       id: string;

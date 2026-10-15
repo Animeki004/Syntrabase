@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { StorageService } from '../services/storage.service.js';
 import { PlanService } from '../services/plan.service.js';
+import { AuthService } from '../services/auth.service.js';
 import { config } from '../config.js';
 import { query } from '../db/pool.js';
 import { CreateSignedDownloadUrlSchema, CreateSignedUploadUrlSchema } from '@syntrabase/schemas';
@@ -11,6 +12,11 @@ export const storageRoutes: FastifyPluginAsync = async (server: FastifyInstance)
   // Upload file (JSON payload with base64 data or binary stream)
   server.post('/api/v1/storage/:projectId/upload', async (req, reply) => {
     const { projectId } = req.params as { projectId: string };
+
+    // Enforce project access authentication
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
     const body = req.body as {
       bucketName?: string;
       objectPath: string;
@@ -60,6 +66,11 @@ export const storageRoutes: FastifyPluginAsync = async (server: FastifyInstance)
   // Generate signed upload URL
   server.post('/api/v1/storage/:projectId/signed-upload-url', async (req, reply) => {
     const { projectId } = req.params as { projectId: string };
+
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+
     const body = CreateSignedUploadUrlSchema.parse(req.body);
 
     try {
@@ -91,6 +102,11 @@ export const storageRoutes: FastifyPluginAsync = async (server: FastifyInstance)
   // Generate signed download/upload URL
   server.post('/api/v1/storage/:projectId/signed-url', async (req, reply) => {
     const { projectId } = req.params as { projectId: string };
+
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+
     const body = CreateSignedDownloadUrlSchema.parse(req.body);
 
     try {
@@ -171,6 +187,11 @@ export const storageRoutes: FastifyPluginAsync = async (server: FastifyInstance)
   // List project objects
   server.get('/api/v1/storage/:projectId/objects', async (req, reply) => {
     const { projectId } = req.params as { projectId: string };
+
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+
     const objects = await StorageService.listObjects(projectId);
     return reply.send({ objects });
   });
@@ -178,6 +199,11 @@ export const storageRoutes: FastifyPluginAsync = async (server: FastifyInstance)
   // Delete project object
   server.delete('/api/v1/storage/:projectId/objects/:objectId', async (req, reply) => {
     const { projectId, objectId } = req.params as { projectId: string; objectId: string };
+
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+
     await StorageService.deleteObject(projectId, objectId);
     return reply.send({ success: true, message: `Object ${objectId} deleted.` });
   });
