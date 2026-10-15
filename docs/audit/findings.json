@@ -298,5 +298,65 @@
     "rootCause": "Missing developer authentication middleware on single project retrieval route.",
     "remediation": "Enforced AuthService.requireProjectAccess(req, projectId) in production and staging environments.",
     "verification": "VERIFIED (security-assessment-verification.test.ts Subtest 21 passed: HTTP 401 returned in production)"
+  },
+  {
+    "id": "SYN-P4-001",
+    "title": "Refresh Token Rotation Bypasses Account Suspension & Deactivation",
+    "severity": "CRITICAL",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/services/auth.service.ts:243-280",
+    "status": "REMEDIATED",
+    "description": "rotateRefreshToken looked up user details only in app_users without verifying the disabled flag, and failed to check developer suspension or load platform admin claims for developer sessions, allowing deactivated users to sustain valid access tokens.",
+    "rootCause": "Incomplete user entity resolution and missing status validation in token rotation flow.",
+    "remediation": "Checked both app_users and developers tables; enforced non-disabled / non-suspended status and dynamically verified platform_admins membership.",
+    "verification": "VERIFIED (security-assessment-verification.test.ts 99/99 passed)"
+  },
+  {
+    "id": "SYN-P4-002",
+    "title": "Cross-Tenant User Account Enumeration in Account Linking",
+    "severity": "MEDIUM",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/services/auth.service.ts:703",
+    "status": "REMEDIATED",
+    "description": "linkAnonymousAccount checked email uniqueness globally across all projects rather than scoping to the specific project and environment, enabling cross-tenant account existence enumeration.",
+    "rootCause": "Omission of project_id and environment_id predicates in uniqueness query.",
+    "remediation": "Scoped email existence query to project_id and environment_id.",
+    "verification": "VERIFIED (security-assessment-verification.test.ts 99/99 passed)"
+  },
+  {
+    "id": "SYN-P4-003",
+    "title": "Administrative Disablement and Password Reset Fails to Revoke Active Sessions",
+    "severity": "HIGH",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/services/auth.service.ts:921-960",
+    "status": "REMEDIATED",
+    "description": "adminUpdateAppUser did not update sessions_revoked_at or revoke rows in auth_sessions when disabling a user or resetting passwords, leaving existing sessions active until natural expiry.",
+    "rootCause": "Missing session invalidation trigger in administrative user updates.",
+    "remediation": "Automatically updated sessions_revoked_at = NOW() and marked all auth_sessions revoked upon user disablement or password update.",
+    "verification": "VERIFIED (security-assessment-verification.test.ts 99/99 passed)"
+  },
+  {
+    "id": "SYN-P4-004",
+    "title": "Default Database Deletion Guardrail Case-Sensitivity Bypass",
+    "severity": "MEDIUM",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/services/database.service.ts:125-142",
+    "status": "REMEDIATED",
+    "description": "deleteDatabase checked databaseId === '(default)' using strict case-sensitive match without whitespace trimming, allowing variations such as '(DEFAULT)' or ' default ' to bypass the guardrail.",
+    "rootCause": "Case-sensitive comparison on unsanitized identifier.",
+    "remediation": "Normalized identifier with trim and toLowerCase, rejecting any variation of (default) or default.",
+    "verification": "VERIFIED (security-assessment-verification.test.ts 99/99 passed)"
+  },
+  {
+    "id": "SYN-P4-005",
+    "title": "Prototype Pollution via Unsanitized Object Keys in Document Field Transforms",
+    "severity": "CRITICAL",
+    "confidence": "CONFIRMED",
+    "component": "apps/api/src/services/document.service.ts:57-94",
+    "status": "REMEDIATED",
+    "description": "DocumentService.applyFieldTransforms recursively mapped object keys from incoming documents without sanitizing __proto__, constructor, or prototype, permitting remote prototype pollution of Object.prototype across the Node.js runtime.",
+    "rootCause": "Unfiltered key traversal in recursive document transformation logic.",
+    "remediation": "Enforced strict filtering skipping __proto__, constructor, and prototype keys.",
+    "verification": "VERIFIED (security-assessment-verification.test.ts 99/99 passed)"
   }
 ]

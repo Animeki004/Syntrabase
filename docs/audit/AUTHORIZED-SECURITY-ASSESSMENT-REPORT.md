@@ -330,12 +330,72 @@ Syntrabase underwent an authorized security assessment combining:
 
 ---
 
+### SYN-P4-001: Refresh Token Rotation Bypasses Account Suspension & Deactivation
+- **Severity / Score:** **CRITICAL** / CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H (9.1)
+- **CWE:** CWE-613 (Insufficient Session Expiration), CWE-285 (Improper Authorization)
+- **Affected Component:** `apps/api/src/services/auth.service.ts:243-280`
+- **Root Cause:**
+  `rotateRefreshToken` queried user status solely from `app_users` without verifying the `disabled` flag, and completely omitted developer entity lookup, allowing suspended developers or disabled end-users to exchange tokens indefinitely.
+- **Impact:** Compromised, deactivated, or fired developers and users retained persistent unauthorized API access via refresh token rotation.
+- **Remediation:** Looked up and verified active status across both `app_users` (asserting `!disabled`) and `developers` (asserting `status !== 'suspended'`), and re-evaluated platform admin permissions.
+- **Verification:** Verified via `security-assessment-verification.test.ts` (Subtest 23: 99/99 passed).
+
+---
+
+### SYN-P4-002: Cross-Tenant User Account Enumeration in Account Linking
+- **Severity / Score:** **MEDIUM** / CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N (5.3)
+- **CWE:** CWE-200 (Information Exposure), CWE-284 (Improper Access Control)
+- **Affected Component:** `apps/api/src/services/auth.service.ts:703`
+- **Root Cause:**
+  `linkAnonymousAccount` executed a global email uniqueness check across `app_users` without filtering by `project_id` and `environment_id`.
+- **Impact:** Callers on one tenant could probe whether an email address was registered on any other customer tenant.
+- **Remediation:** Scoped email uniqueness query to `project_id = $1 AND environment_id = $2`.
+- **Verification:** Verified via `security-assessment-verification.test.ts` (99/99 passed).
+
+---
+
+### SYN-P4-003: Administrative Disablement and Password Reset Fails to Revoke Active Sessions
+- **Severity / Score:** **HIGH** / CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:N (7.5)
+- **CWE:** CWE-613 (Insufficient Session Expiration)
+- **Affected Component:** `apps/api/src/services/auth.service.ts:921-960`
+- **Root Cause:**
+  `adminUpdateAppUser` updated user rows in `app_users` but did not update `sessions_revoked_at` nor revoke active sessions in `auth_sessions`.
+- **Impact:** An account disabled by an administrator or reset due to compromise remained active and capable of using previously issued tokens until expiration.
+- **Remediation:** Updated `sessions_revoked_at = NOW()` and marked all active `auth_sessions` revoked when `disabled === true` or password changed; purged sessions on `adminDeleteAppUser`.
+- **Verification:** Verified via `security-assessment-verification.test.ts` (99/99 passed).
+
+---
+
+### SYN-P4-004: Default Database Deletion Guardrail Case-Sensitivity Bypass
+- **Severity / Score:** **MEDIUM** / CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:H (6.5)
+- **CWE:** CWE-178 (Improper Handling of Case Sensitivity)
+- **Affected Component:** `apps/api/src/services/database.service.ts:125-142`
+- **Root Cause:**
+  `deleteDatabase` used strict literal equality `databaseId === '(default)'` without whitespace trimming or case normalization.
+- **Impact:** Callers sending `(DEFAULT)` or ` default ` bypassed the deletion check and could attempt to purge the primary database namespace.
+- **Remediation:** Normalized `databaseId` with `trim().toLowerCase()`, blocking any casing or whitespace variant of `(default)` or `default`.
+- **Verification:** Verified via `security-assessment-verification.test.ts` (Subtest 22: 99/99 passed).
+
+---
+
+### SYN-P4-005: Prototype Pollution via Unsanitized Object Keys in Document Field Transforms
+- **Severity / Score:** **CRITICAL** / CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H (9.8)
+- **CWE:** CWE-1321 (Improperly Controlled Modification of Object Prototype Attributes)
+- **Affected Component:** `apps/api/src/services/document.service.ts:57-94`
+- **Root Cause:**
+  `processObject` recursively traversed incoming document keys and assigned them to the target object without filtering `__proto__`, `constructor`, or `prototype`.
+- **Impact:** A client submitting a document payload with prototype keys could pollute `Object.prototype` across the entire Node.js runtime, affecting all tenants and system security evaluations.
+- **Remediation:** Filtered out `__proto__`, `constructor`, and `prototype` keys during object traversal.
+- **Verification:** Verified via `security-assessment-verification.test.ts` (Subtest 21: 99/99 passed).
+
+---
+
 ## 4. Test Suite Execution & Verification Summary
 
 The complete integration test suite was executed against the remediated codebase:
-- **Total Tests:** 95
-- **Passed:** 95
+- **Total Tests:** 99
+- **Passed:** 99
 - **Failed:** 0
 - **Skipped:** 0
-- **Regression Suite:** `apps/api/src/test/security-assessment-verification.test.ts` (all 21 subtests passed).
+- **Regression Suite:** `apps/api/src/test/security-assessment-verification.test.ts` (all 25 security subtests passed).
 

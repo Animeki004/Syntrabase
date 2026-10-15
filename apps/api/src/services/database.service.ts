@@ -123,21 +123,22 @@ export class DatabaseService {
    * Delete a custom database (cannot delete (default)).
    */
   public static async deleteDatabase(projectId: string, databaseId: string): Promise<void> {
-    if (databaseId === '(default)') {
+    const cleanId = (databaseId || '').trim().toLowerCase();
+    if (!cleanId || cleanId === '(default)' || cleanId === 'default') {
       throw new Error('CANNOT_DELETE_DEFAULT_DATABASE: The (default) database is required and cannot be deleted.');
     }
 
     const resolvedProjectId = await ProjectService.resolveProjectId(projectId);
 
     await query(
-      'DELETE FROM databases WHERE project_id = $1 AND database_id = $2',
-      [resolvedProjectId, databaseId]
+      'DELETE FROM databases WHERE project_id = $1 AND (database_id = $2 OR LOWER(TRIM(database_id)) = $3)',
+      [resolvedProjectId, databaseId.trim(), cleanId]
     );
 
     // Clean up documents in this database namespace
     await query(
-      'DELETE FROM documents WHERE project_id = $1 AND database_id = $2',
-      [resolvedProjectId, databaseId]
+      'DELETE FROM documents WHERE project_id = $1 AND (database_id = $2 OR LOWER(TRIM(database_id)) = $3)',
+      [resolvedProjectId, databaseId.trim(), cleanId]
     ).catch(() => {});
   }
 }

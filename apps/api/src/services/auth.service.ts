@@ -240,19 +240,50 @@ export class AuthService {
       [session.user_id, newHash, session.family_id, expiresAt]
     );
 
-    // Fetch user details
-    const userRes = await query<{ email: string; project_id?: string; environment_id?: string }>(
-      'SELECT email, project_id, environment_id FROM app_users WHERE id = $1',
+    // Fetch user details - verify both app_users and developers, enforcing non-suspended/non-disabled status
+    const userRes = await query<{ email: string; project_id?: string; environment_id?: string; disabled?: boolean }>(
+      'SELECT email, project_id, environment_id, disabled FROM app_users WHERE id = $1',
       [session.user_id]
     );
 
-    const user = userRes.rows[0];
-    const newAccessToken = this.generateAccessToken({
-      uid: session.user_id,
-      email: user?.email,
-      projectId: user?.project_id || 'platform',
-      environmentId: user?.environment_id || 'global',
-    });
+    let newAccessToken: string;
+
+    if (userRes.rows.length > 0) {
+      const user = userRes.rows[0];
+      if (user.disabled) {
+        throw new Error('User account is disabled');
+      }
+      newAccessToken = this.generateAccessToken({
+        uid: session.user_id,
+        email: user.email,
+        projectId: user.project_id || 'platform',
+        environmentId: user.environment_id || 'global',
+      });
+    } else {
+      const devRes = await query<{ email: string; status?: string; is_platform_admin?: boolean }>(
+        'SELECT email, status, is_platform_admin FROM developers WHERE id = $1',
+        [session.user_id]
+      );
+      const dev = devRes.rows[0];
+      if (!dev) {
+        throw new Error('User account associated with this session no longer exists');
+      }
+      if (dev.status === 'suspended') {
+        const err: any = new Error('Developer account access has been revoked or suspended by Super Admin');
+        err.statusCode = 403;
+        throw err;
+      }
+      const adminCheck = await query('SELECT developer_id FROM platform_admins WHERE developer_id = $1', [session.user_id]);
+      const isPlatformAdmin = adminCheck.rows.length > 0 || !!dev.is_platform_admin;
+
+      newAccessToken = this.generateAccessToken({
+        uid: session.user_id,
+        email: dev.email,
+        projectId: 'platform',
+        environmentId: 'global',
+        isPlatformAdmin,
+      });
+    }
 
     return {
       accessToken: newAccessToken,
@@ -695,12 +726,16 @@ export class AuthService {
     );
     const projectUser = userRes.rows[0];
     const projectId = projectUser?.project_id || 'default-project';
+    const envId = projectUser?.environment_id || 'default';
 
     // Must have email_password enabled
     await AuthConfigService.assertProviderEnabled(projectId, 'email_password');
     await AuthConfigService.assertPasswordPolicy(projectId, passwordPlain);
 
-    const existing = await query('SELECT id FROM app_users WHERE email = $1 AND id != $2', [email, userId]);
+    const existing = await query(
+      'SELECT id FROM app_users WHERE project_id = $1 AND environment_id = $2 AND email = $3 AND id != $4',
+      [projectId, envId, email, userId]
+    );
     if (existing.rows.length > 0) {
       throw new Error('Email is already in use by another account');
     }
@@ -921,6 +956,9 @@ export class AuthService {
     if (data.disabled !== undefined) {
       params.push(data.disabled);
       updates.push(`disabled = $${params.length}`);
+      if (data.disabled === true) {
+        updates.push('sessions_revoked_at = NOW()');
+      }
     }
     if (data.customClaims !== undefined) {
       params.push(JSON.stringify(data.customClaims));
@@ -930,6 +968,7 @@ export class AuthService {
       const hash = await CryptoUtil.hashPassword(data.password);
       params.push(hash);
       updates.push(`password_hash = $${params.length}`);
+      updates.push('sessions_revoked_at = NOW()');
     }
 
     const queryStr = `
@@ -947,6 +986,11 @@ export class AuthService {
       throw new Error('User not found in project');
     }
 
+    // Invalidate all active sessions if user is disabled or password changed
+    if (data.disabled === true || data.password) {
+      await query('UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = $1', [userId]);
+    }
+
     return res.rows[0];
   }
 
@@ -955,6 +999,7 @@ export class AuthService {
    */
   public static async adminDeleteAppUser(projectId: string, userId: string): Promise<void> {
     const resolvedProjectId = await ProjectService.resolveProjectId(projectId);
+    await query('DELETE FROM auth_sessions WHERE user_id = $1', [userId]);
     await query('DELETE FROM app_users WHERE id = $1 AND project_id = $2', [userId, resolvedProjectId]);
   }
 

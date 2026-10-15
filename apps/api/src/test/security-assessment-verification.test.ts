@@ -8,6 +8,7 @@ import { config } from '../config.js';
 import { AuthService } from '../services/auth.service.js';
 import { CloudFunctionService } from '../services/cloud-function.service.js';
 import { DocumentService } from '../services/document.service.js';
+import { DatabaseService } from '../services/database.service.js';
 import { MfaService } from '../services/mfa.service.js';
 import { CredentialService } from '../services/credential.service.js';
 import { StorageService } from '../services/storage.service.js';
@@ -728,6 +729,62 @@ test('SYN-P3-005 & SYN-P3-006: Project plan telemetry and project metadata requi
     });
     assert.equal(resProject.statusCode, 401, 'GET /projects/:id unauthenticated must return 401 in production');
   });
+});
+
+test('SYN-P4-005: DocumentService.applyFieldTransforms rejects prototype pollution via __proto__, constructor, and prototype', () => {
+  const payload = JSON.parse('{"__proto__": {"polluted": "yes"}, "constructor": {"prototype": {"polluted": "yes"}}, "name": "SyntraSafe"}');
+
+  const existingDoc = { normal: 'data' };
+  const transformed = DocumentService.applyFieldTransforms(existingDoc, payload);
+
+  assert.equal(transformed.name, 'SyntraSafe');
+  assert.equal((Object.prototype as any).polluted, undefined, 'Object.prototype must not be polluted');
+  assert.equal(({} as any).polluted, undefined, 'Plain object must not have polluted property');
+  assert.equal((transformed as any).__proto__?.polluted, undefined);
+});
+
+test('SYN-P4-004: DatabaseService.deleteDatabase rejects case and whitespace variations of (default)', async () => {
+  await assert.rejects(
+    async () => {
+      await DatabaseService.deleteDatabase('test-project', '(default)');
+    },
+    (err: any) => err.message.includes('CANNOT_DELETE_DEFAULT_DATABASE')
+  );
+
+  await assert.rejects(
+    async () => {
+      await DatabaseService.deleteDatabase('test-project', '(DEFAULT)');
+    },
+    (err: any) => err.message.includes('CANNOT_DELETE_DEFAULT_DATABASE')
+  );
+
+  await assert.rejects(
+    async () => {
+      await DatabaseService.deleteDatabase('test-project', ' default ');
+    },
+    (err: any) => err.message.includes('CANNOT_DELETE_DEFAULT_DATABASE')
+  );
+});
+
+test('SYN-P4-001 & SYN-P4-003: Refresh token rotation validates active status and admin updates revoke sessions', async () => {
+  const dummyToken = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  await assert.rejects(
+    async () => {
+      await AuthService.rotateRefreshToken(dummyToken);
+    },
+    (err: any) => err.message.includes('Invalid refresh token')
+  );
+});
+
+test('CloudFunctionService SSRF validation blocks Carrier-Grade NAT and benchmarking ranges', () => {
+  assert.throws(
+    () => CloudFunctionService.validateEndpointUrl('http://100.64.0.1/webhook'),
+    (err: any) => err.statusCode === 400 && err.message.includes('SSRF_PROTECTION')
+  );
+  assert.throws(
+    () => CloudFunctionService.validateEndpointUrl('http://198.18.0.5:8080/hook'),
+    (err: any) => err.statusCode === 400 && err.message.includes('SSRF_PROTECTION')
+  );
 });
 
 

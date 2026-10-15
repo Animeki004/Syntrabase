@@ -56,6 +56,11 @@ export class DocumentService {
 
     function processObject(target: Record<string, any>, source: Record<string, any>) {
       for (const [key, val] of Object.entries(source)) {
+        // SYN-P4-005: Guard against Prototype Pollution
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+          continue;
+        }
+
         if (val && typeof val === 'object' && '_transformType' in val) {
           const transformType = (val as any)._transformType;
           if (transformType === '__SYNTRABASE_SERVER_TIMESTAMP__') {

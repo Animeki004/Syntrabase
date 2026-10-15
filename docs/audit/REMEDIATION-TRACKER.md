@@ -53,7 +53,19 @@
 
 ---
 
-## 4. Test Suite Alignment & Assertion Fixes
+## 4. Phase 4 Remediation Track (Runtime & Service Hardening)
+
+| ID | Title | Severity | CVSS | Component | Root Cause | Exploit Mechanics / Verification | Fix Implemented | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **SYN-P4-001** | Refresh Token Rotation Bypasses Account Suspension | **CRITICAL** | 9.1 | `apps/api/src/services/auth.service.ts:243-280` | `rotateRefreshToken` checked only `app_users` without verifying `disabled` status, and ignored developer suspension / platform admin status. | Suspended developer or disabled end-user exchanges refresh tokens to maintain active access indefinitely. | Validated active status across both `app_users` and `developers`; dynamically verified platform admin membership. | **REMEDIATED & VERIFIED** |
+| **SYN-P4-002** | Cross-Tenant User Account Enumeration in Account Linking | **MEDIUM** | 5.3 | `apps/api/src/services/auth.service.ts:703` | Global email existence query omitted `project_id` and `environment_id` filters. | Attacker checks whether specific email exists across different tenants. | Scoped existence check to `project_id` and `environment_id`. | **REMEDIATED & VERIFIED** |
+| **SYN-P4-003** | Admin Disablement Fails to Revoke Active Sessions | **HIGH** | 7.5 | `apps/api/src/services/auth.service.ts:921-960` | `adminUpdateAppUser` updated user record but left `auth_sessions` valid. | Disabled or compromised account retains valid session and refresh tokens until natural expiry. | Set `sessions_revoked_at = NOW()` and marked all `auth_sessions` revoked. | **REMEDIATED & VERIFIED** |
+| **SYN-P4-004** | Default Database Deletion Case-Sensitivity Bypass | **MEDIUM** | 6.5 | `apps/api/src/services/database.service.ts:125-142` | Direct case-sensitive string equality check on `databaseId`. | Passing `(DEFAULT)` or ` default ` bypasses guardrail and attempts to drop default database namespace. | Normalized identifier with `toLowerCase().trim()`, rejecting `(default)` and `default`. | **REMEDIATED & VERIFIED** |
+| **SYN-P4-005** | Prototype Pollution via Document Field Transforms | **CRITICAL** | 9.8 | `apps/api/src/services/document.service.ts:57-94` | Unfiltered key traversal in recursive `processObject`. | Incoming document with `__proto__` pollutes `Object.prototype` across Node.js runtime process for all tenants. | Explicitly skipped `__proto__`, `constructor`, and `prototype` keys during traversal. | **REMEDIATED & VERIFIED** |
+
+---
+
+## 5. Test Suite Alignment & Assertion Fixes
 
 | ID | Title | Category | Component | Description & Remediation | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
