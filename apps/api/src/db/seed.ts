@@ -59,9 +59,21 @@ export async function seedDatabase(): Promise<void> {
         'active',
         (SELECT id FROM plans WHERE slug = 'pro' LIMIT 1)
       )
-      ON CONFLICT (organization_id, slug) DO NOTHING;
+      ON CONFLICT (organization_id, slug) DO UPDATE SET plan_id = (SELECT id FROM plans WHERE slug = 'pro' LIMIT 1);
     `);
     console.log('[SEED] Project default-project verified.');
+
+    // 2b. Organization Membership for Developer
+    await client.query(`
+      INSERT INTO organization_members (organization_id, developer_id, role)
+      VALUES (
+        '00000000-0000-0000-0000-000000000010',
+        '00000000-0000-0000-0000-000000000002',
+        'admin'
+      )
+      ON CONFLICT (organization_id, developer_id) DO UPDATE SET role = 'admin';
+    `);
+    console.log('[SEED] Organization developer membership verified.');
 
     // 3. Environment
     await client.query(`

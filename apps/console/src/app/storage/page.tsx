@@ -123,8 +123,13 @@ export default function StoragePage() {
     const fetchPlan = async () => {
       setIsPlanLoading(true);
       try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
         const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/plan`, {
-          signal: AbortSignal.timeout(2000),
+          headers,
+          signal: AbortSignal.timeout(5000),
         });
         if (res.ok) {
           const data = await res.json();

@@ -143,16 +143,24 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const fetchPlan = async () => {
+      setIsPlanLoading(true);
       try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
         const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/plan`, {
-          signal: AbortSignal.timeout(2000),
+          headers,
+          signal: AbortSignal.timeout(5000),
         });
         if (res.ok) {
           const data = await res.json();
           setPlanContext(data);
         }
       } catch {
-        // Safe fallback maintains Free Tier defaults
+        // Safe fallback maintains defaults
+      } finally {
+        setIsPlanLoading(false);
       }
     };
 
@@ -334,9 +342,13 @@ export default function SettingsPage() {
       createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
     };
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/functions/triggers`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           name: item.name,
           collectionPath: item.collectionPath,
