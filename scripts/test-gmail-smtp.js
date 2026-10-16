@@ -38,6 +38,29 @@ function ask(query, defaultValue = '') {
 }
 
 async function main() {
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    console.log(`
+Syntrabase - Gmail SMTP & Custom Sender Domain Diagnostic Tool
+
+Usage:
+  node scripts/test-gmail-smtp.js
+  npm run test:smtp
+
+Environment Variables (Optional - skips interactive prompts):
+  GMAIL_USER           Your Gmail account (e.g. user@gmail.com)
+  GMAIL_APP_PASSWORD   16-character App Password (e.g. "abcd efgh ijkl mnop")
+  SENDER_NAME          Display Name (default: "Syntrabase Cloud")
+  SENDER_EMAIL         Custom Domain Email (e.g. notifications@mydomain.com)
+  RECIPIENT_EMAIL      Where to send the test email
+  SMTP_PORT            465 (SSL) or 587 (STARTTLS) (default: 465)
+
+Web Interface:
+  npm run start:smtp-test-server (launches interactive UI at http://localhost:4055)
+`);
+    rl.close();
+    process.exit(0);
+  }
+
   console.log('\n=============================================================================');
   console.log('       SYNTRABASE - GMAIL SMTP & CUSTOM SENDER DOMAIN TESTER                ');
   console.log('=============================================================================\n');
