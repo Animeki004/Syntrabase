@@ -632,7 +632,18 @@ export default function GlobalEmailControlPage() {
       if (res.ok) {
         const data = await res.json();
         setPolicy(data.policy);
-        addToast('Email platform policy updated', 'success');
+        if (updates.emergencyShutdown !== undefined) {
+          addToast(
+            updates.emergencyShutdown
+              ? 'EMERGENCY SHUTDOWN ACTIVATED! All outbound transactional email dispatch halted.'
+              : 'Emergency shutdown deactivated. Outbound email dispatch resumed.',
+            updates.emergencyShutdown ? 'error' : 'success'
+          );
+        } else {
+          addToast('Email platform policy updated', 'success');
+        }
+        await fetchAccounts();
+        await fetchQueue();
       }
     } catch {
       addToast('Failed to update policy', 'error');
@@ -909,17 +920,19 @@ export default function GlobalEmailControlPage() {
                   </select>
                 )}
                 <Badge
-                  variant={isQuotaExhausted ? 'danger' : activeAccount?.isPrimary ? 'warning' : 'outline'}
+                  variant={policy.emergencyShutdown ? 'danger' : isQuotaExhausted ? 'danger' : activeAccount?.isPrimary ? 'warning' : 'outline'}
                   size="sm"
                   style={{
                     fontSize: '10px',
                     whiteSpace: 'nowrap',
                     flexShrink: 0,
-                    color: !isQuotaExhausted && !activeAccount?.isPrimary && activeAccount?.status === 'healthy' ? 'var(--success)' : undefined,
-                    borderColor: !isQuotaExhausted && !activeAccount?.isPrimary && activeAccount?.status === 'healthy' ? 'var(--success)' : undefined,
+                    color: !policy.emergencyShutdown && !isQuotaExhausted && !activeAccount?.isPrimary && activeAccount?.status === 'healthy' ? 'var(--success)' : undefined,
+                    borderColor: !policy.emergencyShutdown && !isQuotaExhausted && !activeAccount?.isPrimary && activeAccount?.status === 'healthy' ? 'var(--success)' : undefined,
                   }}
                 >
-                  {isQuotaExhausted ? (
+                  {policy.emergencyShutdown ? (
+                    'Shutdown'
+                  ) : isQuotaExhausted ? (
                     'Exhausted'
                   ) : activeAccount?.isPrimary ? (
                     <>
@@ -972,8 +985,8 @@ export default function GlobalEmailControlPage() {
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Outbox Pending
               </span>
-              <Badge variant={queueMetrics.queueDepth > 0 ? 'warning' : 'neutral'} size="sm" style={{ fontSize: '10px' }}>
-                {queueMetrics.queueDepth > 0 ? 'Active Queue' : 'Queue Empty'}
+              <Badge variant={policy.emergencyShutdown ? 'danger' : queueMetrics.queueDepth > 0 ? 'warning' : 'neutral'} size="sm" style={{ fontSize: '10px' }}>
+                {policy.emergencyShutdown ? 'Queue Frozen' : queueMetrics.queueDepth > 0 ? 'Active Queue' : 'Queue Empty'}
               </Badge>
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
@@ -985,8 +998,10 @@ export default function GlobalEmailControlPage() {
               </span>
             </div>
           </div>
-          <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            {queueMetrics.queued} queued pending, {queueMetrics.deferred} deferred retry
+          <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: policy.emergencyShutdown ? 'var(--danger)' : 'var(--text-muted)' }}>
+            {policy.emergencyShutdown
+              ? 'Dispatch halted by emergency platform shutdown.'
+              : `${queueMetrics.queued} queued pending, ${queueMetrics.deferred} deferred retry`}
           </div>
         </Card>
 
@@ -1331,8 +1346,8 @@ export default function GlobalEmailControlPage() {
               </CardDescription>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Button onClick={handleFlushQueue} disabled={isFlushingQueue}>
-                <Send size={15} style={{ marginRight: '6px' }} /> {isFlushingQueue ? 'Processing...' : 'Flush Queue Now'}
+              <Button onClick={handleFlushQueue} disabled={isFlushingQueue || policy.emergencyShutdown || !policy.globalSendingEnabled}>
+                <Send size={15} style={{ marginRight: '6px' }} /> {policy.emergencyShutdown ? 'Queue Halted (Shutdown)' : isFlushingQueue ? 'Processing...' : 'Flush Queue Now'}
               </Button>
               {outboxItems.length > 0 && (
                 <Button
@@ -1453,6 +1468,52 @@ export default function GlobalEmailControlPage() {
             </CardDescription>
           </CardHeader>
           <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '640px' }}>
+            {/* Emergency Shutdown Platform Switch */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '16px',
+                backgroundColor: policy.emergencyShutdown ? 'rgba(239, 68, 68, 0.12)' : 'var(--bg-surface-subtle)',
+                border: policy.emergencyShutdown ? '1px solid var(--danger)' : '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ fontWeight: 700, color: policy.emergencyShutdown ? 'var(--danger)' : 'var(--text-primary)' }}>
+                    Cluster Emergency Shutdown
+                  </div>
+                  <Badge variant={policy.emergencyShutdown ? 'danger' : 'outline'} size="sm">
+                    {policy.emergencyShutdown ? 'ACTIVE (DISPATCH HALTED)' : 'STANDBY'}
+                  </Badge>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: policy.emergencyShutdown ? 'var(--danger)' : 'var(--text-secondary)', marginTop: '4px' }}>
+                  Immediate freeze of all outbound transactional dispatch cluster-wide. Queued messages remain preserved.
+                </div>
+              </div>
+              {policy.emergencyShutdown ? (
+                <Button
+                  variant="outline"
+                  style={{ borderColor: 'var(--success)', color: 'var(--success)' }}
+                  onClick={() => handleSavePolicy({ emergencyShutdown: false })}
+                  disabled={isSavingPolicy}
+                >
+                  <Power size={14} style={{ marginRight: '6px' }} /> Resume Dispatch
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}
+                  onClick={() => setShowEmergencyShutdownModal(true)}
+                  disabled={isSavingPolicy}
+                >
+                  <Power size={14} style={{ marginRight: '6px' }} /> Emergency Shutdown
+                </Button>
+              )}
+            </div>
+
             {/* Global Switch */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'var(--bg-surface-subtle)', borderRadius: 'var(--radius-md)' }}>
               <div>

@@ -21,6 +21,7 @@ import {
   Layers,
   ArrowRight,
   Shield,
+  ShieldAlert,
   Zap,
   Search,
   Activity,
@@ -44,9 +45,15 @@ import {
 
 interface ProjectEmailOverview {
   globalSendingEnabled: boolean;
-  dailyProjectCap: number;
+  emergencyShutdown?: boolean;
+  dailyProjectCap?: number;
   projectSentToday: number;
   isDedicated: boolean;
+  dedicatedBrevoEnabled?: boolean;
+  gatewayMode?: string;
+  gatewayStatus?: string;
+  planName?: string;
+  planSlug?: string;
   activeAccount: {
     id: string;
     accountName: string;
@@ -55,7 +62,7 @@ interface ProjectEmailOverview {
     remainingCredits: number;
     dailySentCount: number;
     planType: string;
-    creditsType: string;
+    creditsType?: string;
     lastSyncedAt?: string;
     liveFromBrevo?: boolean;
   } | null;
@@ -233,21 +240,18 @@ export default function ProjectEmailPage() {
   }, [projectId]);
 
   const handleSyncOverviewCredits = async () => {
-    if (!overview?.activeAccount?.id) return;
+    if (!overview?.isDedicated || !overview?.activeAccount?.id) return;
     setIsSyncingOverview(true);
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-      const endpoint = overview.isDedicated
-        ? `${API_BASE_URL}/api/v1/projects/${projectId}/email/dedicated-accounts/${overview.activeAccount.id}/sync`
-        : `${API_BASE_URL}/api/v1/admin/email/accounts/${overview.activeAccount.id}/sync`;
-      const res = await fetch(endpoint, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/email/dedicated-accounts/${overview.activeAccount.id}/sync`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.ok) {
-        addToast('Live Brevo account credits synchronized!', 'success');
+        addToast('Dedicated Brevo account credits synchronized from live API!', 'success');
       } else {
-        addToast('Telemetry refreshed from gateway', 'info');
+        addToast('Telemetry refreshed from dedicated gateway', 'info');
       }
       await fetchOverview();
     } catch {
@@ -846,147 +850,407 @@ export default function ProjectEmailPage() {
         </div>
       </Card>
 
-      {/* Real-time Brevo & Outbox Telemetry Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-        {/* Card 1: Live Brevo Credits */}
-        <Card>
-          <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      {/* Emergency Platform Shutdown Alert Banner */}
+      {overview?.emergencyShutdown && (
+        <div
+          style={{
+            padding: '16px 20px',
+            backgroundColor: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid var(--danger)',
+            borderRadius: 'var(--radius-md)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+            color: 'var(--danger)',
+            marginBottom: '20px',
+          }}
+        >
+          <ShieldAlert size={24} style={{ flexShrink: 0 }} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>TRANSACTIONAL EMAIL DELIVERY PAUSED</div>
+            <div style={{ fontSize: '0.84rem', opacity: 0.9 }}>
+              Outbound transactional email dispatch is temporarily halted by the platform administrator for emergency maintenance. Outbound messages are being safely retained in the outbox queue.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dynamic Telemetry Section (Strictly Scoped by Dedicated Brevo Permission) */}
+      {!activeProject.dedicatedBrevoEnabled ? (
+        /* ===================================================================
+           MODE 1: MANAGED DELIVERY NETWORK (Dedicated Brevo is Locked)
+           Zero Brevo cards, zero super-admin details, zero fake 500 daily caps.
+           =================================================================== */
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+          {/* Card 1: Syntrabase Managed Outbound Gateway */}
+          <Card>
+            <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Brevo Live Credits
+                  Outbound Gateway
                 </span>
+                <Badge
+                  variant={overview?.emergencyShutdown ? 'danger' : overview?.gatewayStatus === 'paused' || !overview?.globalSendingEnabled ? 'warning' : 'success'}
+                  size="sm"
+                  style={{ fontSize: '10px' }}
+                >
+                  {overview?.emergencyShutdown
+                    ? 'Emergency Paused'
+                    : overview?.gatewayStatus === 'paused' || !overview?.globalSendingEnabled
+                    ? 'Paused'
+                    : 'Active (HTTPS 443)'}
+                </Badge>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                <span style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Syntrabase Managed Network
+                </span>
+              </div>
+
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                Isolated TLS 1.3 • Plan: <strong style={{ color: 'var(--text-primary)' }}>{overview?.planName || 'Standard'}</strong>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                <span>Mode: Managed Shared Relay</span>
+                <span>{senders.length} sender(s) active</span>
+              </div>
+            </div>
+          </Card>
+
+          {/* Card 2: Project Messages Dispatched Today */}
+          <Card>
+            <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Dispatched Today
+                </span>
+                <Badge variant="outline" size="sm" style={{ fontSize: '10px', color: 'var(--primary)', borderColor: 'var(--primary)' }}>
+                  {overview?.planName || 'Active Plan'}
+                </Badge>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+                  {(overview?.projectSentToday ?? 0).toLocaleString()}
+                </span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  messages sent today
+                </span>
+              </div>
+
+              {/* Progress Bar */}
+              <div style={{ height: '3px', width: '100%', backgroundColor: 'var(--bg-surface-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${Math.min(100, Math.max(5, (overview?.projectSentToday ?? 0) * 10))}%`,
+                    backgroundColor: 'var(--primary)',
+                    transition: 'width 0.3s ease',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                <span>{deliveryLogs.filter(l => l.deliveryStatus === 'delivered').length} verified delivered</span>
+                <span>{deliveryLogs.filter(l => l.deliveryStatus === 'failed' || l.deliveryStatus === 'bounced').length} failed</span>
+              </div>
+            </div>
+          </Card>
+
+          {/* Card 3: Dedicated Brevo Quota (Locked Notice) */}
+          <Card>
+            <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Dedicated Brevo
+                </span>
+                <Badge variant="warning" size="sm" style={{ fontSize: '10px' }}>
+                  Feature Locked
+                </Badge>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                <span style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                  Managed Relay Active
+                </span>
+              </div>
+
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                Direct Brevo API key integration is locked for this project.
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                 <button
-                  onClick={handleSyncOverviewCredits}
-                  disabled={isSyncingOverview}
-                  title="Synchronize live credits directly from Brevo API"
+                  onClick={() => setActiveTab('brevo')}
                   style={{
                     background: 'none',
                     border: 'none',
-                    padding: '2px',
-                    cursor: 'pointer',
+                    padding: 0,
                     color: 'var(--primary)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
+                    cursor: 'pointer',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
                   }}
                 >
-                  <RefreshCw size={12} className={isSyncingOverview ? 'animate-spin' : ''} />
+                  View Details &rarr;
+                </button>
+                <span>Enterprise Add-on</span>
+              </div>
+            </div>
+          </Card>
+        </div>
+      ) : overview?.activeAccount ? (
+        /* ===================================================================
+           MODE 2: DEDICATED BREVO LIVE (Enabled & Tenant API Key Added)
+           Shows ONLY this project's own Brevo account details and live credits.
+           =================================================================== */
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+          {/* Card 1: Live Brevo Credits for Project's Own Account */}
+          <Card>
+            <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Brevo Live Credits
+                  </span>
+                  <button
+                    onClick={handleSyncOverviewCredits}
+                    disabled={isSyncingOverview}
+                    title="Synchronize live credits directly from your Brevo API account"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '2px',
+                      cursor: 'pointer',
+                      color: 'var(--primary)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <RefreshCw size={12} className={isSyncingOverview ? 'animate-spin' : ''} />
+                  </button>
+                </div>
+                <Badge
+                  variant={overview.activeAccount.liveFromBrevo ? 'success' : 'outline'}
+                  size="sm"
+                  style={{ fontSize: '10px' }}
+                >
+                  {overview.activeAccount.liveFromBrevo ? 'Live Brevo API' : 'Brevo Plan'}
+                </Badge>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                <span style={{ fontSize: '2rem', fontWeight: 800, color: overview.activeAccount.remainingCredits === 0 ? 'var(--danger)' : 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+                  {overview.activeAccount.remainingCredits.toLocaleString()}
+                </span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  credits left today
+                </span>
+              </div>
+
+              {/* Progress Bar */}
+              <div style={{ height: '3px', width: '100%', backgroundColor: 'var(--bg-surface-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${Math.min(100, Math.max(0, ((overview.activeAccount.remainingCredits / (overview.activeAccount.totalDailyQuota || 300)) * 100)))}%`,
+                    backgroundColor: overview.activeAccount.remainingCredits === 0 ? 'var(--danger)' : 'var(--primary)',
+                    transition: 'width 0.3s ease',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                <span>Daily Limit: {overview.activeAccount.totalDailyQuota.toLocaleString()}</span>
+                <span>{overview.activeAccount.dailySentCount} dispatched today</span>
+              </div>
+            </div>
+          </Card>
+
+          {/* Card 2: Dedicated Outbound Gateway */}
+          <Card>
+            <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Outbound Gateway
+                </span>
+                <Badge
+                  variant={overview?.emergencyShutdown ? 'danger' : overview.activeAccount.status === 'healthy' ? 'success' : 'warning'}
+                  size="sm"
+                  style={{ fontSize: '10px' }}
+                >
+                  {overview?.emergencyShutdown ? 'Emergency Paused' : overview.activeAccount.status === 'healthy' ? 'Dedicated Active' : overview.activeAccount.status}
+                </Badge>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                <span style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {overview.activeAccount.accountName}
+                </span>
+              </div>
+
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                Tier: <strong style={{ color: 'var(--text-primary)' }}>Brevo {overview.activeAccount.planType.toUpperCase()}</strong> • Isolated TLS 1.3
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                <span>Mode: Dedicated Tenant API</span>
+                <span>{senders.length} sender(s) active</span>
+              </div>
+            </div>
+          </Card>
+
+          {/* Card 3: Project Dispatches Today */}
+          <Card>
+            <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Project Dispatches
+                </span>
+                <Badge variant="outline" size="sm" style={{ fontSize: '10px' }}>
+                  Dedicated Quota
+                </Badge>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+                  {(overview?.projectSentToday ?? 0).toLocaleString()}
+                </span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  dispatched today
+                </span>
+              </div>
+
+              {/* Progress Bar */}
+              <div style={{ height: '3px', width: '100%', backgroundColor: 'var(--bg-surface-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${Math.min(100, Math.max(5, (overview?.projectSentToday ?? 0) * 10))}%`,
+                    backgroundColor: 'var(--primary)',
+                    transition: 'width 0.3s ease',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                <span>{deliveryLogs.filter(l => l.deliveryStatus === 'delivered').length} verified delivered</span>
+                <span>{deliveryLogs.filter(l => l.deliveryStatus === 'failed' || l.deliveryStatus === 'bounced').length} failed</span>
+              </div>
+            </div>
+          </Card>
+        </div>
+      ) : (
+        /* ===================================================================
+           MODE 3: DEDICATED BREVO ENABLED, AWAITING API KEY SETUP
+           =================================================================== */
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+          {/* Card 1: Setup Prompt */}
+          <Card>
+            <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Dedicated Brevo
+                </span>
+                <Badge variant="warning" size="sm" style={{ fontSize: '10px' }}>
+                  Setup Required
+                </Badge>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                <span style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                  No API Key Configured
+                </span>
+              </div>
+
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                Connect your Brevo account to enable isolated tenant quota.
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', marginTop: '4px' }}>
+                <button
+                  onClick={() => { setActiveTab('brevo'); setShowAddAccountModal(true); }}
+                  style={{
+                    background: 'var(--primary)',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '4px 10px',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Configure Brevo Key &rarr;
                 </button>
               </div>
-              <Badge
-                variant={overview?.activeAccount?.liveFromBrevo ? 'success' : 'outline'}
-                size="sm"
-                style={{ fontSize: '10px' }}
-              >
-                {overview?.activeAccount?.liveFromBrevo ? 'Live Brevo API' : 'Brevo Plan'}
-              </Badge>
             </div>
+          </Card>
 
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-              <span style={{ fontSize: '2rem', fontWeight: 800, color: (overview?.activeAccount?.remainingCredits ?? 300) === 0 ? 'var(--danger)' : 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
-                {(overview?.activeAccount?.remainingCredits ?? 300).toLocaleString()}
-              </span>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                credits left today
-              </span>
-            </div>
+          {/* Card 2: Outbound Gateway Standby */}
+          <Card>
+            <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Outbound Gateway
+                </span>
+                <Badge variant="outline" size="sm" style={{ fontSize: '10px' }}>
+                  Awaiting Credentials
+                </Badge>
+              </div>
 
-            {/* Progress Bar */}
-            <div style={{ height: '3px', width: '100%', backgroundColor: 'var(--bg-surface-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
-              <div
-                style={{
-                  height: '100%',
-                  width: `${Math.min(100, Math.max(0, (((overview?.activeAccount?.remainingCredits ?? 300) / (overview?.activeAccount?.totalDailyQuota || 300)) * 100)))}%`,
-                  backgroundColor: (overview?.activeAccount?.remainingCredits ?? 300) === 0 ? 'var(--danger)' : 'var(--primary)',
-                  transition: 'width 0.3s ease',
-                }}
-              />
-            </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                <span style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                  Dedicated Relay Standby
+                </span>
+              </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              <span>Quota: {(overview?.activeAccount?.totalDailyQuota ?? 300).toLocaleString()} daily</span>
-              <span>{overview?.activeAccount?.dailySentCount ?? 0} dispatched today</span>
-            </div>
-          </div>
-        </Card>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                Isolated TLS 1.3 • Awaiting primary key
+              </div>
 
-        {/* Card 2: Outbound Gateway */}
-        <Card>
-          <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Outbound Gateway
-              </span>
-              <Badge
-                variant={overview?.globalSendingEnabled ? 'success' : 'danger'}
-                size="sm"
-                style={{ fontSize: '10px' }}
-              >
-                {overview?.globalSendingEnabled ? 'Active (HTTPS 443)' : 'Emergency Paused'}
-              </Badge>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                <span>Mode: Dedicated Tenant</span>
+                <span>0 accounts active</span>
+              </div>
             </div>
+          </Card>
 
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-              <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {overview?.activeAccount?.accountName || (overview?.isDedicated ? 'Dedicated Gateway' : 'Platform Shared Pool')}
-              </span>
-            </div>
+          {/* Card 3: Project Dispatches */}
+          <Card>
+            <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Dispatched Today
+                </span>
+                <Badge variant="outline" size="sm" style={{ fontSize: '10px' }}>
+                  0 today
+                </Badge>
+              </div>
 
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              Tier: <strong style={{ color: 'var(--text-primary)' }}>Brevo {(overview?.activeAccount?.planType || 'free').toUpperCase()}</strong> • Isolated TLS 1.3
-            </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+                  {(overview?.projectSentToday ?? 0).toLocaleString()}
+                </span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  messages sent
+                </span>
+              </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              <span>Mode: {overview?.isDedicated ? 'Dedicated Tenant' : 'Shared Multi-Tenant Pool'}</span>
-              <span>{senders.length} sender(s) active</span>
-            </div>
-          </div>
-        </Card>
+              <div style={{ height: '3px', width: '100%', backgroundColor: 'var(--bg-surface-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: '0%', backgroundColor: 'var(--primary)' }} />
+              </div>
 
-        {/* Card 3: Project Dispatch Cap & Deliveries */}
-        <Card>
-          <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Project Daily Quota
-              </span>
-              <Badge
-                variant={(overview?.projectSentToday ?? 0) >= (overview?.dailyProjectCap ?? 100) ? 'danger' : 'outline'}
-                size="sm"
-                style={{ fontSize: '10px' }}
-              >
-                {(overview?.projectSentToday ?? 0) >= (overview?.dailyProjectCap ?? 100) ? 'Cap Reached' : 'Within Limits'}
-              </Badge>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                <span>{deliveryLogs.length} total logs</span>
+                <span>Ready for dispatch</span>
+              </div>
             </div>
-
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-              <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
-                {(overview?.projectSentToday ?? 0).toLocaleString()}
-              </span>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                / {(overview?.dailyProjectCap ?? 100).toLocaleString()} daily cap
-              </span>
-            </div>
-
-            {/* Progress Bar */}
-            <div style={{ height: '3px', width: '100%', backgroundColor: 'var(--bg-surface-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
-              <div
-                style={{
-                  height: '100%',
-                  width: `${Math.min(100, Math.max(0, (((overview?.projectSentToday ?? 0) / (overview?.dailyProjectCap || 100)) * 100)))}%`,
-                  backgroundColor: (overview?.projectSentToday ?? 0) >= (overview?.dailyProjectCap ?? 100) ? 'var(--danger)' : 'var(--primary)',
-                  transition: 'width 0.3s ease',
-                }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              <span>{deliveryLogs.filter(l => l.deliveryStatus === 'delivered').length} verified delivered</span>
-              <span>{deliveryLogs.filter(l => l.deliveryStatus === 'failed' || l.deliveryStatus === 'bounced').length} failed</span>
-            </div>
-          </div>
-        </Card>
-      </div>
+          </Card>
+        </div>
+      )}
 
       {/* =====================================================================
           TAB 1: CUSTOM SENDING DOMAINS

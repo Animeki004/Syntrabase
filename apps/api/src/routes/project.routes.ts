@@ -599,6 +599,15 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     await ProjectService.assertProjectAccess(devId, projectId);
     await assertDedicatedBrevoEnabled(projectId);
 
+    const rawId = await ProjectService.resolveProjectId(projectId);
+    const accCheck = await query<{ id: string }>(
+      `SELECT id FROM email_provider_accounts WHERE id = $1 AND (project_id = $2 OR project_id = $3)`,
+      [accountId, projectId, rawId]
+    );
+    if (!accCheck.rows[0]) {
+      return reply.status(404).send({ error: 'Dedicated provider account not found for this project' });
+    }
+
     try {
       const account = await EmailService.revalidateProviderAccount(accountId);
       return reply.send({ account });
@@ -614,6 +623,15 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     await ProjectService.assertProjectAccess(devId, projectId);
     await assertDedicatedBrevoEnabled(projectId);
 
+    const rawId = await ProjectService.resolveProjectId(projectId);
+    const accCheck = await query<{ id: string }>(
+      `SELECT id FROM email_provider_accounts WHERE id = $1 AND (project_id = $2 OR project_id = $3)`,
+      [accountId, projectId, rawId]
+    );
+    if (!accCheck.rows[0]) {
+      return reply.status(404).send({ error: 'Dedicated provider account not found for this project' });
+    }
+
     try {
       const account = await EmailService.syncProviderAccountUsage(accountId, true);
       return reply.send({ success: true, account });
@@ -628,6 +646,15 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     const { projectId, logId } = req.params as { projectId: string; logId: string };
     await ProjectService.assertProjectAccess(devId, projectId);
 
+    const rawId = await ProjectService.resolveProjectId(projectId);
+    const logCheck = await query<{ id: string }>(
+      `SELECT id FROM email_outbox_queue WHERE id = $1 AND (project_id = $2 OR project_id = $3)`,
+      [logId, projectId, rawId]
+    );
+    if (!logCheck.rows[0]) {
+      return reply.status(404).send({ error: 'Delivery log not found for this project' });
+    }
+
     try {
       const result = await EmailService.syncOutboxDeliveryStatus(logId);
       return reply.send({ success: true, ...result });
@@ -636,7 +663,7 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     }
   });
 
-  // Get Project Email Infrastructure Overview & Live Credits Telemetry
+  // Get Project Email Infrastructure Overview (Strictly Tenant-Isolated)
   server.get('/api/v1/projects/:projectId/email/overview', async (req, reply) => {
     const devId = await requireDeveloperId(req);
     const { projectId } = req.params as { projectId: string };
@@ -645,37 +672,63 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     try {
       const policy = await EmailService.getPlatformPolicy();
       const rawId = await ProjectService.resolveProjectId(projectId);
+      const planContext = await PlanService.getProjectPlanContext(rawId);
+
       const projRes = await query<{ dedicated_brevo_enabled: boolean }>(
         `SELECT dedicated_brevo_enabled FROM projects WHERE id = $1`,
         [rawId]
       ).catch(() => ({ rows: [] }));
       const isDedicated = Boolean(projRes.rows[0]?.dedicated_brevo_enabled);
-      const accounts = await EmailService.getProviderAccounts(isDedicated ? projectId : null);
-      const primaryAccount = accounts.find((a) => a.isPrimary) || accounts.find((a) => a.status === 'healthy') || accounts[0];
 
-      // Total daily dispatched for project
+      // Total daily dispatched for this specific project
       const logs = await EmailService.getDeliveryLogs(projectId, 100, rawId);
       const todayLogs = logs.filter((l: any) => {
         const d = new Date(l.createdAt || 0).toDateString();
         return d === new Date().toDateString();
       });
 
+      if (!isDedicated) {
+        // MANAGED DELIVERY MODE:
+        // Strictly return project metrics only. NEVER leak super-admin accounts, credentials, or admin policy caps.
+        return reply.send({
+          isDedicated: false,
+          dedicatedBrevoEnabled: false,
+          gatewayMode: 'managed',
+          gatewayStatus: policy.emergencyShutdown ? 'emergency_shutdown' : !policy.globalSendingEnabled ? 'paused' : 'active',
+          globalSendingEnabled: policy.globalSendingEnabled && !policy.emergencyShutdown,
+          emergencyShutdown: policy.emergencyShutdown,
+          projectSentToday: todayLogs.length,
+          planName: planContext.planName,
+          planSlug: planContext.planSlug,
+          activeAccount: null,
+        });
+      }
+
+      // DEDICATED BREVO MODE:
+      // Query ONLY accounts belonging to this specific project. Zero platform accounts returned.
+      const dedicatedAccounts = await EmailService.getProviderAccounts(projectId);
+      const activeDedicated = dedicatedAccounts.find((a) => a.isPrimary) || dedicatedAccounts.find((a) => a.status === 'healthy') || dedicatedAccounts[0] || null;
+
       return reply.send({
+        isDedicated: true,
+        dedicatedBrevoEnabled: true,
+        gatewayMode: activeDedicated ? 'dedicated' : 'dedicated_pending_setup',
+        gatewayStatus: activeDedicated ? activeDedicated.status : 'awaiting_credentials',
         globalSendingEnabled: policy.globalSendingEnabled && !policy.emergencyShutdown,
-        dailyProjectCap: policy.dailyProjectCap,
+        emergencyShutdown: policy.emergencyShutdown,
         projectSentToday: todayLogs.length,
-        isDedicated,
-        activeAccount: primaryAccount ? {
-          id: primaryAccount.id,
-          accountName: primaryAccount.accountName,
-          status: primaryAccount.status,
-          totalDailyQuota: primaryAccount.totalDailyQuota ?? (primaryAccount.providerPlanInfo?.totalDailyQuota || 300),
-          remainingCredits: primaryAccount.remainingCredits ?? (primaryAccount.providerPlanInfo?.remainingCredits || 300),
-          dailySentCount: primaryAccount.dailySentCount ?? 0,
-          planType: primaryAccount.providerPlanInfo?.planType || 'free',
-          creditsType: primaryAccount.providerPlanInfo?.creditsType || 'sendLimit',
-          lastSyncedAt: primaryAccount.providerPlanInfo?.lastSyncedAt,
-          liveFromBrevo: Boolean(primaryAccount.providerPlanInfo?.liveFromBrevo),
+        planName: planContext.planName,
+        planSlug: planContext.planSlug,
+        activeAccount: activeDedicated ? {
+          id: activeDedicated.id,
+          accountName: activeDedicated.accountName,
+          status: activeDedicated.status,
+          totalDailyQuota: activeDedicated.totalDailyQuota ?? (activeDedicated.providerPlanInfo?.totalDailyQuota || 300),
+          remainingCredits: activeDedicated.remainingCredits ?? (activeDedicated.providerPlanInfo?.remainingCredits || 300),
+          dailySentCount: activeDedicated.dailySentCount ?? 0,
+          planType: activeDedicated.providerPlanInfo?.planType || 'free',
+          lastSyncedAt: activeDedicated.providerPlanInfo?.lastSyncedAt,
+          liveFromBrevo: Boolean(activeDedicated.providerPlanInfo?.liveFromBrevo),
         } : null,
       });
     } catch (err: any) {
@@ -727,7 +780,8 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
 
       return reply.send({ success: true, queueItem });
     } catch (err: any) {
-      return reply.status(500).send({ error: err.message });
+      const statusCode = err.name === 'EmailDeliveryError' ? 503 : 500;
+      return reply.status(statusCode).send({ error: err.message });
     }
   });
 

@@ -761,12 +761,18 @@ export class EmailService {
   public static async updatePlatformPolicy(updates: Partial<EmailPlatformPolicy>): Promise<EmailPlatformPolicy> {
     try {
       const current = await this.getPlatformPolicy();
-      const updated = { ...current, ...updates, updatedAt: new Date().toISOString() };
+      const updated: EmailPlatformPolicy = { ...current, ...updates, updatedAt: new Date().toISOString() };
+      inMemoryPolicy = updated;
       await query(
-        `UPDATE email_platform_policy
-         SET global_sending_enabled = $1, emergency_shutdown = $2, daily_project_cap = $3,
-             max_retry_attempts = $4, default_provider_type = $5, updated_at = NOW()
-         WHERE id = 1`,
+        `INSERT INTO email_platform_policy (id, global_sending_enabled, emergency_shutdown, daily_project_cap, max_retry_attempts, default_provider_type, updated_at)
+         VALUES (1, $1, $2, $3, $4, $5, NOW())
+         ON CONFLICT (id) DO UPDATE
+         SET global_sending_enabled = EXCLUDED.global_sending_enabled,
+             emergency_shutdown = EXCLUDED.emergency_shutdown,
+             daily_project_cap = EXCLUDED.daily_project_cap,
+             max_retry_attempts = EXCLUDED.max_retry_attempts,
+             default_provider_type = EXCLUDED.default_provider_type,
+             updated_at = NOW()`,
         [
           updated.globalSendingEnabled,
           updated.emergencyShutdown,
