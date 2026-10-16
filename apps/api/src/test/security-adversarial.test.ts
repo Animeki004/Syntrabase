@@ -33,6 +33,39 @@ test('Security Adversarial - Cross-project IDOR access is rejected with 403', as
   assert.equal(res.statusCode, 403);
   const data = JSON.parse(res.body);
   assert.ok(data.error.includes('Cross-project access denied'));
+
+  // Attempt to read security rules versions in project_B with project_A token
+  const resRules = await server.inject({
+    method: 'GET',
+    url: '/api/v1/projects/project_B/rules/versions',
+    headers: {
+      authorization: `Bearer ${tokenProjA}`,
+    },
+  });
+  assert.equal(resRules.statusCode, 403, 'Cross-project access to rules versions must return 403');
+  const rulesData = JSON.parse(resRules.body);
+  assert.ok((rulesData.message || rulesData.error)?.includes('Cross-project access denied'));
+
+  // Attempt by standard application end-user (no admin claim) within same project
+  const tokenEndUser = jwt.sign(
+    {
+      uid: 'user_regular_bob',
+      email: 'bob@tenant-b.com',
+      projectId: 'project_B',
+      environmentId: 'default',
+    },
+    config.jwt.secret,
+    { expiresIn: 900 }
+  );
+
+  const resEndUserRules = await server.inject({
+    method: 'GET',
+    url: '/api/v1/projects/project_B/rules/versions',
+    headers: {
+      authorization: `Bearer ${tokenEndUser}`,
+    },
+  });
+  assert.equal(resEndUserRules.statusCode, 403, 'End-user without admin privileges must be forbidden from accessing rules versions');
 });
 
 test('Security Adversarial - Security rule bypass without credentials fails closed', async () => {

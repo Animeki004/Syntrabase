@@ -160,7 +160,8 @@ export const rulesRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
       `SELECT id, version_number, source_code, status, published_at
        FROM security_rule_versions
        WHERE project_id::text = $1 OR project_id::text = $2
-       ORDER BY version_number DESC`,
+       ORDER BY version_number DESC
+       LIMIT 100`,
       [projectId, rawId]
     );
 

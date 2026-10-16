@@ -132,6 +132,23 @@ test('SYN-SEC-002: Remote Security Rules endpoints reject unauthenticated reques
       },
     });
     assert.equal(resInvalidKey.statusCode, 401, 'Invalid API key must return 401');
+
+    // Test D: GET /rules/versions without authentication
+    const resVersions = await server.inject({
+      method: 'GET',
+      url: '/api/v1/projects/proj-target-123/rules/versions',
+    });
+    assert.equal(resVersions.statusCode, 401, 'Unauthenticated get rules versions must return 401');
+
+    // Test E: GET /rules/versions with forged / invalid API key
+    const resVersionsInvalidKey = await server.inject({
+      method: 'GET',
+      url: '/api/v1/projects/proj-target-123/rules/versions',
+      headers: {
+        'x-api-key': 'sk_live_malicious_forged_key_1234567890',
+      },
+    });
+    assert.equal(resVersionsInvalidKey.statusCode, 401, 'Invalid API key for rules versions must return 401');
   });
 });
 
