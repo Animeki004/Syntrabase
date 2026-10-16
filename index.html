@@ -1109,9 +1109,9 @@ curl -f http://localhost:4000/api/v1/health">Copy</button>
           <p>Execute live automated regression tests or interactively verify Client & Admin SDK operations in real-time.</p>
         </div>
         <div class="header-status">
-          <div class="status-indicator online" id="status-pill" title="Syntrabase SDK Connection Status">
+          <div class="status-indicator checking" id="status-pill" title="Syntrabase SDK Connection Status">
             <span class="status-dot"></span>
-            <span id="sdk-status-text">Client SDK v1.2.0 Ready</span>
+            <span id="sdk-status-text">Checking Gateway...</span>
           </div>
           <div class="auth-pill" id="current-user-pill">
             <span class="user-avatar" id="header-avatar">?</span>
@@ -1135,17 +1135,15 @@ curl -f http://localhost:4000/api/v1/health">Copy</button>
           <input type="text" id="cfg-api-key" value="pk_live_syntrabase_demo_key_12345">
         </div>
         <div class="config-group">
-          <label for="cfg-env-id">Environment</label>
-          <select id="cfg-env-id">
-            <option value="default" selected>default</option>
-            <option value="development">development</option>
-            <option value="staging">staging</option>
-            <option value="production">production</option>
+          <label for="cfg-test-mode">Execution Mode</label>
+          <select id="cfg-test-mode">
+            <option value="live" selected>⚡ Live API Gateway (Real HTTP / DB)</option>
+            <option value="mock">🧪 Offline Sandbox Simulation (Demo Mode)</option>
           </select>
         </div>
         <button id="btn-reinit-sdk" class="btn btn-secondary">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-          Re-initialize SDK
+          Re-check Connection
         </button>
       </div>
 
