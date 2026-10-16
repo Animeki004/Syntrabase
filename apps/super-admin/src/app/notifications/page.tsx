@@ -15,7 +15,12 @@ import {
   Layers,
   Inbox,
   MessageSquare,
-  Send
+  Send,
+  Trash2,
+  ShieldCheck,
+  Save,
+  AlertOctagon,
+  Sliders
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -27,6 +32,7 @@ import {
   InternalNotification,
   ContactSubmission,
   ContactStatus,
+  ContactRetentionPolicy,
 } from '@syntrabase/shared-types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -48,6 +54,26 @@ export default function NotificationsCenterPage() {
   const [inquiryStatus, setInquiryStatus] = useState<ContactStatus>('open');
   const [replyText, setReplyText] = useState('');
   const [isSubmittingReply, setIsSubmittingReply] = useState(false);
+
+  // Ticket Retention & Auto-Removal Policy State
+  const [retentionPolicy, setRetentionPolicy] = useState<ContactRetentionPolicy>({
+    autoRemoveEnabled: false,
+    retentionDays: 30,
+    resolvedOnly: true,
+    updatedAt: new Date().toISOString(),
+  });
+  const [isLoadingRetention, setIsLoadingRetention] = useState(false);
+  const [isSavingRetention, setIsSavingRetention] = useState(false);
+
+  // Ticket Deletion State
+  const [ticketToDelete, setTicketToDelete] = useState<ContactSubmission | null>(null);
+  const [isDeletingTicket, setIsDeletingTicket] = useState(false);
+
+  // Bulk Purge State
+  const [isPurgeModalOpen, setIsPurgeModalOpen] = useState(false);
+  const [purgeMode, setPurgeMode] = useState<'resolved' | 'aged' | 'all'>('resolved');
+  const [purgeAgedDays, setPurgeAgedDays] = useState(30);
+  const [isPurging, setIsPurging] = useState(false);
 
   const getAdminToken = () => {
     if (typeof window !== 'undefined') {
@@ -93,10 +119,125 @@ export default function NotificationsCenterPage() {
     }
   }, []);
 
+  // Fetch Retention Policy
+  const fetchRetentionPolicy = useCallback(async () => {
+    setIsLoadingRetention(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/admin/contact/retention`, {
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRetentionPolicy(data);
+      }
+    } catch {
+      // Fallback
+    } finally {
+      setIsLoadingRetention(false);
+    }
+  }, []);
+
+  // Save Retention Policy
+  const handleSaveRetentionPolicy = async () => {
+    setIsSavingRetention(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/admin/contact/retention`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getAdminToken()}`,
+        },
+        body: JSON.stringify({
+          autoRemoveEnabled: retentionPolicy.autoRemoveEnabled,
+          retentionDays: retentionPolicy.retentionDays,
+          resolvedOnly: retentionPolicy.resolvedOnly,
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to update retention policy');
+      }
+      const updated = await res.json();
+      setRetentionPolicy(updated);
+      addToast('Ticket retention & auto-removal policy saved', 'success');
+    } catch (err: any) {
+      addToast(err.message || 'Failed to save retention policy', 'error');
+    } finally {
+      setIsSavingRetention(false);
+    }
+  };
+
+  // Permanently Delete Single Ticket
+  const handleConfirmDeleteTicket = async () => {
+    if (!ticketToDelete) return;
+    setIsDeletingTicket(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/admin/contact/inquiries/${ticketToDelete.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to delete ticket');
+      }
+
+      setInquiries((prev) => prev.filter((i) => i.id !== ticketToDelete.id));
+      if (selectedInquiry?.id === ticketToDelete.id) {
+        setSelectedInquiry(null);
+      }
+      addToast(`Ticket ${ticketToDelete.ticketReference} permanently removed`, 'success');
+      setTicketToDelete(null);
+    } catch (err: any) {
+      addToast(err.message || 'Failed to delete ticket', 'error');
+    } finally {
+      setIsDeletingTicket(false);
+    }
+  };
+
+  // Bulk Purge Tickets
+  const handleExecutePurge = async () => {
+    setIsPurging(true);
+    try {
+      let body: any = {};
+      if (purgeMode === 'all') {
+        body.purgeAll = true;
+      } else if (purgeMode === 'resolved') {
+        body.status = 'resolved';
+      } else if (purgeMode === 'aged') {
+        body.olderThanDays = purgeAgedDays;
+      }
+
+      const res = await fetch(`${API_BASE}/api/v1/admin/contact/inquiries/purge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getAdminToken()}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to purge tickets');
+      }
+
+      const data = await res.json();
+      addToast(`Purged ${data.deletedCount} support tickets permanently`, 'success');
+      setIsPurgeModalOpen(false);
+      fetchInquiries();
+      fetchNotifications();
+    } catch (err: any) {
+      addToast(err.message || 'Failed to purge tickets', 'error');
+    } finally {
+      setIsPurging(false);
+    }
+  };
+
   useEffect(() => {
     fetchNotifications();
     fetchInquiries();
-  }, [fetchNotifications, fetchInquiries]);
+    fetchRetentionPolicy();
+  }, [fetchNotifications, fetchInquiries, fetchRetentionPolicy]);
 
   // Direct open ticket if specified in URL query parameters
   useEffect(() => {
@@ -389,92 +530,237 @@ export default function NotificationsCenterPage() {
         </Card>
       )}
 
-      {/* TAB 2: CONTACT INQUIRIES */}
+      {/* TAB 2: CONTACT INQUIRIES & TICKET RETENTION */}
       {activeTab === 'contact_inquiries' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Developer Contact Center Submissions</CardTitle>
-            <CardDescription>
-              Inquiries submitted through the Developer Console form. Messages are durably recorded in the database.
-            </CardDescription>
-          </CardHeader>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* RETENTION & AUTO-REMOVE CONFIGURATION (SUPER ADMIN) */}
+          <Card>
+            <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <CardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ShieldCheck size={18} style={{ color: 'var(--primary)' }} />
+                  Ticket Retention &amp; Auto-Removal Policy
+                  <Badge variant="outline" style={{ fontSize: '10px', textTransform: 'uppercase' }}>Super Admin Only</Badge>
+                </CardTitle>
+                <CardDescription>
+                  Configure automated ticket lifecycle retention and duration to prevent database bloat, or immediately purge stale test tickets.
+                </CardDescription>
+              </div>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setIsPurgeModalOpen(true)}
+                icon={<Trash2 size={14} />}
+              >
+                Purge Tickets...
+              </Button>
+            </CardHeader>
 
-          <div style={{ padding: '16px' }}>
-            {isLoadingInquiries ? (
-              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                Loading inquiries...
+            <div style={{ padding: '0 20px 20px 20px' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                  gap: '16px',
+                  background: 'var(--bg-surface-subtle)',
+                  padding: '16px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                {/* 1. Auto Remove Toggle */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', textTransform: 'uppercase', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                    Auto-Removal Status
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <Button
+                      size="sm"
+                      variant={retentionPolicy.autoRemoveEnabled ? 'primary' : 'outline'}
+                      onClick={() => setRetentionPolicy({ ...retentionPolicy, autoRemoveEnabled: true })}
+                    >
+                      <CheckCircle2 size={13} style={{ marginRight: '4px' }} /> Enabled
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={!retentionPolicy.autoRemoveEnabled ? 'secondary' : 'outline'}
+                      onClick={() => setRetentionPolicy({ ...retentionPolicy, autoRemoveEnabled: false })}
+                    >
+                      Disabled
+                    </Button>
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                    Background worker sweeps expired tickets every 10 min.
+                  </div>
+                </div>
+
+                {/* 2. Retention Duration */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', textTransform: 'uppercase', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                    Retention Duration (Days)
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {[7, 14, 30, 60, 90].map((days) => (
+                      <Button
+                        key={days}
+                        size="sm"
+                        variant={retentionPolicy.retentionDays === days ? 'primary' : 'outline'}
+                        onClick={() => setRetentionPolicy({ ...retentionPolicy, retentionDays: days })}
+                      >
+                        {days}d
+                      </Button>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                    Tickets older than {retentionPolicy.retentionDays} days are auto-deleted.
+                  </div>
+                </div>
+
+                {/* 3. Scope Filter */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', textTransform: 'uppercase', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                    Deletion Scope
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <Button
+                      size="sm"
+                      variant={retentionPolicy.resolvedOnly ? 'primary' : 'outline'}
+                      onClick={() => setRetentionPolicy({ ...retentionPolicy, resolvedOnly: true })}
+                    >
+                      Resolved Only
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={!retentionPolicy.resolvedOnly ? 'primary' : 'outline'}
+                      onClick={() => setRetentionPolicy({ ...retentionPolicy, resolvedOnly: false })}
+                    >
+                      All Tickets
+                    </Button>
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                    {retentionPolicy.resolvedOnly ? 'Safeguard: Leaves open tickets active' : 'Prunes all tickets regardless of status'}
+                  </div>
+                </div>
               </div>
-            ) : inquiries.length === 0 ? (
-              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                No contact submissions found.
+
+              {/* Save & Metadata row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  {retentionPolicy.lastPrunedAt ? (
+                    <span>Last sweep: <strong>{new Date(retentionPolicy.lastPrunedAt).toLocaleString()}</strong></span>
+                  ) : (
+                    <span>Last sweep: <em>No prune history recorded</em></span>
+                  )}
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  loading={isSavingRetention}
+                  onClick={handleSaveRetentionPolicy}
+                  icon={<Save size={13} />}
+                >
+                  Save Policy
+                </Button>
               </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Ticket Ref</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Subject</TableHead>
-                    <TableHead>Project / Sender</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Submitted</TableHead>
-                    <TableHead style={{ textAlign: 'right' }}>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {inquiries.map((inq) => (
-                    <TableRow key={inq.id}>
-                      <TableCell>
-                        <code style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--primary)' }}>
-                          {inq.ticketReference}
-                        </code>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{inq.category}</Badge>
-                      </TableCell>
-                      <TableCell style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                        {inq.subject}
-                      </TableCell>
-                      <TableCell>
-                        <div style={{ fontSize: '0.85rem' }}>{inq.replyEmail || inq.userEmail || 'Developer'}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{inq.projectId}</div>
-                      </TableCell>
-                      <TableCell>
-                        {inq.status === 'open' ? (
-                          <Badge variant="outline" style={{ color: 'var(--warning)', borderColor: 'var(--warning)' }}>
-                            Open
-                          </Badge>
-                        ) : inq.status === 'in_progress' ? (
-                          <Badge variant="default">In Progress</Badge>
-                        ) : (
-                          <Badge variant="outline" style={{ color: 'var(--success)', borderColor: 'var(--success)' }}>
-                            Resolved
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        {new Date(inq.createdAt).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell style={{ textAlign: 'right' }}>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedInquiry(inq);
-                            setInquiryStatus(inq.status);
-                            setReplyText(inq.adminReply || '');
-                          }}
-                        >
-                          <Eye size={13} style={{ marginRight: '4px' }} /> View
-                        </Button>
-                      </TableCell>
+            </div>
+          </Card>
+
+          {/* INQUIRIES LIST CARD */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Developer Contact Center Submissions</CardTitle>
+              <CardDescription>
+                Inquiries submitted through the Developer Console form. Messages are durably recorded in PostgreSQL.
+              </CardDescription>
+            </CardHeader>
+
+            <div style={{ padding: '16px' }}>
+              {isLoadingInquiries ? (
+                <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  Loading inquiries...
+                </div>
+              ) : inquiries.length === 0 ? (
+                <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  No contact submissions found.
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Ticket Ref</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Subject</TableHead>
+                      <TableHead>Project / Sender</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Submitted</TableHead>
+                      <TableHead style={{ textAlign: 'right' }}>Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {inquiries.map((inq) => (
+                      <TableRow key={inq.id}>
+                        <TableCell>
+                          <code style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--primary)' }}>
+                            {inq.ticketReference}
+                          </code>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{inq.category}</Badge>
+                        </TableCell>
+                        <TableCell style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {inq.subject}
+                        </TableCell>
+                        <TableCell>
+                          <div style={{ fontSize: '0.85rem' }}>{inq.replyEmail || inq.userEmail || 'Developer'}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{inq.projectId}</div>
+                        </TableCell>
+                        <TableCell>
+                          {inq.status === 'open' ? (
+                            <Badge variant="outline" style={{ color: 'var(--warning)', borderColor: 'var(--warning)' }}>
+                              Open
+                            </Badge>
+                          ) : inq.status === 'in_progress' ? (
+                            <Badge variant="default">In Progress</Badge>
+                          ) : (
+                            <Badge variant="outline" style={{ color: 'var(--success)', borderColor: 'var(--success)' }}>
+                              Resolved
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          {new Date(inq.createdAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell style={{ textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', gap: '6px' }}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedInquiry(inq);
+                                setInquiryStatus(inq.status);
+                                setReplyText(inq.adminReply || '');
+                              }}
+                            >
+                              <Eye size={13} style={{ marginRight: '4px' }} /> View
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => setTicketToDelete(inq)}
+                              title="Completely remove ticket"
+                            >
+                              <Trash2 size={13} />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          </Card>
+        </div>
       )}
 
       {/* DETAIL MODAL FOR CONTACT INQUIRY */}
@@ -607,9 +893,20 @@ export default function NotificationsCenterPage() {
 
               {/* Action Buttons */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
-                <Button variant="ghost" onClick={() => setSelectedInquiry(null)}>
-                  Close
-                </Button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <Button variant="ghost" onClick={() => setSelectedInquiry(null)}>
+                    Close
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      setTicketToDelete(selectedInquiry);
+                    }}
+                    icon={<Trash2 size={14} />}
+                  >
+                    Delete Ticket
+                  </Button>
+                </div>
                 <Button
                   variant="primary"
                   loading={isSubmittingReply}
@@ -619,6 +916,173 @@ export default function NotificationsCenterPage() {
                   Dispatch Official Reply &amp; Notify Developer
                 </Button>
               </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* CONFIRM TICKET DELETION MODAL */}
+      {ticketToDelete && (
+        <Modal
+          isOpen={true}
+          onClose={() => setTicketToDelete(null)}
+          title="Permanently Remove Support Ticket?"
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ padding: '12px 14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--danger)', fontWeight: 600, fontSize: '0.9rem', marginBottom: '4px' }}>
+                <AlertTriangle size={16} /> Irreversible Database Purge
+              </div>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                You are about to permanently delete ticket <strong>{ticketToDelete.ticketReference}</strong>:
+                <br />
+                <em>&ldquo;{ticketToDelete.subject}&rdquo;</em>
+              </p>
+            </div>
+
+            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              This will remove the ticket, its entire message thread, and all related Super Admin notifications from PostgreSQL. This action is authenticated and logged in the Audit Trail.
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
+              <Button variant="ghost" onClick={() => setTicketToDelete(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                loading={isDeletingTicket}
+                onClick={handleConfirmDeleteTicket}
+                icon={<Trash2 size={14} />}
+              >
+                Permanently Delete Ticket
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* BULK PURGE MODAL */}
+      {isPurgeModalOpen && (
+        <Modal
+          isOpen={true}
+          onClose={() => setIsPurgeModalOpen(false)}
+          title="Bulk Purge Support Tickets"
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Select the criteria for bulk-deleting support tickets. This removes matching tickets and their conversation history permanently.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '12px',
+                  borderRadius: 'var(--radius-md)',
+                  background: purgeMode === 'resolved' ? 'rgba(37, 99, 235, 0.08)' : 'var(--bg-surface-subtle)',
+                  border: purgeMode === 'resolved' ? '1px solid var(--primary)' : '1px solid var(--border-subtle)',
+                  cursor: 'pointer',
+                }}
+                onClick={() => setPurgeMode('resolved')}
+              >
+                <input
+                  type="radio"
+                  name="purgeMode"
+                  checked={purgeMode === 'resolved'}
+                  onChange={() => setPurgeMode('resolved')}
+                />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>Purge Resolved &amp; Closed Tickets</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Removes all tickets marked as resolved or closed. Open tickets remain untouched.</div>
+                </div>
+              </label>
+
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '12px',
+                  borderRadius: 'var(--radius-md)',
+                  background: purgeMode === 'aged' ? 'rgba(37, 99, 235, 0.08)' : 'var(--bg-surface-subtle)',
+                  border: purgeMode === 'aged' ? '1px solid var(--primary)' : '1px solid var(--border-subtle)',
+                  cursor: 'pointer',
+                }}
+                onClick={() => setPurgeMode('aged')}
+              >
+                <input
+                  type="radio"
+                  name="purgeMode"
+                  checked={purgeMode === 'aged'}
+                  onChange={() => setPurgeMode('aged')}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>Purge Tickets Older than Duration</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                    <select
+                      value={purgeAgedDays}
+                      onChange={(e) => setPurgeAgedDays(parseInt(e.target.value, 10))}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: 'var(--radius-sm)',
+                        background: 'var(--bg-surface)',
+                        color: 'var(--text-primary)',
+                        border: '1px solid var(--border-default)',
+                        fontSize: '0.82rem',
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <option value={7}>7 Days</option>
+                      <option value={14}>14 Days</option>
+                      <option value={30}>30 Days</option>
+                      <option value={60}>60 Days</option>
+                      <option value={90}>90 Days</option>
+                    </select>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Removes all tickets created over {purgeAgedDays} days ago</span>
+                  </div>
+                </div>
+              </label>
+
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '12px',
+                  borderRadius: 'var(--radius-md)',
+                  background: purgeMode === 'all' ? 'rgba(239, 68, 68, 0.08)' : 'var(--bg-surface-subtle)',
+                  border: purgeMode === 'all' ? '1px solid var(--danger)' : '1px solid var(--border-subtle)',
+                  cursor: 'pointer',
+                }}
+                onClick={() => setPurgeMode('all')}
+              >
+                <input
+                  type="radio"
+                  name="purgeMode"
+                  checked={purgeMode === 'all'}
+                  onChange={() => setPurgeMode('all')}
+                />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--danger)' }}>Purge ALL Support Tickets (Dangerous)</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Wipes all support tickets and test tickets across the entire platform.</div>
+                </div>
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
+              <Button variant="ghost" onClick={() => setIsPurgeModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                loading={isPurging}
+                onClick={handleExecutePurge}
+                icon={<Trash2 size={14} />}
+              >
+                Execute Bulk Purge
+              </Button>
             </div>
           </div>
         </Modal>

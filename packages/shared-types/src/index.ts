@@ -1005,3 +1005,12 @@ export interface InternalNotification {
   createdAt: string;
 }
 
+export interface ContactRetentionPolicy {
+  autoRemoveEnabled: boolean;
+  retentionDays: number;
+  resolvedOnly: boolean;
+  lastPrunedAt?: string;
+  updatedAt: string;
+}
+
+

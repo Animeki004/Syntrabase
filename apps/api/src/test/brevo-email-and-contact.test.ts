@@ -220,6 +220,9 @@ test('8. Contact Center — Decoupled Persistence During Email Shutdown', async 
   const relatedNotif = notifications.find((n) => n.relatedId === inquiry.ticketReference);
   assert.ok(relatedNotif, 'Internal notification must be created for Super Admin triage');
 
+  // 5. Clean up test inquiry to prevent polluting databases across test runs
+  await ContactService.deleteInquiry(inquiry.id);
+
   // Restore policy for subsequent tests
   await EmailService.updatePlatformPolicy({
     globalSendingEnabled: true,
@@ -290,6 +293,49 @@ test('9. Super Admin Endpoints — Email Control Center and Notifications API', 
     assert.equal(contactRes.statusCode, 200);
     const contactData = JSON.parse(contactRes.body);
     assert.ok(Array.isArray(contactData.submissions));
+
+    // 6. Contact Retention Policy GET & PUT
+    const getRetRes = await server.inject({
+      method: 'GET',
+      url: '/api/v1/admin/contact/retention',
+      headers: adminHeaders,
+    });
+    assert.equal(getRetRes.statusCode, 200);
+    const retData = JSON.parse(getRetRes.body);
+    assert.ok(typeof retData.autoRemoveEnabled === 'boolean');
+
+    const putRetRes = await server.inject({
+      method: 'PUT',
+      url: '/api/v1/admin/contact/retention',
+      headers: adminHeaders,
+      payload: {
+        autoRemoveEnabled: true,
+        retentionDays: 14,
+        resolvedOnly: true,
+      },
+    });
+    assert.equal(putRetRes.statusCode, 200);
+    const updatedPolicy = JSON.parse(putRetRes.body);
+    assert.equal(updatedPolicy.retentionDays, 14);
+
+    // 7. Create inquiry and test Super Admin DELETE endpoint
+    const tempInquiry = await ContactService.submitInquiry({
+      projectId: '00000000-0000-0000-0000-000000000020',
+      userId: 'test-admin-del',
+      category: 'Technical Support',
+      subject: 'Temporary Inquiry for Admin Delete Test',
+      message: 'This inquiry will be deleted by super admin',
+      replyEmail: 'temp@test.com',
+    });
+
+    const delRes = await server.inject({
+      method: 'DELETE',
+      url: `/api/v1/admin/contact/inquiries/${tempInquiry.id}`,
+      headers: adminHeaders,
+    });
+    assert.equal(delRes.statusCode, 200);
+    const delData = JSON.parse(delRes.body);
+    assert.equal(delData.success, true);
   } finally {
     await server.close().catch(() => {});
   }

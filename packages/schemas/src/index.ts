@@ -427,4 +427,17 @@ export const FollowUpContactMessageSchema = z.object({
   senderName: z.string().max(255).optional(),
 });
 
+export const UpdateContactRetentionSchema = z.object({
+  autoRemoveEnabled: z.boolean(),
+  retentionDays: z.number().int().min(1).max(365),
+  resolvedOnly: z.boolean(),
+});
+
+export const PurgeContactInquiriesSchema = z.object({
+  olderThanDays: z.number().int().min(0).optional(),
+  status: z.enum(['open', 'in_progress', 'resolved', 'closed']).optional(),
+  purgeAll: z.boolean().optional(),
+});
+
+
 

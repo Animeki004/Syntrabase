@@ -5,6 +5,7 @@ import {
   ContactStatus,
   ContactSubmission,
   ContactInquiryMessage,
+  ContactRetentionPolicy,
 } from '@syntrabase/shared-types';
 import { NotificationService } from './notification.service.js';
 import { EmailService } from './email.service.js';
@@ -548,5 +549,206 @@ export class ContactService {
 
     return submission;
   }
+
+  /**
+   * Permanently deletes a single support inquiry and its message thread.
+   */
+  public static async deleteInquiry(id: string, actorId?: string): Promise<{ success: boolean; ticketReference?: string }> {
+    try {
+      const getRes = await query<{ ticket_reference: string; project_id: string }>(
+        'SELECT ticket_reference, project_id FROM contact_submissions WHERE id = $1',
+        [id]
+      );
+      if (getRes.rows.length === 0) {
+        throw new Error('Support inquiry ticket not found.');
+      }
+      const ticket = getRes.rows[0];
+
+      // Delete associated internal notifications
+      await query('DELETE FROM internal_notifications WHERE related_id = $1', [ticket.ticket_reference]).catch(() => {});
+
+      // Delete inquiry (foreign key CASCADE deletes contact_inquiry_messages)
+      await query('DELETE FROM contact_submissions WHERE id = $1', [id]);
+
+      if (actorId) {
+        await AuditService.log({
+          actorId,
+          actorType: 'developer',
+          action: 'contact.inquiry_deleted',
+          targetResource: `ticket:${ticket.ticket_reference}`,
+          projectId: ticket.project_id,
+          payload: { ticketId: id, ticketReference: ticket.ticket_reference },
+        }).catch(() => {});
+      }
+
+      return { success: true, ticketReference: ticket.ticket_reference };
+    } catch (err: any) {
+      if (err.message === 'Support inquiry ticket not found.') throw err;
+      const idx = inMemoryContactSubmissions.findIndex((s) => s.id === id);
+      if (idx === -1) throw new Error('Support inquiry ticket not found.');
+      const ref = inMemoryContactSubmissions[idx].ticketReference;
+      inMemoryContactSubmissions.splice(idx, 1);
+      return { success: true, ticketReference: ref };
+    }
+  }
+
+  /**
+   * Bulk purge inquiries matching criteria (e.g. all tickets, stale tickets, resolved tickets).
+   */
+  public static async purgeInquiries(
+    options: { olderThanDays?: number; status?: ContactStatus; purgeAll?: boolean },
+    actorId?: string
+  ): Promise<{ deletedCount: number }> {
+    try {
+      let whereClauses: string[] = [];
+      const params: any[] = [];
+      let paramIdx = 1;
+
+      if (!options.purgeAll) {
+        if (options.status) {
+          whereClauses.push(`status = $${paramIdx++}`);
+          params.push(options.status);
+        }
+        if (typeof options.olderThanDays === 'number' && options.olderThanDays > 0) {
+          whereClauses.push(`created_at < NOW() - ($${paramIdx++} || ' days')::interval`);
+          params.push(options.olderThanDays);
+        }
+      }
+
+      const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+      const delRes = await query<{ count: string }>(
+        `WITH deleted AS (
+           DELETE FROM contact_submissions ${whereSql} RETURNING ticket_reference
+         )
+         SELECT count(*) as count FROM deleted`,
+        params
+      );
+
+      const deletedCount = parseInt(delRes.rows[0]?.count || '0', 10);
+
+      // Clean up orphaned notifications for deleted tickets
+      await query(`DELETE FROM internal_notifications WHERE category = 'contact' AND related_id NOT IN (SELECT ticket_reference FROM contact_submissions)`).catch(() => {});
+
+      if (actorId) {
+        await AuditService.log({
+          actorId,
+          actorType: 'developer',
+          action: 'contact.inquiries_purged',
+          targetResource: 'contact_submissions',
+          payload: { deletedCount, criteria: options },
+        }).catch(() => {});
+      }
+
+      return { deletedCount };
+    } catch {
+      let beforeCount = inMemoryContactSubmissions.length;
+      if (options.purgeAll) {
+        inMemoryContactSubmissions.length = 0;
+      }
+      return { deletedCount: beforeCount - inMemoryContactSubmissions.length };
+    }
+  }
+
+  /**
+   * Retrieves ticket auto-remove / retention configuration.
+   */
+  public static async getRetentionPolicy(): Promise<ContactRetentionPolicy> {
+    try {
+      const res = await query<any>(
+        `SELECT auto_remove_enabled as "autoRemoveEnabled",
+                retention_days as "retentionDays",
+                resolved_only as "resolvedOnly",
+                last_pruned_at as "lastPrunedAt",
+                updated_at as "updatedAt"
+         FROM contact_retention_policy
+         WHERE id = 1`
+      );
+      if (res.rows.length > 0) {
+        return res.rows[0];
+      }
+    } catch {}
+    return {
+      autoRemoveEnabled: false,
+      retentionDays: 30,
+      resolvedOnly: true,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Updates ticket auto-remove / retention configuration.
+   */
+  public static async updateRetentionPolicy(
+    params: { autoRemoveEnabled: boolean; retentionDays: number; resolvedOnly: boolean },
+    actorId?: string
+  ): Promise<ContactRetentionPolicy> {
+    try {
+      const res = await query<any>(
+        `UPDATE contact_retention_policy
+         SET auto_remove_enabled = $1,
+             retention_days = $2,
+             resolved_only = $3,
+             updated_at = NOW()
+         WHERE id = 1
+         RETURNING auto_remove_enabled as "autoRemoveEnabled",
+                   retention_days as "retentionDays",
+                   resolved_only as "resolvedOnly",
+                   last_pruned_at as "lastPrunedAt",
+                   updated_at as "updatedAt"`,
+        [params.autoRemoveEnabled, params.retentionDays, params.resolvedOnly]
+      );
+
+      if (actorId) {
+        await AuditService.log({
+          actorId,
+          actorType: 'developer',
+          action: 'contact.retention_policy_updated',
+          targetResource: 'contact_retention_policy',
+          payload: params,
+        }).catch(() => {});
+      }
+
+      if (res.rows.length > 0) {
+        return res.rows[0];
+      }
+    } catch {}
+
+    return {
+      autoRemoveEnabled: params.autoRemoveEnabled,
+      retentionDays: params.retentionDays,
+      resolvedOnly: params.resolvedOnly,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Background sweep to auto-remove tickets exceeding retention duration if policy is active.
+   */
+  public static async autoPruneOldTickets(): Promise<{ prunedCount: number }> {
+    try {
+      const policy = await this.getRetentionPolicy();
+      if (!policy.autoRemoveEnabled || policy.retentionDays <= 0) {
+        return { prunedCount: 0 };
+      }
+
+      let statusFilter = policy.resolvedOnly ? "AND status IN ('resolved', 'closed')" : "";
+      const res = await query<{ count: string }>(
+        `WITH deleted AS (
+           DELETE FROM contact_submissions
+           WHERE created_at < NOW() - ($1 || ' days')::interval ${statusFilter}
+           RETURNING id
+         )
+         SELECT count(*) as count FROM deleted`,
+        [policy.retentionDays]
+      );
+
+      await query('UPDATE contact_retention_policy SET last_pruned_at = NOW() WHERE id = 1').catch(() => {});
+
+      return { prunedCount: parseInt(res.rows[0]?.count || '0', 10) };
+    } catch {
+      return { prunedCount: 0 };
+    }
+  }
 }
+
 

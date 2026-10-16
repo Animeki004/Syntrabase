@@ -16,7 +16,7 @@ import { ContactService } from '../services/contact.service.js';
 import { ProjectService } from '../services/project.service.js';
 import { CryptoUtil } from '../utils/crypto.js';
 import { UrlUtil } from '../utils/url.util.js';
-import { CreatePlanSchema, UpdatePlanSchema, AssignProjectPlanSchema, ReplyContactInquirySchema } from '@syntrabase/schemas';
+import { CreatePlanSchema, UpdatePlanSchema, AssignProjectPlanSchema, ReplyContactInquirySchema, UpdateContactRetentionSchema, PurgeContactInquiriesSchema } from '@syntrabase/schemas';
 import { TokenPayload } from '@syntrabase/shared-types';
 
 export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) => {
@@ -1375,6 +1375,40 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
     });
 
     return reply.send({ success: true, submission });
+  });
+
+  // Permanently Remove Support Inquiry Ticket (Super Admin Only)
+  server.delete('/api/v1/admin/contact/inquiries/:id', async (req, reply) => {
+    const admin = await requireSuperAdmin(req);
+    const { id } = req.params as { id: string };
+
+    const result = await ContactService.deleteInquiry(id, admin.uid);
+    return reply.send(result);
+  });
+
+  // Bulk Purge Support Inquiry Tickets (Super Admin Only)
+  server.post('/api/v1/admin/contact/inquiries/purge', async (req, reply) => {
+    const admin = await requireSuperAdmin(req);
+    const body = PurgeContactInquiriesSchema.parse(req.body || {});
+
+    const result = await ContactService.purgeInquiries(body, admin.uid);
+    return reply.send({ success: true, ...result });
+  });
+
+  // Get Ticket Retention & Auto-Remove Policy (Super Admin Only)
+  server.get('/api/v1/admin/contact/retention', async (req, reply) => {
+    await requireSuperAdmin(req);
+    const policy = await ContactService.getRetentionPolicy();
+    return reply.send(policy);
+  });
+
+  // Update Ticket Retention & Auto-Remove Policy (Super Admin Only)
+  server.put('/api/v1/admin/contact/retention', async (req, reply) => {
+    const admin = await requireSuperAdmin(req);
+    const body = UpdateContactRetentionSchema.parse(req.body);
+
+    const policy = await ContactService.updateRetentionPolicy(body, admin.uid);
+    return reply.send(policy);
   });
 };
 
