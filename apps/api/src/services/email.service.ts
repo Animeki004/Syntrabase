@@ -579,15 +579,21 @@ export class EmailService {
       return res.rows.map((acc: any) => {
         const shared = acc.accountEmail ? (emailCount.get(acc.accountEmail.toLowerCase()) || []) : [];
         const planInfo = (typeof acc.providerPlanInfo === 'object' && acc.providerPlanInfo) ? acc.providerPlanInfo : {};
+        const isSmtp = acc.providerType === 'smtp';
+        const isLiveBrevo = Boolean(planInfo.liveFromBrevo);
+
         const totalDailyQuota = planInfo.totalDailyQuota !== undefined
           ? Number(planInfo.totalDailyQuota)
-          : (planInfo.credits !== undefined ? Number(planInfo.credits) : 300);
-        const dailySent = planInfo.dailySentCount !== undefined
-          ? Number(planInfo.dailySentCount)
-          : Number(acc.dailySentCount || 0);
-        const remainingCredits = planInfo.remainingCredits !== undefined
-          ? Number(planInfo.remainingCredits)
-          : Math.max(0, totalDailyQuota - dailySent);
+          : (planInfo.credits !== undefined ? Number(planInfo.credits) : (isSmtp ? 500 : 300));
+
+        // For SMTP and non-Brevo accounts, daily usage is tracked locally via daily_sent_count
+        const dailySent = (isSmtp || !isLiveBrevo)
+          ? Number(acc.dailySentCount || 0)
+          : (planInfo.dailySentCount !== undefined ? Number(planInfo.dailySentCount) : Number(acc.dailySentCount || 0));
+
+        const remainingCredits = (isSmtp || !isLiveBrevo)
+          ? Math.max(0, totalDailyQuota - dailySent)
+          : (planInfo.remainingCredits !== undefined ? Number(planInfo.remainingCredits) : Math.max(0, totalDailyQuota - dailySent));
 
         return {
           ...acc,
@@ -604,15 +610,21 @@ export class EmailService {
     } catch {
       return Array.from(inMemoryProviderAccounts.values()).map(({ rawApiKey, ...rest }) => {
         const planInfo = (typeof rest.providerPlanInfo === 'object' && rest.providerPlanInfo) ? rest.providerPlanInfo : {};
+        const isSmtp = rest.providerType === 'smtp';
+        const isLiveBrevo = Boolean(planInfo.liveFromBrevo);
+
         const totalDailyQuota = planInfo.totalDailyQuota !== undefined
           ? Number(planInfo.totalDailyQuota)
-          : (planInfo.credits !== undefined ? Number(planInfo.credits) : 300);
-        const dailySent = planInfo.dailySentCount !== undefined
-          ? Number(planInfo.dailySentCount)
-          : Number(rest.dailySentCount || 0);
-        const remainingCredits = planInfo.remainingCredits !== undefined
-          ? Number(planInfo.remainingCredits)
-          : Math.max(0, totalDailyQuota - dailySent);
+          : (planInfo.credits !== undefined ? Number(planInfo.credits) : (isSmtp ? 500 : 300));
+
+        const dailySent = (isSmtp || !isLiveBrevo)
+          ? Number(rest.dailySentCount || 0)
+          : (planInfo.dailySentCount !== undefined ? Number(planInfo.dailySentCount) : Number(rest.dailySentCount || 0));
+
+        const remainingCredits = (isSmtp || !isLiveBrevo)
+          ? Math.max(0, totalDailyQuota - dailySent)
+          : (planInfo.remainingCredits !== undefined ? Number(planInfo.remainingCredits) : Math.max(0, totalDailyQuota - dailySent));
+
         return {
           ...rest,
           totalDailyQuota,
@@ -755,15 +767,26 @@ export class EmailService {
     const now = new Date().toISOString();
 
     if (usage && Object.keys(usage).length > 0) {
+      const isSmtp = providerType === 'smtp';
+      const dailySent = (isSmtp || !usage.liveFromBrevo)
+        ? Number(currentAcc.daily_sent_count || 0)
+        : (usage.dailySentCount !== undefined ? usage.dailySentCount : Number(currentAcc.daily_sent_count || 0));
+
+      const totalDailyQuota = usage.totalDailyQuota || currentAcc.provider_plan_info?.totalDailyQuota || (isSmtp ? 500 : 300);
+      const remaining = (isSmtp || !usage.liveFromBrevo)
+        ? Math.max(0, totalDailyQuota - dailySent)
+        : (usage.remainingCredits ?? (usage.credits !== undefined ? usage.credits : 300));
+
       const newPlanInfo = {
         ...(typeof currentAcc.provider_plan_info === 'object' ? currentAcc.provider_plan_info : {}),
         ...usage,
+        dailySentCount: dailySent,
+        remainingCredits: remaining,
+        totalDailyQuota,
         lastSyncedAt: now,
       };
 
-      const remaining = usage.remainingCredits ?? (usage.credits !== undefined ? usage.credits : 300);
       const newStatus = remaining === 0 ? 'quota_exhausted' : (currentAcc.status === 'invalid_credentials' ? 'healthy' : currentAcc.status);
-      const dailySent = usage.dailySentCount !== undefined ? usage.dailySentCount : (currentAcc.daily_sent_count || 0);
 
       try {
         const updateRes = await query<any>(
@@ -1911,6 +1934,12 @@ export class EmailService {
              WHERE id = $1`,
             [account.id]
           ).catch(() => {});
+
+          account.dailySentCount = (account.dailySentCount || 0) + 1;
+          const memAcc = inMemoryProviderAccounts.get(account.id);
+          if (memAcc) {
+            memAcc.dailySentCount = (memAcc.dailySentCount || 0) + 1;
+          }
 
           try {
             await query(

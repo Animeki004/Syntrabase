@@ -235,7 +235,6 @@ export class SmtpEmailProvider implements IEmailProviderAdapter {
         creditsType: 'daily_quota',
         planType: 'smtp',
         totalDailyQuota: config.dailyLimit,
-        remainingCredits: config.dailyLimit,
         liveFromSmtp: true,
         lastSyncedAt: new Date().toISOString(),
       };
@@ -245,7 +244,6 @@ export class SmtpEmailProvider implements IEmailProviderAdapter {
         creditsType: 'daily_quota',
         planType: 'smtp',
         totalDailyQuota: 500,
-        remainingCredits: 500,
       };
     }
   }
