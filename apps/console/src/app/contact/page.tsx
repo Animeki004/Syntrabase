@@ -139,6 +139,28 @@ export default function ContactSupportPage() {
     }
   }, []);
 
+  // Auto-expand ticket from URL query param if present
+  useEffect(() => {
+    if (typeof window !== 'undefined' && submissions.length > 0) {
+      const params = new URLSearchParams(window.location.search);
+      const ticketParam = params.get('ticket');
+      if (ticketParam) {
+        const found = submissions.find(
+          (s) => s.ticketReference.toLowerCase() === ticketParam.toLowerCase() || s.id === ticketParam
+        );
+        if (found) {
+          setExpandedTicketId(found.id);
+          setTimeout(() => {
+            const el = document.getElementById(`ticket-card-${found.ticketReference}`);
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }, 150);
+        }
+      }
+    }
+  }, [submissions]);
+
   const fetchSubmissions = useCallback(async () => {
     try {
       setLoadingSubmissions(true);
@@ -533,14 +555,16 @@ export default function ContactSupportPage() {
                   return (
                     <div
                       key={sub.id}
+                      id={`ticket-card-${sub.ticketReference}`}
                       style={{
                         padding: '12px',
                         borderRadius: 'var(--radius-md)',
                         background: 'var(--bg-surface-subtle)',
-                        border: '1px solid var(--border-default)',
+                        border: isExpanded ? '1px solid var(--primary)' : '1px solid var(--border-default)',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: '8px',
+                        transition: 'border-color 0.2s ease',
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

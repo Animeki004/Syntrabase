@@ -7,6 +7,7 @@ import { AuthService } from '../services/auth.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { EmailService } from '../services/email.service.js';
 import { ContactService } from '../services/contact.service.js';
+import { NotificationService } from '../services/notification.service.js';
 import { PlanService } from '../services/plan.service.js';
 import { CryptoUtil } from '../utils/crypto.js';
 import { UrlUtil } from '../utils/url.util.js';
@@ -890,6 +891,52 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
       success: true,
       submission,
     });
+  });
+
+  // ===========================================================================
+  // Developer Console Notifications Feed (Support Inquiries, Quotas, System)
+  // ===========================================================================
+
+  // Get Notifications for Project (Developer Console)
+  server.get('/api/v1/projects/:projectId/notifications', async (req, reply) => {
+    const { projectId } = req.params as { projectId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+    const queryParams = req.query as any;
+    const isRead = queryParams?.isRead !== undefined ? queryParams.isRead === 'true' : undefined;
+    const category = queryParams?.category;
+    const limit = queryParams?.limit ? parseInt(queryParams.limit, 10) : 50;
+    const offset = queryParams?.offset ? parseInt(queryParams.offset, 10) : 0;
+
+    const result = await NotificationService.getNotifications({
+      projectId,
+      isRead,
+      category,
+      limit,
+      offset,
+    });
+    return reply.send(result);
+  });
+
+  // Mark Project Notification as Read
+  server.patch('/api/v1/projects/:projectId/notifications/:id/read', async (req, reply) => {
+    const { projectId, id } = req.params as { projectId: string; id: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+    await NotificationService.markAsRead(id);
+    return reply.send({ success: true, id });
+  });
+
+  // Mark All Notifications as Read for Project
+  server.post('/api/v1/projects/:projectId/notifications/mark-all-read', async (req, reply) => {
+    const { projectId } = req.params as { projectId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+    await NotificationService.markAllAsRead(projectId);
+    return reply.send({ success: true });
   });
 
   // ===========================================================================

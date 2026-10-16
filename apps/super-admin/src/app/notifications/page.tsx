@@ -738,7 +738,7 @@ export default function NotificationsCenterPage() {
                               onClick={() => {
                                 setSelectedInquiry(inq);
                                 setInquiryStatus(inq.status);
-                                setReplyText(inq.adminReply || '');
+                                setReplyText('');
                               }}
                             >
                               <Eye size={13} style={{ marginRight: '4px' }} /> View
@@ -847,16 +847,60 @@ export default function NotificationsCenterPage() {
               </div>
             </div>
 
-            {/* Compose / Update Official Reply Form */}
+            {/* 1. Ticket Status Controls (Direct status change without forcing an email) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid var(--border-subtle)', paddingTop: '14px' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-primary)', textTransform: 'uppercase', fontWeight: 600 }}>
-                Compose Official Response (Emailed to Developer via Brevo)
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-primary)', textTransform: 'uppercase', fontWeight: 600 }}>
+                  Ticket Status Management
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Current Status:</span>
+                  <Badge variant={selectedInquiry.status === 'resolved' ? 'outline' : selectedInquiry.status === 'open' ? 'default' : 'outline'}>
+                    {selectedInquiry.status.replace('_', ' ')}
+                  </Badge>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {(['open', 'in_progress', 'resolved', 'closed'] as ContactStatus[]).map((st) => (
+                    <Button
+                      key={st}
+                      variant={inquiryStatus === st ? 'primary' : 'outline'}
+                      size="sm"
+                      onClick={() => setInquiryStatus(st)}
+                      style={{ textTransform: 'capitalize', fontSize: '0.78rem' }}
+                    >
+                      {st.replace('_', ' ')}
+                    </Button>
+                  ))}
+                </div>
+
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleUpdateInquiryStatus(selectedInquiry.id, inquiryStatus)}
+                  disabled={selectedInquiry.status === inquiryStatus}
+                  icon={<Check size={13} />}
+                >
+                  Update Status Only (No Email)
+                </Button>
+              </div>
+            </div>
+
+            {/* 2. Compose New Official Response */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid var(--border-subtle)', paddingTop: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-primary)', textTransform: 'uppercase', fontWeight: 600 }}>
+                  Compose New Official Response (Optional)
+                </label>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Dispatches email via Brevo &amp; notifies console</span>
+              </div>
               <textarea
-                rows={4}
+                rows={3}
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
-                placeholder="Write your official response to the developer. This response will be stored in PostgreSQL and delivered to their email address..."
+                placeholder="Type a new reply to send to the developer. Leave blank if only changing status..."
                 style={{
                   width: '100%',
                   padding: '10px 12px',
@@ -871,28 +915,8 @@ export default function NotificationsCenterPage() {
                 }}
               />
 
-              {/* Status Selector */}
-              <div style={{ marginTop: '4px' }}>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '6px' }}>
-                  Set Ticket Status After Reply
-                </label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {(['open', 'in_progress', 'resolved', 'closed'] as ContactStatus[]).map((st) => (
-                    <Button
-                      key={st}
-                      variant={inquiryStatus === st ? 'primary' : 'outline'}
-                      size="sm"
-                      onClick={() => setInquiryStatus(st)}
-                      style={{ textTransform: 'capitalize' }}
-                    >
-                      {st.replace('_', ' ')}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
               {/* Action Buttons */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <Button variant="ghost" onClick={() => setSelectedInquiry(null)}>
                     Close
@@ -910,10 +934,11 @@ export default function NotificationsCenterPage() {
                 <Button
                   variant="primary"
                   loading={isSubmittingReply}
+                  disabled={!replyText.trim() || replyText.trim().length < 5}
                   onClick={handleSendReply}
                   icon={<Send size={14} />}
                 >
-                  Dispatch Official Reply &amp; Notify Developer
+                  Send Reply &amp; Update Status
                 </Button>
               </div>
             </div>

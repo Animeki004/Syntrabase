@@ -52,10 +52,12 @@ export class NotificationService {
 
   /**
    * Retrieves operational notifications with filtering and unread count.
+   * Can be scoped to a specific project for developer console users, or platform-wide for Super Admins.
    */
   public static async getNotifications(options?: {
     isRead?: boolean;
     category?: string;
+    projectId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ notifications: InternalNotification[]; unreadCount: number }> {
@@ -77,6 +79,11 @@ export class NotificationService {
         params.push(options.category);
       }
 
+      if (options?.projectId) {
+        filterSql += ` AND (project_id = $${paramIdx++} OR project_id IS NULL)`;
+        params.push(options.projectId);
+      }
+
       const listRes = await query<any>(
         `SELECT id, category, severity, title, message, related_id as "relatedId",
                 project_id as "projectId", is_read as "isRead", created_at as "createdAt"
@@ -87,9 +94,14 @@ export class NotificationService {
         [...params, limit, offset]
       );
 
-      const countRes = await query<{ count: string }>(
-        `SELECT COUNT(*) as count FROM internal_notifications WHERE is_read = FALSE`
-      );
+      let countSql = `SELECT COUNT(*) as count FROM internal_notifications WHERE is_read = FALSE`;
+      const countParams: any[] = [];
+      if (options?.projectId) {
+        countSql += ` AND (project_id = $1 OR project_id IS NULL)`;
+        countParams.push(options.projectId);
+      }
+
+      const countRes = await query<{ count: string }>(countSql, countParams);
 
       return {
         notifications: listRes.rows,
@@ -103,7 +115,10 @@ export class NotificationService {
       if (options?.category) {
         filtered = filtered.filter((n) => n.category === options.category);
       }
-      const unreadCount = inMemoryNotifications.filter((n) => !n.isRead).length;
+      if (options?.projectId) {
+        filtered = filtered.filter((n) => !n.projectId || n.projectId === options.projectId);
+      }
+      const unreadCount = filtered.filter((n) => !n.isRead).length;
 
       return {
         notifications: filtered.slice(offset, offset + limit),
@@ -125,14 +140,23 @@ export class NotificationService {
   }
 
   /**
-   * Marks all notifications as read.
+   * Marks all notifications as read (optionally scoped to a project).
    */
-  public static async markAllAsRead(): Promise<void> {
+  public static async markAllAsRead(projectId?: string): Promise<void> {
     try {
-      await query(`UPDATE internal_notifications SET is_read = TRUE WHERE is_read = FALSE`);
+      if (projectId) {
+        await query(
+          `UPDATE internal_notifications SET is_read = TRUE WHERE is_read = FALSE AND (project_id = $1 OR project_id IS NULL)`,
+          [projectId]
+        );
+      } else {
+        await query(`UPDATE internal_notifications SET is_read = TRUE WHERE is_read = FALSE`);
+      }
     } catch {
       inMemoryNotifications.forEach((n) => {
-        n.isRead = true;
+        if (!projectId || !n.projectId || n.projectId === projectId) {
+          n.isRead = true;
+        }
       });
     }
   }

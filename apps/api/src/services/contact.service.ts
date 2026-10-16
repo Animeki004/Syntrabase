@@ -285,11 +285,25 @@ export class ContactService {
   }
 
   /**
-   * Updates inquiry status in Super Admin.
+   * Updates inquiry status in Super Admin and notifies the developer.
    */
   public static async updateStatus(id: string, status: ContactStatus): Promise<void> {
     try {
-      await query(`UPDATE contact_submissions SET status = $1 WHERE id = $2`, [status, id]);
+      const res = await query<any>(
+        `UPDATE contact_submissions SET status = $1 WHERE id = $2 RETURNING ticket_reference, project_id, subject`,
+        [status, id]
+      );
+      if (res.rows.length > 0) {
+        const ticket = res.rows[0];
+        await NotificationService.createNotification({
+          category: 'contact',
+          severity: status === 'resolved' ? 'info' : status === 'closed' ? 'info' : 'warning',
+          title: `[${ticket.ticket_reference}] Ticket Status: ${status.toUpperCase().replace('_', ' ')}`,
+          message: `Support operations updated status for "${ticket.subject}" to ${status.toUpperCase().replace('_', ' ')}.`,
+          relatedId: ticket.ticket_reference,
+          projectId: ticket.project_id,
+        }).catch(() => {});
+      }
     } catch {
       const item = inMemoryContactSubmissions.find((s) => s.id === id);
       if (item) item.status = status;
@@ -425,6 +439,16 @@ export class ContactService {
             console.warn('[CONTACT SERVICE] Non-fatal notification email dispatch error:', err.message);
           });
     }
+
+    // In-console notification for developer so console bell shows the reply immediately
+    await NotificationService.createNotification({
+      category: 'contact',
+      severity: 'info',
+      title: `[${submission.ticketReference}] Support Team Response`,
+      message: `${operator}: ${cleanReply.substring(0, 120)}${cleanReply.length > 120 ? '...' : ''}`,
+      relatedId: submission.ticketReference,
+      projectId: submission.projectId,
+    }).catch(() => {});
 
     if (params.actorId) {
       AuditService.log({

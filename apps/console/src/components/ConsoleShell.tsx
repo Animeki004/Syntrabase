@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -24,7 +24,12 @@ import {
   Plus,
   Mail,
   MessageSquare,
-  ShieldAlert
+  ShieldAlert,
+  Bell,
+  CheckCheck,
+  Info,
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { ThemeProvider } from './ThemeContext';
@@ -33,6 +38,7 @@ import { ProjectProvider, useProject } from './ProjectContext';
 import { Modal } from './ui/Modal';
 import { Input } from './ui/Input';
 import { API_BASE_URL } from '@/config';
+import { InternalNotification } from '@syntrabase/shared-types';
 
 interface NavItem {
   name: string;
@@ -172,6 +178,103 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     const interval = setInterval(validateSession, 3500);
     return () => clearInterval(interval);
   }, [pathname, isPublicRoute, router]);
+
+  // Notifications state
+  const [notifications, setNotifications] = useState<InternalNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationRef = useRef<HTMLDivElement>(null);
+
+  const fetchNotifications = useCallback(async () => {
+    if (!activeProject?.id || isPublicRoute) return;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    if (!token) return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${activeProject.id}/notifications?limit=25`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(data.notifications || []);
+        setUnreadCount(data.unreadCount || 0);
+      }
+    } catch {
+      // Non-blocking background polling failure
+    }
+  }, [activeProject?.id, isPublicRoute]);
+
+  // Periodic polling for notifications (every 15 seconds)
+  useEffect(() => {
+    if (authChecked && activeProject?.id && !isPublicRoute) {
+      fetchNotifications();
+      const interval = setInterval(fetchNotifications, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [authChecked, activeProject?.id, isPublicRoute, fetchNotifications]);
+
+  // Click outside to dismiss notification popover
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (notificationRef.current && !notificationRef.current.contains(e.target as Node)) {
+        setNotificationsOpen(false);
+      }
+    };
+    if (notificationsOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [notificationsOpen]);
+
+  const handleMarkAsRead = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    if (!token || !activeProject?.id) return;
+
+    try {
+      await fetch(`${API_BASE_URL}/api/v1/projects/${activeProject.id}/notifications/${id}/read`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch {}
+  };
+
+  const handleMarkAllAsRead = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    if (!token || !activeProject?.id) return;
+
+    try {
+      await fetch(`${API_BASE_URL}/api/v1/projects/${activeProject.id}/notifications/mark-all-read`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadCount(0);
+    } catch {}
+  };
+
+  const handleNotificationClick = async (notif: InternalNotification) => {
+    if (!notif.isRead) {
+      await handleMarkAsRead(notif.id);
+    }
+    setNotificationsOpen(false);
+    if (notif.category === 'contact') {
+      if (notif.relatedId) {
+        router.push(`/contact?ticket=${encodeURIComponent(notif.relatedId)}`);
+      } else {
+        router.push('/contact');
+      }
+    } else if (notif.category === 'email_infra' || notif.category === 'email_queue') {
+      router.push('/email');
+    } else if (notif.category === 'security') {
+      router.push('/rules');
+    }
+  };
 
   if (isPublicRoute) {
     return <>{children}</>;
@@ -561,6 +664,276 @@ function ShellInner({ children }: { children: React.ReactNode }) {
               <Terminal size={14} />
               <span className="hide-mobile">SDK Config</span>
             </Link>
+
+            {/* Project Scoped Notification Bell */}
+            <div style={{ position: 'relative' }} ref={notificationRef}>
+              <button
+                id="console-notifications-bell-btn"
+                onClick={() => setNotificationsOpen(!notificationsOpen)}
+                className="btn btn-ghost"
+                style={{
+                  position: 'relative',
+                  padding: '7px 8px',
+                  borderRadius: 'var(--radius-md, 8px)',
+                  color: unreadCount > 0 ? 'var(--primary, #3b82f6)' : 'var(--text-secondary, #9ca3af)',
+                  background: notificationsOpen ? 'var(--bg-surface-subtle, rgba(255,255,255,0.06))' : 'transparent',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.15s ease',
+                  border: '1px solid var(--border-subtle, transparent)',
+                }}
+                title={`Notifications (${unreadCount} unread)`}
+                aria-label="View notifications"
+              >
+                <Bell size={17} />
+                {unreadCount > 0 && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '-3px',
+                      right: '-3px',
+                      backgroundColor: '#ef4444',
+                      color: '#ffffff',
+                      borderRadius: '9999px',
+                      minWidth: '17px',
+                      height: '17px',
+                      padding: '0 4px',
+                      fontSize: '0.64rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 0 10px rgba(239, 68, 68, 0.6)',
+                      lineHeight: 1,
+                    }}
+                  >
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Notification Popover Dropdown */}
+              {notificationsOpen && (
+                <div
+                  id="console-notifications-popover"
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: '42px',
+                    backgroundColor: 'var(--bg-surface)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: '12px',
+                    boxShadow: '0 20px 40px -15px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)',
+                    width: '380px',
+                    maxWidth: '88vw',
+                    zIndex: 120,
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    backdropFilter: 'blur(16px)',
+                  }}
+                >
+                  {/* Popover Header */}
+                  <div
+                    style={{
+                      padding: '12px 16px',
+                      borderBottom: '1px solid var(--border-subtle)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: 'var(--bg-surface-subtle)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Bell size={15} color="var(--primary)" />
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        Notifications
+                      </span>
+                      {unreadCount > 0 && (
+                        <span
+                          style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            background: 'var(--primary-subtle, rgba(59, 130, 246, 0.15))',
+                            color: 'var(--primary)',
+                            padding: '1px 6px',
+                            borderRadius: '9999px',
+                          }}
+                        >
+                          {unreadCount} new
+                        </span>
+                      )}
+                    </div>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={handleMarkAllAsRead}
+                        className="btn btn-ghost"
+                        style={{
+                          padding: '2px 8px',
+                          fontSize: '0.72rem',
+                          color: 'var(--text-muted)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                        title="Mark all notifications as read"
+                      >
+                        <CheckCheck size={12} />
+                        <span>Mark all read</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Popover Items List */}
+                  <div
+                    style={{
+                      maxHeight: '340px',
+                      overflowY: 'auto',
+                      display: 'flex',
+                      flexDirection: 'column',
+                    }}
+                  >
+                    {notifications.length === 0 ? (
+                      <div style={{ padding: '36px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        <Bell size={28} style={{ opacity: 0.25, margin: '0 auto 8px' }} />
+                        <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>All caught up!</div>
+                        <div style={{ fontSize: '0.72rem', marginTop: '2px', opacity: 0.8 }}>
+                          No notifications for this project yet.
+                        </div>
+                      </div>
+                    ) : (
+                      notifications.map((n) => {
+                        const isUnread = !n.isRead;
+                        let icon = <Bell size={14} color="var(--text-muted)" />;
+                        let badgeBg = 'var(--bg-surface-subtle)';
+                        if (n.category === 'contact') {
+                          icon = <MessageSquare size={14} color="#3b82f6" />;
+                          badgeBg = 'rgba(59, 130, 246, 0.12)';
+                        } else if (n.category === 'security') {
+                          icon = <ShieldAlert size={14} color="#ef4444" />;
+                          badgeBg = 'rgba(239, 68, 68, 0.12)';
+                        } else if (n.category === 'email_infra' || n.category === 'email_queue') {
+                          icon = <Mail size={14} color="#8b5cf6" />;
+                          badgeBg = 'rgba(139, 92, 246, 0.12)';
+                        }
+
+                        return (
+                          <div
+                            key={n.id}
+                            onClick={() => handleNotificationClick(n)}
+                            style={{
+                              padding: '12px 16px',
+                              display: 'flex',
+                              gap: '12px',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid var(--border-subtle)',
+                              background: isUnread ? 'rgba(59, 130, 246, 0.05)' : 'transparent',
+                              transition: 'background 0.15s ease',
+                            }}
+                            className="notification-item-row"
+                          >
+                            <div
+                              style={{
+                                width: '30px',
+                                height: '30px',
+                                borderRadius: '8px',
+                                backgroundColor: badgeBg,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                                marginTop: '2px',
+                              }}
+                            >
+                              {icon}
+                            </div>
+
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                <span
+                                  style={{
+                                    fontSize: '0.8rem',
+                                    fontWeight: isUnread ? 700 : 500,
+                                    color: isUnread ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                  }}
+                                >
+                                  {n.title}
+                                </span>
+                                {isUnread && (
+                                  <span
+                                    style={{
+                                      width: '6px',
+                                      height: '6px',
+                                      borderRadius: '50%',
+                                      backgroundColor: 'var(--primary, #3b82f6)',
+                                      flexShrink: 0,
+                                    }}
+                                  />
+                                )}
+                              </div>
+
+                              <p
+                                style={{
+                                  fontSize: '0.74rem',
+                                  color: 'var(--text-muted)',
+                                  margin: '3px 0 6px',
+                                  lineHeight: 1.35,
+                                  display: '-webkit-box',
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: 'vertical',
+                                  overflow: 'hidden',
+                                }}
+                              >
+                                {n.message}
+                              </p>
+
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                                <span>{new Date(n.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                {isUnread && (
+                                  <button
+                                    onClick={(e) => handleMarkAsRead(n.id, e)}
+                                    className="btn btn-ghost"
+                                    style={{ padding: '1px 5px', fontSize: '0.68rem', height: 'auto', color: 'var(--primary)' }}
+                                    title="Mark as read"
+                                  >
+                                    Mark read
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Popover Footer */}
+                  <div
+                    style={{
+                      padding: '8px 16px',
+                      borderTop: '1px solid var(--border-subtle)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      background: 'var(--bg-surface-subtle)',
+                      fontSize: '0.74rem',
+                    }}
+                  >
+                    <Link
+                      href="/contact"
+                      onClick={() => setNotificationsOpen(false)}
+                      style={{ color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}
+                    >
+                      View all support inquiries &rarr;
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Theme Toggle */}
             <ThemeToggle />
