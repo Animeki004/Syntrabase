@@ -92,6 +92,7 @@ export default function GlobalEmailControlPage() {
     queued: 0,
     processing: 0,
     sent: 0,
+    delivered: 0,
     deferred: 0,
     failed: 0,
     queueDepth: 0,
@@ -101,6 +102,9 @@ export default function GlobalEmailControlPage() {
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [isPruningQueue, setIsPruningQueue] = useState(false);
   const [showEmergencyShutdownModal, setShowEmergencyShutdownModal] = useState(false);
+  const [isSyncingBrevo, setIsSyncingBrevo] = useState(false);
+  const [checkingMessageId, setCheckingMessageId] = useState<string | null>(null);
+  const [syncingAccountId, setSyncingAccountId] = useState<string | null>(null);
 
   // Custom Sender Domains State
   const [domains, setDomains] = useState<any[]>([]);
@@ -657,11 +661,77 @@ export default function GlobalEmailControlPage() {
     }
   };
 
+  const handleSyncAllBrevo = async () => {
+    setIsSyncingBrevo(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/admin/email/accounts/sync-all`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
+      });
+      if (res.ok) {
+        addToast('Live Brevo account credits & delivery usage synchronized!', 'success');
+        await fetchAccounts();
+        await fetchQueue();
+      } else {
+        addToast('Failed to synchronize live Brevo credits', 'error');
+      }
+    } catch {
+      addToast('Error syncing Brevo account', 'error');
+    } finally {
+      setIsSyncingBrevo(false);
+    }
+  };
+
+  const handleSyncSingleAccount = async (accountId: string) => {
+    try {
+      setSyncingAccountId(accountId);
+      const res = await fetch(`${API_BASE}/api/v1/admin/email/accounts/${accountId}/sync`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
+      });
+      if (res.ok) {
+        addToast('Account live Brevo usage refreshed!', 'success');
+        await fetchAccounts();
+      } else {
+        addToast('Failed to refresh Brevo usage', 'error');
+      }
+    } catch {
+      addToast('Error syncing account', 'error');
+    } finally {
+      setSyncingAccountId(null);
+    }
+  };
+
+  const handleCheckMessageStatus = async (outboxId: string) => {
+    try {
+      setCheckingMessageId(outboxId);
+      const res = await fetch(`${API_BASE}/api/v1/admin/email/queue/${outboxId}/sync-status`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast(`Brevo SMTP delivery status: ${data.status.toUpperCase()}`, 'info');
+        await fetchQueue();
+      } else {
+        addToast(data.error || 'Failed to check status with Brevo', 'error');
+      }
+    } catch {
+      addToast('Error checking message status', 'error');
+    } finally {
+      setCheckingMessageId(null);
+    }
+  };
+
   const handleRefreshAll = async () => {
     setIsManualRefreshing(true);
     try {
+      await fetch(`${API_BASE}/api/v1/admin/email/accounts/sync-all`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
+      }).catch(() => {});
       await Promise.all([fetchAccounts(), fetchPolicy(), fetchQueue()]);
-      addToast('Email infrastructure telemetry refreshed', 'info');
+      addToast('Live Brevo email infrastructure telemetry refreshed', 'info');
     } finally {
       setTimeout(() => setIsManualRefreshing(false), 700);
     }
@@ -700,7 +770,9 @@ export default function GlobalEmailControlPage() {
     : (activeAccount?.providerPlanInfo?.credits !== undefined ? Number(activeAccount.providerPlanInfo.credits) : (accounts.length > 0 ? 300 : 0));
 
   const dailyDispatched = Number(activeAccount?.dailySentCount || 0);
-  const remainingCredits = Math.max(0, totalDailyQuota - dailyDispatched);
+  const remainingCredits = activeAccount?.remainingCredits !== undefined
+    ? Number(activeAccount.remainingCredits)
+    : Math.max(0, totalDailyQuota - dailyDispatched);
   const percentUsed = totalDailyQuota > 0 ? Math.min(100, Math.round((dailyDispatched / totalDailyQuota) * 100)) : 0;
   const isQuotaExhausted = remainingCredits === 0 && totalDailyQuota > 0;
   const activePlanType = (activeAccount?.providerPlanInfo?.planType || (accounts.length > 0 ? 'free' : 'disconnected')).toUpperCase();
@@ -787,9 +859,27 @@ export default function GlobalEmailControlPage() {
         <Card style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '140px' }}>
           <div style={{ padding: '18px 20px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
-                Active Quota
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+                  Brevo Live Credits
+                </span>
+                <button
+                  onClick={handleSyncAllBrevo}
+                  disabled={isSyncingBrevo}
+                  title="Synchronize Live Credits from Brevo API"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '2px',
+                    cursor: 'pointer',
+                    color: 'var(--primary)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <RefreshCw size={11} className={isSyncingBrevo ? 'animate-spin' : ''} />
+                </button>
+              </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flexShrink: 0 }}>
                 {accounts.length > 1 && (
                   <select
@@ -867,8 +957,11 @@ export default function GlobalEmailControlPage() {
           </div>
 
           <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Today: <strong style={{ color: 'var(--text-primary)' }}>{dailyDispatched} sent</strong> / {totalDailyQuota.toLocaleString()} cap</span>
-            <span><strong style={{ color: isQuotaExhausted ? 'var(--danger)' : 'var(--text-primary)' }}>{percentUsed}%</strong> used</span>
+            <span>Today: <strong style={{ color: 'var(--text-primary)' }}>{dailyDispatched} sent</strong> / {totalDailyQuota.toLocaleString()} plan limit</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: activeAccount?.providerPlanInfo?.liveFromBrevo ? '#10b981' : '#f59e0b', display: 'inline-block' }} />
+              <strong style={{ color: isQuotaExhausted ? 'var(--danger)' : 'var(--text-primary)' }}>{percentUsed}%</strong> used
+            </span>
           </div>
         </Card>
 
@@ -893,7 +986,7 @@ export default function GlobalEmailControlPage() {
             </div>
           </div>
           <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            {queueMetrics.queued} queued, {queueMetrics.deferred} deferred retry ({outboxItems.length} total)
+            {queueMetrics.queued} queued pending, {queueMetrics.deferred} deferred retry
           </div>
         </Card>
 
@@ -910,7 +1003,7 @@ export default function GlobalEmailControlPage() {
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
               <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--success)', letterSpacing: '-0.03em', lineHeight: 1 }}>
-                {outboxItems.length > 0 ? outboxItems.length : queueMetrics.sent}
+                {queueMetrics.sent}
               </span>
               <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
                 messages
@@ -918,7 +1011,7 @@ export default function GlobalEmailControlPage() {
             </div>
           </div>
           <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            {queueMetrics.failed} failed / permanent rejections
+            {queueMetrics.delivered !== undefined && queueMetrics.delivered > 0 ? `${queueMetrics.delivered} verified delivered • ` : ''}{queueMetrics.failed} failed / rejections
           </div>
         </Card>
 
@@ -1118,8 +1211,13 @@ export default function GlobalEmailControlPage() {
                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                           Today: {acc.dailySentCount ?? 0} sent • Monthly: {acc.monthlySentCount ?? 0} sent
                         </div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          Tier: {acc.providerPlanInfo?.planType ? `Brevo ${acc.providerPlanInfo.planType.toUpperCase()}` : 'Brevo FREE'}
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <span>Tier: {acc.providerPlanInfo?.planType ? `Brevo ${acc.providerPlanInfo.planType.toUpperCase()}` : 'Brevo FREE'}</span>
+                          {acc.providerPlanInfo?.liveFromBrevo && (
+                            <span style={{ fontSize: '9px', padding: '1px 5px', borderRadius: '3px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', fontWeight: 600 }}>
+                              LIVE BREVO
+                            </span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -1158,6 +1256,15 @@ export default function GlobalEmailControlPage() {
                           <Button
                             variant="outline"
                             size="sm"
+                            onClick={() => handleSyncSingleAccount(acc.id)}
+                            disabled={syncingAccountId === acc.id}
+                            title="Synchronize live credits and daily usage from Brevo API"
+                          >
+                            <RefreshCw size={13} className={syncingAccountId === acc.id ? 'animate-spin' : ''} />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => handleSetPrimaryAccount(acc.id)}
                             style={{ color: acc.isPrimary ? '#f59e0b' : 'var(--text-muted)', borderColor: acc.isPrimary ? '#f59e0b' : undefined }}
                             title={acc.isPrimary ? 'Designated as Primary Dispatcher' : 'Set as Primary In-Use Dispatcher'}
@@ -1170,7 +1277,7 @@ export default function GlobalEmailControlPage() {
                             onClick={() => handleTestAccount(acc.id)}
                             title="Verify connection"
                           >
-                            <RefreshCw size={13} />
+                            <Power size={13} />
                           </Button>
                           <Button
                             variant="outline"
@@ -1249,21 +1356,26 @@ export default function GlobalEmailControlPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Status</TableHead>
+                    <TableHead>Delivery Status</TableHead>
                     <TableHead>Recipient</TableHead>
                     <TableHead>Subject / Action</TableHead>
                     <TableHead>Attempts</TableHead>
                     <TableHead>Provider Msg ID</TableHead>
                     <TableHead>Created</TableHead>
+                    <TableHead style={{ textAlign: 'right' }}>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {outboxItems.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell>
-                        {item.status === 'sent' ? (
-                          <Badge variant="outline" style={{ color: 'var(--success)', borderColor: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                            <CheckCircle2 size={11} /> Sent (Delivered)
+                        {item.status === 'delivered' ? (
+                          <Badge variant="outline" style={{ color: '#10b981', borderColor: '#10b981', background: 'rgba(16, 185, 129, 0.1)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <CheckCircle2 size={11} /> Delivered (Brevo Confirmed)
+                          </Badge>
+                        ) : item.status === 'sent' ? (
+                          <Badge variant="outline" style={{ color: '#3b82f6', borderColor: '#3b82f6', background: 'rgba(59, 130, 246, 0.1)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <Send size={11} /> Dispatched to Gateway
                           </Badge>
                         ) : item.status === 'queued' ? (
                           <Badge variant="neutral" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -1273,9 +1385,13 @@ export default function GlobalEmailControlPage() {
                           <Badge variant="outline" style={{ color: 'var(--warning)', borderColor: 'var(--warning)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                             <RefreshCw size={11} /> Deferred (Retry)
                           </Badge>
+                        ) : item.status === 'bounced' ? (
+                          <Badge variant="outline" style={{ color: '#ef4444', borderColor: '#ef4444', background: 'rgba(239, 68, 68, 0.1)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <AlertTriangle size={11} /> Bounced
+                          </Badge>
                         ) : (
                           <Badge variant="danger" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                            <XCircle size={11} /> Failed
+                            <XCircle size={11} /> Delivery Failed
                           </Badge>
                         )}
                       </TableCell>
@@ -1304,6 +1420,19 @@ export default function GlobalEmailControlPage() {
                       </TableCell>
                       <TableCell style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                         {new Date(item.createdAt).toLocaleTimeString()}
+                      </TableCell>
+                      <TableCell style={{ textAlign: 'right' }}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCheckMessageStatus(item.id)}
+                          disabled={checkingMessageId === item.id}
+                          title="Query live Brevo SMTP API delivery status for this message"
+                          style={{ fontSize: '0.72rem', padding: '2px 8px', height: '26px' }}
+                        >
+                          <Search size={11} style={{ marginRight: '4px' }} className={checkingMessageId === item.id ? 'animate-spin' : ''} />
+                          {checkingMessageId === item.id ? 'Checking...' : 'Check Status'}
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}

@@ -869,7 +869,7 @@ export interface AuthorizedSenderIdentity {
   createdAt: string;
 }
 
-export type EmailOutboxStatus = 'queued' | 'processing' | 'sent' | 'deferred' | 'failed';
+export type EmailOutboxStatus = 'queued' | 'processing' | 'sent' | 'delivered' | 'bounced' | 'deferred' | 'failed';
 
 export interface EmailOutboxItem {
   id: string;

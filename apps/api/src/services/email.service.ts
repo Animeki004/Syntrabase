@@ -10,6 +10,7 @@ import {
   CustomSenderDomain,
   AuthorizedSenderIdentity,
   EmailOutboxItem,
+  EmailOutboxStatus,
   OutboundEmailParams,
   OutboundEmailResult,
 } from '@syntrabase/shared-types';
@@ -497,9 +498,16 @@ export class EmailService {
 
       return res.rows.map((acc: any) => {
         const shared = acc.accountEmail ? (emailCount.get(acc.accountEmail.toLowerCase()) || []) : [];
-        const totalDailyQuota = acc.providerPlanInfo?.credits !== undefined ? Number(acc.providerPlanInfo.credits) : 300;
-        const dailySent = Number(acc.dailySentCount || 0);
-        const remainingCredits = Math.max(0, totalDailyQuota - dailySent);
+        const planInfo = (typeof acc.providerPlanInfo === 'object' && acc.providerPlanInfo) ? acc.providerPlanInfo : {};
+        const totalDailyQuota = planInfo.totalDailyQuota !== undefined
+          ? Number(planInfo.totalDailyQuota)
+          : (planInfo.credits !== undefined ? Number(planInfo.credits) : 300);
+        const dailySent = planInfo.dailySentCount !== undefined
+          ? Number(planInfo.dailySentCount)
+          : Number(acc.dailySentCount || 0);
+        const remainingCredits = planInfo.remainingCredits !== undefined
+          ? Number(planInfo.remainingCredits)
+          : Math.max(0, totalDailyQuota - dailySent);
 
         return {
           ...acc,
@@ -510,10 +518,28 @@ export class EmailService {
           isPrimary: Boolean(acc.isPrimary),
           totalDailyQuota,
           remainingCredits,
+          dailySentCount: dailySent,
         };
       });
     } catch {
-      return Array.from(inMemoryProviderAccounts.values()).map(({ rawApiKey, ...rest }) => rest);
+      return Array.from(inMemoryProviderAccounts.values()).map(({ rawApiKey, ...rest }) => {
+        const planInfo = (typeof rest.providerPlanInfo === 'object' && rest.providerPlanInfo) ? rest.providerPlanInfo : {};
+        const totalDailyQuota = planInfo.totalDailyQuota !== undefined
+          ? Number(planInfo.totalDailyQuota)
+          : (planInfo.credits !== undefined ? Number(planInfo.credits) : 300);
+        const dailySent = planInfo.dailySentCount !== undefined
+          ? Number(planInfo.dailySentCount)
+          : Number(rest.dailySentCount || 0);
+        const remainingCredits = planInfo.remainingCredits !== undefined
+          ? Number(planInfo.remainingCredits)
+          : Math.max(0, totalDailyQuota - dailySent);
+        return {
+          ...rest,
+          totalDailyQuota,
+          remainingCredits,
+          dailySentCount: dailySent,
+        };
+      });
     }
   }
 
@@ -608,6 +634,106 @@ export class EmailService {
       if (accountEmail) acc.accountEmail = accountEmail;
       acc.updatedAt = now;
       return acc;
+    }
+  }
+
+  /**
+   * Synchronizes live Brevo account usage, remaining daily credits, and transactional delivery stats.
+   * Caches for 30 seconds unless force=true is specified.
+   */
+  public static async syncProviderAccountUsage(id: string, force = false): Promise<EmailProviderAccount> {
+    let apiKey: string | null = null;
+    let providerType: EmailProviderType = 'brevo';
+    let currentAcc: any = null;
+
+    try {
+      const res = await query<any>(`SELECT * FROM email_provider_accounts WHERE id = $1`, [id]);
+      if (res.rows.length === 0) throw new Error('Account not found');
+      currentAcc = res.rows[0];
+      providerType = currentAcc.provider_type;
+      const decrypted = this.decryptCredentials(currentAcc.encrypted_credentials);
+      apiKey = decrypted.apiKey;
+    } catch (err: any) {
+      if (err.message === 'Account not found') throw err;
+      const acc = inMemoryProviderAccounts.get(id);
+      if (!acc) throw new Error('Account not found');
+      apiKey = acc.rawApiKey || 'mock-key';
+      providerType = acc.providerType;
+      currentAcc = acc;
+    }
+
+    if (!apiKey) throw new Error('No API key available for sync');
+
+    // Return current record if synced within 30 seconds and not forced
+    const lastCheck = currentAcc.last_health_check_at ? new Date(currentAcc.last_health_check_at).getTime() : 0;
+    if (!force && Date.now() - lastCheck < 30000 && currentAcc.provider_plan_info?.liveFromBrevo) {
+      return currentAcc;
+    }
+
+    const adapter = EmailProviderRegistry.getAdapter(providerType);
+    const usage = await adapter.getAccountUsage(apiKey);
+    const now = new Date().toISOString();
+
+    if (usage && Object.keys(usage).length > 0) {
+      const newPlanInfo = {
+        ...(typeof currentAcc.provider_plan_info === 'object' ? currentAcc.provider_plan_info : {}),
+        ...usage,
+        lastSyncedAt: now,
+      };
+
+      const remaining = usage.remainingCredits ?? (usage.credits !== undefined ? usage.credits : 300);
+      const newStatus = remaining === 0 ? 'quota_exhausted' : (currentAcc.status === 'invalid_credentials' ? 'healthy' : currentAcc.status);
+      const dailySent = usage.dailySentCount !== undefined ? usage.dailySentCount : (currentAcc.daily_sent_count || 0);
+
+      try {
+        const updateRes = await query<any>(
+          `UPDATE email_provider_accounts
+           SET provider_plan_info = $1,
+               status = $2,
+               daily_sent_count = COALESCE($3, daily_sent_count),
+               account_email = COALESCE($4, account_email),
+               company_name = COALESCE($5, company_name),
+               last_health_check_at = $6,
+               updated_at = $6
+           WHERE id = $7
+           RETURNING id, project_id as "projectId", provider_type as "providerType", account_name as "accountName",
+                     masked_api_key as "maskedApiKey", is_enabled as "isEnabled", status,
+                     account_email as "accountEmail", company_name as "companyName",
+                     last_health_check_at as "lastHealthCheckAt", last_error as "lastError",
+                     daily_sent_count as "dailySentCount", monthly_sent_count as "monthlySentCount",
+                     daily_reset_at as "dailyResetAt", monthly_reset_at as "monthlyResetAt",
+                     paused_until as "pausedUntil", provider_plan_info as "providerPlanInfo",
+                     COALESCE(is_primary, FALSE) as "isPrimary",
+                     created_at as "createdAt", updated_at as "updatedAt"`,
+          [JSON.stringify(newPlanInfo), newStatus, dailySent, usage.email || null, usage.companyName || null, now, id]
+        );
+        return updateRes.rows[0];
+      } catch {
+        const memAcc = inMemoryProviderAccounts.get(id);
+        if (memAcc) {
+          memAcc.providerPlanInfo = newPlanInfo;
+          memAcc.dailySentCount = dailySent;
+          memAcc.status = newStatus;
+          memAcc.lastHealthCheckAt = now;
+          if (usage.email && typeof usage.email === 'string') memAcc.accountEmail = usage.email;
+          if (usage.companyName && typeof usage.companyName === 'string') memAcc.companyName = usage.companyName;
+        }
+      }
+    }
+
+    return currentAcc;
+  }
+
+  public static async syncAllProviderAccounts(force = false): Promise<void> {
+    try {
+      const res = await query<{ id: string }>(`SELECT id FROM email_provider_accounts WHERE is_enabled = TRUE`);
+      for (const row of res.rows) {
+        await this.syncProviderAccountUsage(row.id, force).catch(() => {});
+      }
+    } catch {
+      for (const [id] of inMemoryProviderAccounts.entries()) {
+        await this.syncProviderAccountUsage(id, force).catch(() => {});
+      }
     }
   }
 
@@ -1833,6 +1959,7 @@ export class EmailService {
     queued: number;
     processing: number;
     sent: number;
+    delivered: number;
     deferred: number;
     failed: number;
     queueDepth: number;
@@ -1843,21 +1970,24 @@ export class EmailService {
            COUNT(*) FILTER (WHERE status = 'queued') as queued,
            COUNT(*) FILTER (WHERE status = 'processing') as processing,
            COUNT(*) FILTER (WHERE status = 'sent') as sent,
+           COUNT(*) FILTER (WHERE status = 'delivered') as delivered,
            COUNT(*) FILTER (WHERE status = 'deferred') as deferred,
-           COUNT(*) FILTER (WHERE status = 'failed') as failed
+           COUNT(*) FILTER (WHERE status = 'failed' OR status = 'bounced') as failed
          FROM email_outbox_queue`
       );
       const row = res.rows[0];
       const queued = parseInt(row?.queued || '0', 10);
       const processing = parseInt(row?.processing || '0', 10);
-      const sent = parseInt(row?.sent || '0', 10);
+      const rawSent = parseInt(row?.sent || '0', 10);
+      const delivered = parseInt(row?.delivered || '0', 10);
       const deferred = parseInt(row?.deferred || '0', 10);
       const failed = parseInt(row?.failed || '0', 10);
 
       return {
         queued,
         processing,
-        sent,
+        sent: rawSent + delivered,
+        delivered,
         deferred,
         failed,
         queueDepth: queued + deferred + processing,
@@ -1866,14 +1996,16 @@ export class EmailService {
       const items = Array.from(inMemoryOutboxQueue.values());
       const queued = items.filter((i) => i.status === 'queued').length;
       const processing = items.filter((i) => i.status === 'processing').length;
-      const sent = items.filter((i) => i.status === 'sent').length;
+      const rawSent = items.filter((i) => i.status === 'sent').length;
+      const delivered = items.filter((i) => i.status === 'delivered').length;
       const deferred = items.filter((i) => i.status === 'deferred').length;
-      const failed = items.filter((i) => i.status === 'failed').length;
+      const failed = items.filter((i) => i.status === 'failed' || i.status === 'bounced').length;
 
       return {
         queued,
         processing,
-        sent,
+        sent: rawSent + delivered,
+        delivered,
         deferred,
         failed,
         queueDepth: queued + deferred + processing,
@@ -1904,6 +2036,232 @@ export class EmailService {
       let items = Array.from(inMemoryOutboxQueue.values());
       if (projectId) items = items.filter((i) => i.projectId === projectId);
       return items.slice(0, limit);
+    }
+  }
+
+  /**
+   * Synchronizes real-time delivery status for a specific outbox item directly from Brevo's API.
+   */
+  public static async syncOutboxDeliveryStatus(outboxItemId: string): Promise<{
+    status: EmailOutboxStatus;
+    events?: Array<{ name: string; time?: string }>;
+    date?: string;
+  }> {
+    let item: any = null;
+    try {
+      const res = await query<any>(
+        `SELECT id, status, provider_account_id as "providerAccountId", provider_message_id as "providerMessageId"
+         FROM email_outbox_queue
+         WHERE id = $1`,
+        [outboxItemId]
+      );
+      if (res.rows.length === 0) throw new Error('Outbox item not found');
+      item = res.rows[0];
+    } catch (err: any) {
+      if (err.message === 'Outbox item not found') throw err;
+      item = inMemoryOutboxQueue.get(outboxItemId);
+      if (!item) throw new Error('Outbox item not found');
+    }
+
+    if (!item.providerMessageId || !item.providerAccountId) {
+      return { status: item.status };
+    }
+
+    let apiKey = 'mock-key';
+    let providerType: EmailProviderType = 'brevo';
+    try {
+      const accRes = await query<any>(`SELECT provider_type, encrypted_credentials FROM email_provider_accounts WHERE id = $1`, [item.providerAccountId]);
+      if (accRes.rows.length > 0) {
+        providerType = accRes.rows[0].provider_type;
+        apiKey = this.decryptCredentials(accRes.rows[0].encrypted_credentials).apiKey;
+      }
+    } catch {
+      const acc = inMemoryProviderAccounts.get(item.providerAccountId);
+      if (acc) {
+        apiKey = acc.rawApiKey || 'mock-key';
+        providerType = acc.providerType;
+      }
+    }
+
+    const adapter = EmailProviderRegistry.getAdapter(providerType);
+    if (!adapter.getEmailDeliveryStatus) {
+      return { status: item.status };
+    }
+
+    const result = await adapter.getEmailDeliveryStatus(apiKey, item.providerMessageId);
+    let newStatus: EmailOutboxStatus = item.status;
+
+    if (result.status === 'delivered' || result.status === 'opened') {
+      newStatus = 'delivered';
+      try {
+        await query(
+          `UPDATE email_outbox_queue
+           SET status = 'delivered', processed_at = NOW(), error_message = NULL
+           WHERE id = $1`,
+          [outboxItemId]
+        );
+      } catch {
+        if (inMemoryOutboxQueue.has(outboxItemId)) {
+          const m = inMemoryOutboxQueue.get(outboxItemId)!;
+          m.status = 'delivered';
+        }
+      }
+    } else if (result.status === 'bounced') {
+      newStatus = 'bounced';
+      try {
+        await query(
+          `UPDATE email_outbox_queue
+           SET status = 'bounced', error_message = $1
+           WHERE id = $2`,
+          [result.details || 'Bounced by recipient mail server', outboxItemId]
+        );
+      } catch {
+        if (inMemoryOutboxQueue.has(outboxItemId)) {
+          const m = inMemoryOutboxQueue.get(outboxItemId)!;
+          m.status = 'bounced';
+          m.errorMessage = result.details;
+        }
+      }
+    } else if (result.status === 'blocked') {
+      newStatus = 'failed';
+      try {
+        await query(
+          `UPDATE email_outbox_queue
+           SET status = 'failed', error_message = $1
+           WHERE id = $2`,
+          [result.details || 'Blocked by recipient mail server or spam filter', outboxItemId]
+        );
+      } catch {
+        if (inMemoryOutboxQueue.has(outboxItemId)) {
+          const m = inMemoryOutboxQueue.get(outboxItemId)!;
+          m.status = 'failed';
+          m.errorMessage = result.details;
+        }
+      }
+    }
+
+    return { status: newStatus, events: result.events, date: result.date };
+  }
+
+  /**
+   * Periodically checks recent 'sent' outbox items against Brevo's live delivery status.
+   */
+  public static async syncRecentOutboxDeliveries(): Promise<number> {
+    try {
+      const recentRes = await query<{ id: string }>(
+        `SELECT id FROM email_outbox_queue
+         WHERE status = 'sent' AND provider_message_id IS NOT NULL AND created_at > NOW() - INTERVAL '2 hours'
+         LIMIT 15`
+      ).catch(() => ({ rows: [] }));
+
+      let synced = 0;
+      for (const row of recentRes.rows) {
+        await this.syncOutboxDeliveryStatus(row.id).catch(() => {});
+        synced++;
+      }
+      return synced;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Processes webhook payloads dispatched by Brevo transactional webhooks.
+   */
+  public static async handleBrevoWebhook(payload: any): Promise<{ handled: boolean; messageId?: string }> {
+    if (!payload || typeof payload !== 'object') return { handled: false };
+
+    const events = Array.isArray(payload) ? payload : [payload];
+    let lastHandledId: string | undefined;
+
+    for (const ev of events) {
+      const messageId = ev['message-id'] || ev.messageId;
+      const eventName = (ev.event || '').toLowerCase();
+      if (!messageId || !eventName) continue;
+
+      let newStatus: EmailOutboxStatus | null = null;
+      let errorMsg: string | null = null;
+
+      if (eventName === 'delivered' || eventName === 'opened' || eventName === 'clicks' || eventName === 'click') {
+        newStatus = 'delivered';
+      } else if (eventName === 'hard_bounce' || eventName === 'soft_bounce' || eventName === 'bounce') {
+        newStatus = 'bounced';
+        errorMsg = ev.reason || `Bounced: ${eventName}`;
+      } else if (eventName === 'blocked' || eventName === 'spam' || eventName === 'invalid_email') {
+        newStatus = 'failed';
+        errorMsg = ev.reason || `Rejected: ${eventName}`;
+      }
+
+      if (newStatus) {
+        const cleanMsgId = messageId.replace(/^<|>$/g, '');
+        try {
+          await query(
+            `UPDATE email_outbox_queue
+             SET status = $1, error_message = COALESCE($2, error_message), processed_at = NOW()
+             WHERE provider_message_id = $3 OR provider_message_id = $4`,
+            [newStatus, errorMsg, cleanMsgId, `<${cleanMsgId}>`]
+          );
+          lastHandledId = messageId;
+        } catch {
+          for (const item of inMemoryOutboxQueue.values()) {
+            if (item.providerMessageId === cleanMsgId || item.providerMessageId === `<${cleanMsgId}>`) {
+              item.status = newStatus;
+              if (errorMsg) item.errorMessage = errorMsg;
+              lastHandledId = messageId;
+            }
+          }
+        }
+      }
+    }
+
+    return { handled: Boolean(lastHandledId), messageId: lastHandledId };
+  }
+
+  // ===========================================================================
+  // 6.5 DURABLE BACKGROUND QUEUE WORKER & TELEMETRY SYNC
+  // ===========================================================================
+
+  private static workerIntervalTimer: NodeJS.Timeout | null = null;
+  private static statusSyncIntervalTimer: NodeJS.Timeout | null = null;
+  private static usageSyncIntervalTimer: NodeJS.Timeout | null = null;
+
+  public static startQueueWorker(): void {
+    if (this.workerIntervalTimer) return;
+
+    // 1. Sweep outbox queue every 5 seconds
+    this.workerIntervalTimer = setInterval(() => {
+      this.processOutboxQueue().catch((err) => {
+        console.error('[EMAIL QUEUE WORKER INTERVAL ERROR]', err.message);
+      });
+    }, 5000);
+
+    // 2. Query Brevo delivery status for recent messages every 30 seconds
+    this.statusSyncIntervalTimer = setInterval(() => {
+      this.syncRecentOutboxDeliveries().catch(() => {});
+    }, 30000);
+
+    // 3. Keep live Brevo credits and quotas synced every 60 seconds
+    this.usageSyncIntervalTimer = setInterval(() => {
+      this.syncAllProviderAccounts(false).catch(() => {});
+    }, 60000);
+
+    // Run first iteration immediately
+    this.processOutboxQueue().catch(() => {});
+    this.syncAllProviderAccounts(false).catch(() => {});
+  }
+
+  public static stopQueueWorker(): void {
+    if (this.workerIntervalTimer) {
+      clearInterval(this.workerIntervalTimer);
+      this.workerIntervalTimer = null;
+    }
+    if (this.statusSyncIntervalTimer) {
+      clearInterval(this.statusSyncIntervalTimer);
+      this.statusSyncIntervalTimer = null;
+    }
+    if (this.usageSyncIntervalTimer) {
+      clearInterval(this.usageSyncIntervalTimer);
+      this.usageSyncIntervalTimer = null;
     }
   }
 

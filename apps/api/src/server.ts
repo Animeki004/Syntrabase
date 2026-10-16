@@ -17,6 +17,7 @@ import { functionRoutes } from './routes/function.routes.js';
 import { projectRoutes } from './routes/project.routes.js';
 import { ProjectService } from './services/project.service.js';
 import { AuthService } from './services/auth.service.js';
+import { EmailService } from './services/email.service.js';
 import { runMigrations } from './db/migrate.js';
 
 export async function buildServer() {
@@ -196,6 +197,7 @@ async function start() {
     // Start background listeners and bootstrap platform admin
     await RealtimeService.startListener();
     await AuthService.bootstrapPlatformAdmin();
+    EmailService.startQueueWorker();
 
     await server.listen({ port: config.port, host: config.host });
     console.log(`[API GATEWAY] Server listening on http://${config.host}:${config.port}`);
@@ -205,6 +207,7 @@ async function start() {
     for (const signal of signals) {
       process.on(signal, async () => {
         console.log(`[API GATEWAY] Received ${signal}, closing server gracefully...`);
+        EmailService.stopQueueWorker();
         await server.close();
         await pool.end();
         process.exit(0);

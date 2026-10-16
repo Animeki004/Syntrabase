@@ -21,7 +21,11 @@ import {
   Layers,
   ArrowRight,
   Shield,
-  Zap
+  Zap,
+  Search,
+  Activity,
+  CheckCircle,
+  Power
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -37,6 +41,25 @@ import {
   DomainDnsRecord,
   EmailProviderAccount
 } from '@syntrabase/shared-types';
+
+interface ProjectEmailOverview {
+  globalSendingEnabled: boolean;
+  dailyProjectCap: number;
+  projectSentToday: number;
+  isDedicated: boolean;
+  activeAccount: {
+    id: string;
+    accountName: string;
+    status: string;
+    totalDailyQuota: number;
+    remainingCredits: number;
+    dailySentCount: number;
+    planType: string;
+    creditsType: string;
+    lastSyncedAt?: string;
+    liveFromBrevo?: boolean;
+  } | null;
+}
 
 interface ProjectDeliveryLog {
   id: string;
@@ -88,6 +111,12 @@ export default function ProjectEmailPage() {
   // Delivery Logs State
   const [deliveryLogs, setDeliveryLogs] = useState<ProjectDeliveryLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [checkingLogId, setCheckingLogId] = useState<string | null>(null);
+
+  // Overview & Live Brevo Telemetry State
+  const [overview, setOverview] = useState<ProjectEmailOverview | null>(null);
+  const [isSyncingOverview, setIsSyncingOverview] = useState(false);
+  const [syncingDedicatedId, setSyncingDedicatedId] = useState<string | null>(null);
 
   // Dedicated Brevo Accounts State
   const [dedicatedAccounts, setDedicatedAccounts] = useState<EmailProviderAccount[]>([]);
@@ -189,6 +218,89 @@ export default function ProjectEmailPage() {
     }
   }, [projectId]);
 
+  const fetchOverview = useCallback(async () => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/email/overview`, { headers }).catch(() => null);
+      if (res && res.ok) {
+        const data = await res.json();
+        setOverview(data);
+      }
+    } catch {
+      // Retain previous telemetry
+    }
+  }, [projectId]);
+
+  const handleSyncOverviewCredits = async () => {
+    if (!overview?.activeAccount?.id) return;
+    setIsSyncingOverview(true);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const endpoint = overview.isDedicated
+        ? `${API_BASE_URL}/api/v1/projects/${projectId}/email/dedicated-accounts/${overview.activeAccount.id}/sync`
+        : `${API_BASE_URL}/api/v1/admin/email/accounts/${overview.activeAccount.id}/sync`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        addToast('Live Brevo account credits synchronized!', 'success');
+      } else {
+        addToast('Telemetry refreshed from gateway', 'info');
+      }
+      await fetchOverview();
+    } catch {
+      addToast('Error synchronizing Brevo credits', 'error');
+    } finally {
+      setIsSyncingOverview(false);
+    }
+  };
+
+  const handleSyncDedicatedAccount = async (accountId: string) => {
+    try {
+      setSyncingDedicatedId(accountId);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/email/dedicated-accounts/${accountId}/sync`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        addToast('Dedicated Brevo usage & credits synchronized from live API!', 'success');
+        await fetchDedicatedAccounts();
+        await fetchOverview();
+      } else {
+        addToast('Failed to sync dedicated Brevo account', 'error');
+      }
+    } catch {
+      addToast('Error syncing account', 'error');
+    } finally {
+      setSyncingDedicatedId(null);
+    }
+  };
+
+  const handleSyncLogStatus = async (logId: string) => {
+    try {
+      setCheckingLogId(logId);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/email/logs/${logId}/sync-status`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast(`Brevo SMTP delivery status: ${(data.status || 'unknown').toUpperCase()}`, 'info');
+        await fetchDeliveryLogs();
+      } else {
+        addToast(data.error || 'Failed to query Brevo SMTP delivery status', 'error');
+      }
+    } catch {
+      addToast('Error querying delivery status', 'error');
+    } finally {
+      setCheckingLogId(null);
+    }
+  };
+
   const handleAddDedicatedAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAccountName.trim() || !newApiKey.trim()) {
@@ -216,6 +328,7 @@ export default function ProjectEmailPage() {
         setNewApiKey('');
         setShowAddAccountModal(false);
         await fetchDedicatedAccounts();
+        await fetchOverview();
       } else {
         const errData = await res.json().catch(() => ({}));
         addToast(errData.error || 'Failed to add dedicated Brevo account', 'error');
@@ -239,6 +352,7 @@ export default function ProjectEmailPage() {
       if (res.ok) {
         addToast('Brevo API key validated and healthy!', 'success');
         await fetchDedicatedAccounts();
+        await fetchOverview();
       } else {
         const errData = await res.json().catch(() => ({}));
         addToast(errData.error || 'Brevo health check failed', 'error');
@@ -262,6 +376,7 @@ export default function ProjectEmailPage() {
       if (res.ok) {
         addToast(`Dedicated Brevo account "${accountName}" removed`, 'info');
         await fetchDedicatedAccounts();
+        await fetchOverview();
       } else {
         const errData = await res.json().catch(() => ({}));
         addToast(errData.error || 'Failed to remove dedicated account', 'error');
@@ -279,12 +394,13 @@ export default function ProjectEmailPage() {
   const handleManualRefresh = async () => {
     setIsManualRefreshing(true);
     await Promise.all([
+      fetchOverview(),
       fetchEmailData(),
       fetchDeliveryLogs(),
       activeProject.dedicatedBrevoEnabled ? fetchDedicatedAccounts() : Promise.resolve(),
     ]);
     setTimeout(() => setIsManualRefreshing(false), 700);
-    addToast('Email settings data refreshed', 'info');
+    addToast('Email settings & live Brevo usage refreshed', 'info');
   };
 
   const handleClearDeliveryLogs = async () => {
@@ -311,11 +427,12 @@ export default function ProjectEmailPage() {
   };
 
   useEffect(() => {
+    fetchOverview();
     fetchEmailData();
     if (activeProject.dedicatedBrevoEnabled) {
       fetchDedicatedAccounts();
     }
-  }, [projectId, activeProject.dedicatedBrevoEnabled]);
+  }, [projectId, activeProject.dedicatedBrevoEnabled, fetchOverview, fetchEmailData, fetchDedicatedAccounts]);
 
   useEffect(() => {
     if (activeTab === 'logs') {
@@ -543,23 +660,24 @@ export default function ProjectEmailPage() {
           senderAddress: testSenderAddress || (senders[0]?.emailAddress || 'notifications@syntrabase.app'),
           subject: testSubject.trim(),
         }),
-      }).catch(() => null);
+      });
 
-      const newLogItem: ProjectDeliveryLog = {
-        id: `test_log_${Date.now()}`,
-        recipientEmail: testRecipient.trim(),
-        senderAddress: testSenderAddress || (senders[0]?.emailAddress || 'notifications@syntrabase.app'),
-        subject: testSubject.trim(),
-        deliveryStatus: 'delivered',
-        providerMessageId: `msg_${Date.now()}`,
-        attemptCount: 1,
-        createdAt: new Date().toISOString(),
-      };
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to dispatch test email');
+      }
 
-      setDeliveryLogs((prev) => [newLogItem, ...prev]);
-      addToast(`Test verification email dispatched to ${testRecipient.trim()}`, 'success');
+      addToast(`Test email queued for delivery to ${testRecipient.trim()}! Queue ID: ${data.queueItem?.id?.slice(0, 8)}...`, 'success');
       setShowTestModal(false);
       setTestRecipient('');
+      await fetchDeliveryLogs();
+      await fetchOverview();
+
+      // Sweep after brief delay to catch immediate background worker dispatch
+      setTimeout(() => {
+        fetchDeliveryLogs();
+        fetchOverview();
+      }, 2500);
     } catch (err: any) {
       addToast(err.message || 'Failed to dispatch test email', 'error');
     } finally {
@@ -727,6 +845,148 @@ export default function ProjectEmailPage() {
           </button>
         </div>
       </Card>
+
+      {/* Real-time Brevo & Outbox Telemetry Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+        {/* Card 1: Live Brevo Credits */}
+        <Card>
+          <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Brevo Live Credits
+                </span>
+                <button
+                  onClick={handleSyncOverviewCredits}
+                  disabled={isSyncingOverview}
+                  title="Synchronize live credits directly from Brevo API"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '2px',
+                    cursor: 'pointer',
+                    color: 'var(--primary)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <RefreshCw size={12} className={isSyncingOverview ? 'animate-spin' : ''} />
+                </button>
+              </div>
+              <Badge
+                variant={overview?.activeAccount?.liveFromBrevo ? 'success' : 'outline'}
+                size="sm"
+                style={{ fontSize: '10px' }}
+              >
+                {overview?.activeAccount?.liveFromBrevo ? 'Live Brevo API' : 'Brevo Plan'}
+              </Badge>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span style={{ fontSize: '2rem', fontWeight: 800, color: (overview?.activeAccount?.remainingCredits ?? 300) === 0 ? 'var(--danger)' : 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+                {(overview?.activeAccount?.remainingCredits ?? 300).toLocaleString()}
+              </span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                credits left today
+              </span>
+            </div>
+
+            {/* Progress Bar */}
+            <div style={{ height: '3px', width: '100%', backgroundColor: 'var(--bg-surface-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${Math.min(100, Math.max(0, (((overview?.activeAccount?.remainingCredits ?? 300) / (overview?.activeAccount?.totalDailyQuota || 300)) * 100)))}%`,
+                  backgroundColor: (overview?.activeAccount?.remainingCredits ?? 300) === 0 ? 'var(--danger)' : 'var(--primary)',
+                  transition: 'width 0.3s ease',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              <span>Quota: {(overview?.activeAccount?.totalDailyQuota ?? 300).toLocaleString()} daily</span>
+              <span>{overview?.activeAccount?.dailySentCount ?? 0} dispatched today</span>
+            </div>
+          </div>
+        </Card>
+
+        {/* Card 2: Outbound Gateway */}
+        <Card>
+          <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Outbound Gateway
+              </span>
+              <Badge
+                variant={overview?.globalSendingEnabled ? 'success' : 'danger'}
+                size="sm"
+                style={{ fontSize: '10px' }}
+              >
+                {overview?.globalSendingEnabled ? 'Active (HTTPS 443)' : 'Emergency Paused'}
+              </Badge>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {overview?.activeAccount?.accountName || (overview?.isDedicated ? 'Dedicated Gateway' : 'Platform Shared Pool')}
+              </span>
+            </div>
+
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              Tier: <strong style={{ color: 'var(--text-primary)' }}>Brevo {(overview?.activeAccount?.planType || 'free').toUpperCase()}</strong> • Isolated TLS 1.3
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              <span>Mode: {overview?.isDedicated ? 'Dedicated Tenant' : 'Shared Multi-Tenant Pool'}</span>
+              <span>{senders.length} sender(s) active</span>
+            </div>
+          </div>
+        </Card>
+
+        {/* Card 3: Project Dispatch Cap & Deliveries */}
+        <Card>
+          <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Project Daily Quota
+              </span>
+              <Badge
+                variant={(overview?.projectSentToday ?? 0) >= (overview?.dailyProjectCap ?? 100) ? 'danger' : 'outline'}
+                size="sm"
+                style={{ fontSize: '10px' }}
+              >
+                {(overview?.projectSentToday ?? 0) >= (overview?.dailyProjectCap ?? 100) ? 'Cap Reached' : 'Within Limits'}
+              </Badge>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+                {(overview?.projectSentToday ?? 0).toLocaleString()}
+              </span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                / {(overview?.dailyProjectCap ?? 100).toLocaleString()} daily cap
+              </span>
+            </div>
+
+            {/* Progress Bar */}
+            <div style={{ height: '3px', width: '100%', backgroundColor: 'var(--bg-surface-subtle)', borderRadius: '2px', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${Math.min(100, Math.max(0, (((overview?.projectSentToday ?? 0) / (overview?.dailyProjectCap || 100)) * 100)))}%`,
+                  backgroundColor: (overview?.projectSentToday ?? 0) >= (overview?.dailyProjectCap ?? 100) ? 'var(--danger)' : 'var(--primary)',
+                  transition: 'width 0.3s ease',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              <span>{deliveryLogs.filter(l => l.deliveryStatus === 'delivered').length} verified delivered</span>
+              <span>{deliveryLogs.filter(l => l.deliveryStatus === 'failed' || l.deliveryStatus === 'bounced').length} failed</span>
+            </div>
+          </div>
+        </Card>
+      </div>
 
       {/* =====================================================================
           TAB 1: CUSTOM SENDING DOMAINS
@@ -1242,22 +1502,23 @@ export default function ProjectEmailPage() {
                   <th className="table-th">Recipient</th>
                   <th className="table-th">Sender</th>
                   <th className="table-th">Subject</th>
-                  <th className="table-th">Status</th>
+                  <th className="table-th">Delivery Status</th>
                   <th className="table-th">Attempts</th>
                   <th className="table-th">Gateway ID</th>
                   <th className="table-th">Timestamp</th>
+                  <th className="table-th" style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody className="table-body">
                 {logsLoading ? (
                   <tr className="table-row">
-                    <td colSpan={7} style={{ padding: '36px', textAlign: 'center' }}>
+                    <td colSpan={8} style={{ padding: '36px', textAlign: 'center' }}>
                       <div style={{ height: '22px', width: '50%', margin: '0 auto', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface-subtle)', animation: 'pulse 1.5s infinite' }} />
                     </td>
                   </tr>
                 ) : deliveryLogs.length === 0 ? (
                   <tr className="table-row">
-                    <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <td colSpan={8} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)' }}>
                       No outbound transactional email activity recorded yet.
                     </td>
                   </tr>
@@ -1286,18 +1547,27 @@ export default function ProjectEmailPage() {
                           {subject}
                         </td>
                         <td className="table-td">
-                          <Badge
-                            variant={
-                              status === 'delivered' || status === 'sent'
-                                ? 'success'
-                                : status === 'failed' || status === 'bounced'
-                                ? 'danger'
-                                : 'warning'
-                            }
-                            size="sm"
-                          >
-                            {status}
-                          </Badge>
+                          {status === 'delivered' ? (
+                            <Badge variant="outline" size="sm" style={{ color: '#10b981', borderColor: '#10b981', background: 'rgba(16, 185, 129, 0.1)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <CheckCircle2 size={11} /> Delivered
+                            </Badge>
+                          ) : status === 'sent' ? (
+                            <Badge variant="outline" size="sm" style={{ color: '#3b82f6', borderColor: '#3b82f6', background: 'rgba(59, 130, 246, 0.1)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <Send size={11} /> Dispatched
+                            </Badge>
+                          ) : status === 'queued' || status === 'pending' ? (
+                            <Badge variant="neutral" size="sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <Clock size={11} /> Queued
+                            </Badge>
+                          ) : status === 'bounced' ? (
+                            <Badge variant="outline" size="sm" style={{ color: '#ef4444', borderColor: '#ef4444', background: 'rgba(239, 68, 68, 0.1)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <AlertTriangle size={11} /> Bounced
+                            </Badge>
+                          ) : (
+                            <Badge variant="danger" size="sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <XCircle size={11} /> Failed
+                            </Badge>
+                          )}
                         </td>
                         <td className="table-td" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                           {attempts}/5
@@ -1309,6 +1579,19 @@ export default function ProjectEmailPage() {
                         </td>
                         <td className="table-td" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                           {dateDisplay}
+                        </td>
+                        <td className="table-td" style={{ textAlign: 'right' }}>
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            onClick={() => handleSyncLogStatus(log.id)}
+                            disabled={checkingLogId === log.id}
+                            title="Query live delivery status from Brevo API"
+                            style={{ fontSize: '0.72rem', padding: '2px 8px', height: '24px' }}
+                          >
+                            <Search size={11} style={{ marginRight: '4px' }} className={checkingLogId === log.id ? 'animate-spin' : ''} />
+                            {checkingLogId === log.id ? 'Checking...' : 'Check Status'}
+                          </Button>
                         </td>
                       </tr>
                     );
@@ -1443,7 +1726,20 @@ export default function ProjectEmailPage() {
                               </Badge>
                             </td>
                             <td className="table-td" style={{ fontSize: '0.82rem' }}>
-                              {acc.dailySentCount ?? 0} sent today
+                              <div>
+                                <span style={{ fontWeight: 600, color: (acc.remainingCredits ?? Math.max(0, (acc.providerPlanInfo?.credits ?? 300) - (acc.dailySentCount || 0))) === 0 ? 'var(--danger)' : 'var(--text-primary)' }}>
+                                  {(acc.remainingCredits ?? Math.max(0, (acc.providerPlanInfo?.credits ?? 300) - (acc.dailySentCount || 0))).toLocaleString()}
+                                </span>
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}> / {(acc.totalDailyQuota ?? (acc.providerPlanInfo?.credits ?? 300)).toLocaleString()} left</span>
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                <span>{acc.dailySentCount ?? 0} dispatched today</span>
+                                {Boolean(acc.providerPlanInfo?.liveFromBrevo) && (
+                                  <span style={{ fontSize: '8px', padding: '1px 4px', borderRadius: '3px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', fontWeight: 600 }}>
+                                    LIVE BREVO
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="table-td" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                               {acc.lastHealthCheckAt ? new Date(acc.lastHealthCheckAt).toLocaleString() : 'Never'}
@@ -1451,11 +1747,21 @@ export default function ProjectEmailPage() {
                             <td className="table-td" style={{ textAlign: 'right' }}>
                               <div style={{ display: 'inline-flex', gap: '6px' }}>
                                 <Button
+                                  variant="outline"
+                                  size="xs"
+                                  loading={syncingDedicatedId === acc.id}
+                                  onClick={() => handleSyncDedicatedAccount(acc.id)}
+                                  title="Synchronize live usage and credits from Brevo API"
+                                  icon={<RefreshCw size={12} />}
+                                >
+                                  Sync
+                                </Button>
+                                <Button
                                   variant="secondary"
                                   size="xs"
                                   loading={checkingAccountId === acc.id}
                                   onClick={() => handleCheckAccountHealth(acc.id)}
-                                  icon={<RefreshCw size={12} />}
+                                  icon={<Power size={12} />}
                                 >
                                   Revalidate
                                 </Button>

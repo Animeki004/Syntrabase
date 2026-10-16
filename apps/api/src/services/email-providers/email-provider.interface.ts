@@ -38,7 +38,27 @@ export interface IEmailProviderAdapter {
     credits?: number;
     creditsType?: string;
     planType?: string;
+    totalDailyQuota?: number;
+    remainingCredits?: number;
+    dailySentCount?: number;
+    deliveredCount?: number;
+    bouncedCount?: number;
+    blockedCount?: number;
+    opensCount?: number;
+    clicksCount?: number;
+    liveFromBrevo?: boolean;
+    lastSyncedAt?: string;
     [key: string]: unknown;
+  }>;
+
+  /**
+   * Retrieves real-time delivery status for a dispatched message using the provider's API.
+   */
+  getEmailDeliveryStatus?(apiKey: string, messageId: string): Promise<{
+    status: 'delivered' | 'sent' | 'bounced' | 'blocked' | 'opened' | 'unknown';
+    events?: Array<{ name: string; time?: string }>;
+    date?: string;
+    details?: string;
   }>;
 
   /**

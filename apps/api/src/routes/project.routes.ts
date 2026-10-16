@@ -607,6 +607,82 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     }
   });
 
+  // Synchronize Dedicated Brevo Account Live Usage
+  server.post('/api/v1/projects/:projectId/email/dedicated-accounts/:accountId/sync', async (req, reply) => {
+    const devId = await requireDeveloperId(req);
+    const { projectId, accountId } = req.params as { projectId: string; accountId: string };
+    await ProjectService.assertProjectAccess(devId, projectId);
+    await assertDedicatedBrevoEnabled(projectId);
+
+    try {
+      const account = await EmailService.syncProviderAccountUsage(accountId, true);
+      return reply.send({ success: true, account });
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
+  // Query Real-Time SMTP Delivery Status from Brevo for Project Outbox Item
+  server.post('/api/v1/projects/:projectId/email/logs/:logId/sync-status', async (req, reply) => {
+    const devId = await requireDeveloperId(req);
+    const { projectId, logId } = req.params as { projectId: string; logId: string };
+    await ProjectService.assertProjectAccess(devId, projectId);
+
+    try {
+      const result = await EmailService.syncOutboxDeliveryStatus(logId);
+      return reply.send({ success: true, ...result });
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
+  // Get Project Email Infrastructure Overview & Live Credits Telemetry
+  server.get('/api/v1/projects/:projectId/email/overview', async (req, reply) => {
+    const devId = await requireDeveloperId(req);
+    const { projectId } = req.params as { projectId: string };
+    await ProjectService.assertProjectAccess(devId, projectId);
+
+    try {
+      const policy = await EmailService.getPlatformPolicy();
+      const rawId = await ProjectService.resolveProjectId(projectId);
+      const projRes = await query<{ dedicated_brevo_enabled: boolean }>(
+        `SELECT dedicated_brevo_enabled FROM projects WHERE id = $1`,
+        [rawId]
+      ).catch(() => ({ rows: [] }));
+      const isDedicated = Boolean(projRes.rows[0]?.dedicated_brevo_enabled);
+      const accounts = await EmailService.getProviderAccounts(isDedicated ? projectId : null);
+      const primaryAccount = accounts.find((a) => a.isPrimary) || accounts.find((a) => a.status === 'healthy') || accounts[0];
+
+      // Total daily dispatched for project
+      const logs = await EmailService.getDeliveryLogs(projectId, 100, rawId);
+      const todayLogs = logs.filter((l: any) => {
+        const d = new Date(l.createdAt || 0).toDateString();
+        return d === new Date().toDateString();
+      });
+
+      return reply.send({
+        globalSendingEnabled: policy.globalSendingEnabled && !policy.emergencyShutdown,
+        dailyProjectCap: policy.dailyProjectCap,
+        projectSentToday: todayLogs.length,
+        isDedicated,
+        activeAccount: primaryAccount ? {
+          id: primaryAccount.id,
+          accountName: primaryAccount.accountName,
+          status: primaryAccount.status,
+          totalDailyQuota: primaryAccount.totalDailyQuota ?? (primaryAccount.providerPlanInfo?.totalDailyQuota || 300),
+          remainingCredits: primaryAccount.remainingCredits ?? (primaryAccount.providerPlanInfo?.remainingCredits || 300),
+          dailySentCount: primaryAccount.dailySentCount ?? 0,
+          planType: primaryAccount.providerPlanInfo?.planType || 'free',
+          creditsType: primaryAccount.providerPlanInfo?.creditsType || 'sendLimit',
+          lastSyncedAt: primaryAccount.providerPlanInfo?.lastSyncedAt,
+          liveFromBrevo: Boolean(primaryAccount.providerPlanInfo?.liveFromBrevo),
+        } : null,
+      });
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
   // Send Test Transactional Email
   server.post('/api/v1/projects/:projectId/email/test', async (req, reply) => {
     const devId = await requireDeveloperId(req);

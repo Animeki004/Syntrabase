@@ -92,11 +92,43 @@ export class MockEmailProvider implements IEmailProviderAdapter {
     credits?: number;
     creditsType?: string;
     planType?: string;
+    totalDailyQuota?: number;
+    remainingCredits?: number;
+    dailySentCount?: number;
+    deliveredCount?: number;
+    bouncedCount?: number;
+    liveFromBrevo?: boolean;
+    lastSyncedAt?: string;
   }> {
     return {
-      credits: 285,
+      credits: 300,
+      totalDailyQuota: 300,
+      remainingCredits: 285,
+      dailySentCount: 15,
+      deliveredCount: 15,
+      bouncedCount: 0,
       creditsType: 'free',
       planType: 'free',
+      liveFromBrevo: true,
+      lastSyncedAt: new Date().toISOString(),
+    };
+  }
+
+  public async getEmailDeliveryStatus(
+    _apiKey: string,
+    _messageId: string
+  ): Promise<{
+    status: 'delivered' | 'sent' | 'bounced' | 'blocked' | 'opened' | 'unknown';
+    events?: Array<{ name: string; time?: string }>;
+    date?: string;
+  }> {
+    return {
+      status: 'delivered',
+      events: [
+        { name: 'sent', time: new Date().toISOString() },
+        { name: 'delivered', time: new Date().toISOString() },
+      ],
+      date: new Date().toISOString(),
     };
   }
 

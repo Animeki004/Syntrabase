@@ -49,18 +49,32 @@ export class BrevoEmailProvider implements IEmailProviderAdapter {
       }
 
       const data: any = await response.json();
-      const plan = Array.isArray(data.plan) && data.plan.length > 0 ? data.plan[0] : null;
+      const usage = await this.getAccountUsage(apiKey).catch(() => ({}));
+      const plans = Array.isArray(data.plan) ? data.plan : [];
+      const plan = plans.find((p: any) =>
+        p.creditsType === 'sendLimit' ||
+        p.type === 'free' ||
+        p.type === 'payAsYouGo' ||
+        p.type === 'subscription' ||
+        typeof p.credits === 'number'
+      ) || plans[0] || null;
 
       return {
         valid: true,
         accountIdentity: {
           email: data.email || 'unknown@brevo-account',
           companyName: data.companyName || `${data.firstName || ''} ${data.lastName || ''}`.trim(),
-          planInfo: plan
+          planInfo: Object.keys(usage).length > 0
+            ? usage
+            : plan
             ? {
                 credits: plan.credits ?? 0,
+                totalDailyQuota: plan.credits ?? 300,
+                remainingCredits: plan.credits ?? 300,
                 creditsType: plan.creditsType || 'free',
                 planType: plan.type || 'free',
+                liveFromBrevo: true,
+                lastSyncedAt: new Date().toISOString(),
               }
             : undefined,
         },
@@ -197,15 +211,32 @@ export class BrevoEmailProvider implements IEmailProviderAdapter {
   }
 
   /**
-   * Fetches account usage & credit details from GET /v3/account.
+   * Fetches account usage & credit details from GET /v3/account and GET /v3/smtp/statistics/aggregatedReport.
    */
   public async getAccountUsage(apiKey: string): Promise<{
     credits?: number;
     creditsType?: string;
     planType?: string;
+    totalDailyQuota?: number;
+    remainingCredits?: number;
+    dailySentCount?: number;
+    deliveredCount?: number;
+    bouncedCount?: number;
+    blockedCount?: number;
+    opensCount?: number;
+    clicksCount?: number;
+    email?: string;
+    companyName?: string;
+    liveFromBrevo?: boolean;
+    lastSyncedAt?: string;
     [key: string]: unknown;
   }> {
+    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
+      return {};
+    }
+
     try {
+      // 1. Fetch account profile and active subscription/plan credits
       const response = await fetch(`${this.baseUrl}/account`, {
         method: 'GET',
         headers: {
@@ -217,17 +248,171 @@ export class BrevoEmailProvider implements IEmailProviderAdapter {
       if (!response.ok) return {};
 
       const data: any = await response.json();
-      const plan = Array.isArray(data.plan) && data.plan.length > 0 ? data.plan[0] : null;
+      const plans = Array.isArray(data.plan) ? data.plan : [];
+
+      // Find primary email dispatch plan (prioritizing sendLimit, free, payAsYouGo, subscription)
+      const emailPlan = plans.find((p: any) =>
+        p.creditsType === 'sendLimit' ||
+        p.type === 'free' ||
+        p.type === 'payAsYouGo' ||
+        p.type === 'subscription' ||
+        typeof p.credits === 'number'
+      ) || plans[0] || null;
+
+      const planType = (emailPlan?.type || 'free').toLowerCase();
+      const creditsType = (emailPlan?.creditsType || (planType === 'free' ? 'sendLimit' : 'credit')).toLowerCase();
+      const rawPlanCredits = typeof emailPlan?.credits === 'number' ? emailPlan.credits : 300;
+
+      // 2. Fetch live daily transactional aggregated activity from Brevo
+      let stats: any = {};
+      try {
+        const statsRes = await fetch(`${this.baseUrl}/smtp/statistics/aggregatedReport?days=1`, {
+          method: 'GET',
+          headers: {
+            'accept': 'application/json',
+            'api-key': apiKey.trim(),
+          },
+        });
+        if (statsRes.ok) {
+          stats = await statsRes.json();
+        }
+      } catch {
+        // Retain fallback if stats endpoint is unreachable
+      }
+
+      const requestsToday = typeof stats.requests === 'number' ? stats.requests : 0;
+      const deliveredToday = typeof stats.delivered === 'number' ? stats.delivered : 0;
+      const hardBounces = typeof stats.hardBounces === 'number' ? stats.hardBounces : 0;
+      const softBounces = typeof stats.softBounces === 'number' ? stats.softBounces : 0;
+      const bouncesToday = hardBounces + softBounces;
+      const blockedToday = typeof stats.blocked === 'number' ? stats.blocked : 0;
+      const opensToday = typeof stats.opens === 'number' ? stats.opens : 0;
+      const clicksToday = typeof stats.clicks === 'number' ? stats.clicks : 0;
+
+      let remainingCredits = 0;
+      let totalDailyQuota = 0;
+
+      if (planType === 'free') {
+        // Brevo free tier: 300 emails/day cap that resets nightly.
+        // Brevo returns static credits: 300, while requestsToday is actual consumption.
+        totalDailyQuota = rawPlanCredits || 300;
+        remainingCredits = Math.max(0, totalDailyQuota - requestsToday);
+      } else if (planType === 'payAsYouGo' || creditsType === 'credit') {
+        // Brevo pay-as-you-go: credits in /account is authoritative live remaining balance.
+        remainingCredits = rawPlanCredits;
+        totalDailyQuota = rawPlanCredits + requestsToday;
+      } else {
+        // Subscription / standard plan
+        totalDailyQuota = rawPlanCredits;
+        remainingCredits = Math.max(0, rawPlanCredits - requestsToday);
+      }
 
       return {
-        credits: plan?.credits ?? undefined,
-        creditsType: plan?.creditsType ?? undefined,
-        planType: plan?.type ?? undefined,
-        email: data.email,
-        companyName: data.companyName,
+        credits: totalDailyQuota,
+        totalDailyQuota,
+        remainingCredits,
+        dailySentCount: requestsToday,
+        deliveredCount: deliveredToday,
+        bouncedCount: bouncesToday,
+        blockedCount: blockedToday,
+        opensCount: opensToday,
+        clicksCount: clicksToday,
+        creditsType,
+        planType,
+        email: data.email || 'unknown@brevo-account',
+        companyName: data.companyName || `${data.firstName || ''} ${data.lastName || ''}`.trim(),
+        liveFromBrevo: true,
+        lastSyncedAt: new Date().toISOString(),
       };
     } catch {
       return {};
+    }
+  }
+
+  /**
+   * Retrieves real-time delivery status for a dispatched transactional message via Brevo SMTP API.
+   * Uses two-step resolution: GET /v3/smtp/emails?messageId=... followed by GET /v3/smtp/emails/{uuid}.
+   */
+  public async getEmailDeliveryStatus(
+    apiKey: string,
+    messageId: string
+  ): Promise<{
+    status: 'delivered' | 'sent' | 'bounced' | 'blocked' | 'opened' | 'unknown';
+    events?: Array<{ name: string; time?: string }>;
+    date?: string;
+    details?: string;
+  }> {
+    if (!apiKey || !messageId) {
+      return { status: 'unknown' };
+    }
+
+    try {
+      const cleanMessageId = messageId.trim();
+      const listRes = await fetch(`${this.baseUrl}/smtp/emails?messageId=${encodeURIComponent(cleanMessageId)}`, {
+        method: 'GET',
+        headers: {
+          'accept': 'application/json',
+          'api-key': apiKey.trim(),
+        },
+      });
+
+      if (!listRes.ok) {
+        return { status: 'unknown' };
+      }
+
+      const listData: any = await listRes.json();
+      const emails = listData.transactionalEmails;
+      if (!Array.isArray(emails) || emails.length === 0) {
+        return { status: 'sent' };
+      }
+
+      const emailRecord = emails[0];
+      const uuid = emailRecord.uuid;
+      if (!uuid) {
+        return { status: 'sent' };
+      }
+
+      // Query detailed event lifecycle for this message uuid
+      const detailRes = await fetch(`${this.baseUrl}/smtp/emails/${encodeURIComponent(uuid)}`, {
+        method: 'GET',
+        headers: {
+          'accept': 'application/json',
+          'api-key': apiKey.trim(),
+        },
+      });
+
+      if (!detailRes.ok) {
+        return { status: 'sent' };
+      }
+
+      const detailData: any = await detailRes.json();
+      const events: Array<{ name: string; time?: string }> = Array.isArray(detailData.events) ? detailData.events : [];
+      const eventNames = events.map((e) => (e.name || '').toLowerCase());
+
+      if (eventNames.includes('opened') || eventNames.includes('clicks') || eventNames.includes('clicked')) {
+        return { status: 'opened', events, date: emailRecord.date };
+      }
+      if (eventNames.includes('delivered')) {
+        return { status: 'delivered', events, date: emailRecord.date };
+      }
+      if (
+        eventNames.includes('hardbounce') ||
+        eventNames.includes('softbounce') ||
+        eventNames.includes('hard_bounce') ||
+        eventNames.includes('soft_bounce')
+      ) {
+        return { status: 'bounced', events, date: emailRecord.date, details: 'Message bounced by destination mail server' };
+      }
+      if (eventNames.includes('blocked') || eventNames.includes('spam') || eventNames.includes('unsubscribed')) {
+        return { status: 'blocked', events, date: emailRecord.date, details: 'Message blocked or marked as spam' };
+      }
+      if (eventNames.includes('sent')) {
+        return { status: 'sent', events, date: emailRecord.date };
+      }
+
+      return { status: 'sent', events, date: emailRecord.date };
+    } catch {
+      return { status: 'unknown' };
     }
   }
 

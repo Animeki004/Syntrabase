@@ -1184,6 +1184,30 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
     }
   });
 
+  // Force Live Brevo Usage & Quota Sync for Single Account
+  server.post('/api/v1/admin/email/accounts/:id/sync', async (req, reply) => {
+    await requireSuperAdmin(req);
+    const { id } = req.params as { id: string };
+    try {
+      const account = await EmailService.syncProviderAccountUsage(id, true);
+      return reply.send({ success: true, account });
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
+  // Force Live Brevo Usage & Quota Sync for All Accounts
+  server.post('/api/v1/admin/email/accounts/sync-all', async (req, reply) => {
+    await requireSuperAdmin(req);
+    try {
+      await EmailService.syncAllProviderAccounts(true);
+      const accounts = await EmailService.getProviderAccounts();
+      return reply.send({ success: true, accounts });
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
   // Set Primary In-Use Provider Account
   server.post('/api/v1/admin/email/accounts/:id/primary', async (req, reply) => {
     const admin = await requireSuperAdmin(req);
@@ -1246,6 +1270,29 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
     await requireSuperAdmin(req);
     const result = await EmailService.pruneOutboxQueue();
     return reply.send({ success: true, ...result });
+  });
+
+  // Query Real-Time SMTP Delivery Status from Brevo for Outbox Item
+  server.post('/api/v1/admin/email/queue/:id/sync-status', async (req, reply) => {
+    await requireSuperAdmin(req);
+    const { id } = req.params as { id: string };
+    try {
+      const result = await EmailService.syncOutboxDeliveryStatus(id);
+      return reply.send({ success: true, ...result });
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
+  // Public Brevo Transactional Webhook Receiver
+  server.post('/api/v1/email/webhooks/brevo', async (req, reply) => {
+    try {
+      const payload = req.body;
+      const result = await EmailService.handleBrevoWebhook(payload);
+      return reply.send({ success: true, ...result });
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
+    }
   });
 
   // ===========================================================================
