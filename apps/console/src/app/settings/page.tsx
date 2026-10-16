@@ -151,7 +151,7 @@ export default function SettingsPage() {
 
   // Passkey Registration Modal State
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
-  const [passkeyDeviceName, setPasskeyDeviceName] = useState('My Workstation Key');
+  const [passkeyDeviceName, setPasskeyDeviceName] = useState('');
   const [isRegisteringPasskey, setIsRegisteringPasskey] = useState(false);
 
   const fetchDeveloperMfaStatus = async () => {

@@ -479,19 +479,19 @@ export default function FirebaseStudioReplicaPage() {
   const [colModalStep, setColModalStep] = useState<1 | 2>(1);
   const [newColId, setNewColId] = useState('');
   const [newColFirstDocId, setNewColFirstDocId] = useState('');
-  const [newColFirstFieldName, setNewColFirstFieldName] = useState('name');
+  const [newColFirstFieldName, setNewColFirstFieldName] = useState('');
   const [newColFirstFieldType, setNewColFirstFieldType] = useState<FieldType>('string');
-  const [newColFirstFieldValue, setNewColFirstFieldValue] = useState('Initial Record');
+  const [newColFirstFieldValue, setNewColFirstFieldValue] = useState('');
 
   const [showAddDocModal, setShowAddDocModal] = useState(false);
-  const [addDocTargetColPath, setAddDocTargetColPath] = useState<string>('artifacts');
+  const [addDocTargetColPath, setAddDocTargetColPath] = useState<string>('');
   const [newDocId, setNewDocId] = useState('');
   const [docBuilderFields, setDocBuilderFields] = useState<FieldBuilderRow[]>([
     { id: '1', name: '', type: 'string', value: '' },
   ]);
 
   const [showAddFieldModal, setShowAddFieldModal] = useState(false);
-  const [addFieldTargetDocPath, setAddFieldTargetDocPath] = useState<string>('artifacts/main');
+  const [addFieldTargetDocPath, setAddFieldTargetDocPath] = useState<string>('');
   const [newFieldKey, setNewFieldKey] = useState('');
   const [newFieldType, setNewFieldType] = useState<FieldType>('string');
   const [newFieldValue, setNewFieldValue] = useState('');
@@ -503,7 +503,7 @@ export default function FirebaseStudioReplicaPage() {
   const [deleteDocTarget, setDeleteDocTarget] = useState<{ colPath: string; docId: string } | null>(null);
 
   const [showAddSubcolModal, setShowAddSubcolModal] = useState(false);
-  const [addSubcolTargetDocPath, setAddSubcolTargetDocPath] = useState<string>('artifacts/main');
+  const [addSubcolTargetDocPath, setAddSubcolTargetDocPath] = useState<string>('');
   const [newSubcolName, setNewSubcolName] = useState('');
 
   // Auto-scroll sliding chain so only 3 boxes are visible at a time

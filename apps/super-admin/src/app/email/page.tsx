@@ -65,7 +65,7 @@ export default function GlobalEmailControlPage() {
 
   // Add Account Modal State
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
-  const [newAccountName, setNewAccountName] = useState('Primary Brevo Account');
+  const [newAccountName, setNewAccountName] = useState('');
   const [newApiKey, setNewApiKey] = useState('');
   const [isSubmittingAccount, setIsSubmittingAccount] = useState(false);
 
@@ -150,7 +150,7 @@ export default function GlobalEmailControlPage() {
   const [showAddSenderModal, setShowAddSenderModal] = useState(false);
   const [senderDomainId, setSenderDomainId] = useState('');
   const [senderDisplayName, setSenderDisplayName] = useState('');
-  const [senderEmailPrefix, setSenderEmailPrefix] = useState('security');
+  const [senderEmailPrefix, setSenderEmailPrefix] = useState('');
   const [senderScope, setSenderScope] = useState<'platform' | 'project'>('platform');
   const [isSubmittingSender, setIsSubmittingSender] = useState(false);
 

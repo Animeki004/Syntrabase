@@ -1,6 +1,6 @@
 {
   "name": "@syntrabase/rules-engine",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "type": "module",
   "description": "Declarative Security Rules AST compiler and sandboxed evaluator for Syntrabase",
   "main": "dist/index.js",

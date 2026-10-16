@@ -116,7 +116,7 @@ export default function ProjectEmailPage() {
   const [showAddSenderModal, setShowAddSenderModal] = useState(false);
   const [senderDomainId, setSenderDomainId] = useState<string>('');
   const [senderDisplayName, setSenderDisplayName] = useState('');
-  const [senderEmailPrefix, setSenderEmailPrefix] = useState('notifications');
+  const [senderEmailPrefix, setSenderEmailPrefix] = useState('');
   const [isSubmittingSender, setIsSubmittingSender] = useState(false);
 
   // Delivery Logs State
@@ -143,7 +143,7 @@ export default function ProjectEmailPage() {
   const [showTestModal, setShowTestModal] = useState(false);
   const [testRecipient, setTestRecipient] = useState('');
   const [testSenderAddress, setTestSenderAddress] = useState('');
-  const [testSubject, setTestSubject] = useState('Syntrabase Transactional Delivery Test');
+  const [testSubject, setTestSubject] = useState('');
   const [isSendingTest, setIsSendingTest] = useState(false);
 
   // Clipboard tracking

@@ -899,10 +899,11 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
 
   // Get Notifications for Project (Developer Console)
   server.get('/api/v1/projects/:projectId/notifications', async (req, reply) => {
-    const { projectId } = req.params as { projectId: string };
-    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
-      await AuthService.requireProjectAccess(req, projectId);
-    }
+    const devId = await requireDeveloperId(req);
+    const { projectId: rawId } = req.params as { projectId: string };
+    const projectId = await ProjectService.resolveProjectId(rawId);
+    await ProjectService.assertProjectAccess(devId, projectId);
+
     const queryParams = req.query as any;
     const isRead = queryParams?.isRead !== undefined ? queryParams.isRead === 'true' : undefined;
     const category = queryParams?.category;
@@ -921,20 +922,22 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
 
   // Mark Project Notification as Read
   server.patch('/api/v1/projects/:projectId/notifications/:id/read', async (req, reply) => {
-    const { projectId, id } = req.params as { projectId: string; id: string };
-    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
-      await AuthService.requireProjectAccess(req, projectId);
-    }
-    await NotificationService.markAsRead(id);
+    const devId = await requireDeveloperId(req);
+    const { projectId: rawId, id } = req.params as { projectId: string; id: string };
+    const projectId = await ProjectService.resolveProjectId(rawId);
+    await ProjectService.assertProjectAccess(devId, projectId);
+
+    await NotificationService.markAsRead(id, projectId);
     return reply.send({ success: true, id });
   });
 
   // Mark All Notifications as Read for Project
   server.post('/api/v1/projects/:projectId/notifications/mark-all-read', async (req, reply) => {
-    const { projectId } = req.params as { projectId: string };
-    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
-      await AuthService.requireProjectAccess(req, projectId);
-    }
+    const devId = await requireDeveloperId(req);
+    const { projectId: rawId } = req.params as { projectId: string };
+    const projectId = await ProjectService.resolveProjectId(rawId);
+    await ProjectService.assertProjectAccess(devId, projectId);
+
     await NotificationService.markAllAsRead(projectId);
     return reply.send({ success: true });
   });
@@ -1175,10 +1178,9 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
 
   // List Composite Indexes
   server.get('/api/v1/projects/:projectId/databases/:databaseId/indexes', async (req, reply) => {
-    const devId = await requireDeveloperId(req);
     const { projectId: rawId, databaseId } = req.params as { projectId: string; databaseId: string };
     const projectId = await ProjectService.resolveProjectId(rawId);
-    await ProjectService.assertProjectAccess(devId, projectId);
+    await AuthService.requireProjectAccess(req, projectId);
 
     try {
       const res = await query<any>(
@@ -1197,10 +1199,9 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
 
   // Create Composite Index
   server.post('/api/v1/projects/:projectId/databases/:databaseId/indexes', async (req, reply) => {
-    const devId = await requireDeveloperId(req);
     const { projectId: rawId, databaseId } = req.params as { projectId: string; databaseId: string };
     const projectId = await ProjectService.resolveProjectId(rawId);
-    await ProjectService.assertProjectAccess(devId, projectId);
+    const caller = await AuthService.requireProjectAccess(req, projectId);
     const { collectionPath, fields, queryScope } = (req.body as any) || {};
 
     if (!collectionPath) {
@@ -1217,8 +1218,8 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
       );
 
       await AuditService.log({
-        actorId: devId,
-        actorType: 'developer',
+        actorId: caller.callerId,
+        actorType: caller.type === 'apikey' ? 'api_key' : 'developer',
         action: 'database.index_created',
         targetResource: `index:${res.rows[0].id}`,
         projectId,
@@ -1233,10 +1234,9 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
 
   // Delete Composite Index
   server.delete('/api/v1/projects/:projectId/databases/:databaseId/indexes/:indexId', async (req, reply) => {
-    const devId = await requireDeveloperId(req);
     const { projectId: rawId, databaseId, indexId } = req.params as { projectId: string; databaseId: string; indexId: string };
     const projectId = await ProjectService.resolveProjectId(rawId);
-    await ProjectService.assertProjectAccess(devId, projectId);
+    const caller = await AuthService.requireProjectAccess(req, projectId);
 
     await query(
       `DELETE FROM composite_indexes WHERE id = $1 AND project_id = $2 AND database_id = $3`,
@@ -1244,8 +1244,8 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     );
 
     await AuditService.log({
-      actorId: devId,
-      actorType: 'developer',
+      actorId: caller.callerId,
+      actorType: caller.type === 'apikey' ? 'api_key' : 'developer',
       action: 'database.index_deleted',
       targetResource: `index:${indexId}`,
       projectId,

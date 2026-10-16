@@ -80,7 +80,7 @@ export class NotificationService {
       }
 
       if (options?.projectId) {
-        filterSql += ` AND (project_id = $${paramIdx++} OR project_id IS NULL)`;
+        filterSql += ` AND project_id = $${paramIdx++}`;
         params.push(options.projectId);
       }
 
@@ -97,7 +97,7 @@ export class NotificationService {
       let countSql = `SELECT COUNT(*) as count FROM internal_notifications WHERE is_read = FALSE`;
       const countParams: any[] = [];
       if (options?.projectId) {
-        countSql += ` AND (project_id = $1 OR project_id IS NULL)`;
+        countSql += ` AND project_id = $1`;
         countParams.push(options.projectId);
       }
 
@@ -116,7 +116,7 @@ export class NotificationService {
         filtered = filtered.filter((n) => n.category === options.category);
       }
       if (options?.projectId) {
-        filtered = filtered.filter((n) => !n.projectId || n.projectId === options.projectId);
+        filtered = filtered.filter((n) => n.projectId === options.projectId);
       }
       const unreadCount = filtered.filter((n) => !n.isRead).length;
 
@@ -128,25 +128,29 @@ export class NotificationService {
   }
 
   /**
-   * Marks a notification as read.
+   * Marks a notification as read (optionally scoped to a project).
    */
-  public static async markAsRead(id: string): Promise<void> {
+  public static async markAsRead(id: string, projectId?: string): Promise<void> {
     try {
-      await query(`UPDATE internal_notifications SET is_read = TRUE WHERE id = $1`, [id]);
+      if (projectId) {
+        await query(`UPDATE internal_notifications SET is_read = TRUE WHERE id = $1 AND project_id = $2`, [id, projectId]);
+      } else {
+        await query(`UPDATE internal_notifications SET is_read = TRUE WHERE id = $1`, [id]);
+      }
     } catch {
-      const item = inMemoryNotifications.find((n) => n.id === id);
+      const item = inMemoryNotifications.find((n) => n.id === id && (!projectId || n.projectId === projectId));
       if (item) item.isRead = true;
     }
   }
 
   /**
-   * Marks all notifications as read (optionally scoped to a project).
+   * Marks all notifications as read (strictly scoped to a project when specified).
    */
   public static async markAllAsRead(projectId?: string): Promise<void> {
     try {
       if (projectId) {
         await query(
-          `UPDATE internal_notifications SET is_read = TRUE WHERE is_read = FALSE AND (project_id = $1 OR project_id IS NULL)`,
+          `UPDATE internal_notifications SET is_read = TRUE WHERE is_read = FALSE AND project_id = $1`,
           [projectId]
         );
       } else {
@@ -154,7 +158,7 @@ export class NotificationService {
       }
     } catch {
       inMemoryNotifications.forEach((n) => {
-        if (!projectId || !n.projectId || n.projectId === projectId) {
+        if (!projectId || n.projectId === projectId) {
           n.isRead = true;
         }
       });

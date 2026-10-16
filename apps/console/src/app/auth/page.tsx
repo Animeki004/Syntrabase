@@ -89,7 +89,7 @@ export default function SyntrabaseAuthPage() {
 
   // Custom Claims modal
   const [showClaimsModal, setShowClaimsModal] = useState(false);
-  const [claimsJson, setClaimsJson] = useState('{\n  "role": "admin",\n  "tier": "pro"\n}');
+  const [claimsJson, setClaimsJson] = useState('{}');
 
   // Reset Password Modal
   const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);

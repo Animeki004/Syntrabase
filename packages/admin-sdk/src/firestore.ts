@@ -156,6 +156,60 @@ export class AdminFirestore {
     const result = (await res.json()) as { documents: DocumentSnapshot[] };
     return result.documents;
   }
+
+  /**
+   * Lists composite indexes for the project database.
+   */
+  public async listIndexes(databaseId = '(default)'): Promise<any[]> {
+    const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/databases/${databaseId}/indexes`;
+    const res = await fetch(url, { method: 'GET', headers: this.getHeaders() });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(err.error || `Admin listIndexes failed: ${res.statusText}`);
+    }
+    const data = (await res.json()) as { indexes: any[] };
+    return data.indexes;
+  }
+
+  /**
+   * Creates a composite index on a collection.
+   */
+  public async createIndex(params: {
+    collectionPath: string;
+    fields: Array<{ fieldPath: string; order?: 'ASCENDING' | 'DESCENDING' }>;
+    queryScope?: 'Collection' | 'CollectionGroup';
+    databaseId?: string;
+  }): Promise<any> {
+    const databaseId = params.databaseId || '(default)';
+    const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/databases/${databaseId}/indexes`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        collectionPath: params.collectionPath,
+        fields: params.fields,
+        queryScope: params.queryScope || 'Collection',
+      }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(err.error || `Admin createIndex failed: ${res.statusText}`);
+    }
+    const data = (await res.json()) as { index: any };
+    return data.index;
+  }
+
+  /**
+   * Deletes a composite index.
+   */
+  public async deleteIndex(indexId: string, databaseId = '(default)'): Promise<void> {
+    const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/databases/${databaseId}/indexes/${indexId}`;
+    const res = await fetch(url, { method: 'DELETE', headers: this.getHeaders() });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(err.error || `Admin deleteIndex failed: ${res.statusText}`);
+    }
+  }
 }
 
 export function getAdminFirestore(app: AdminApp): AdminFirestore {
