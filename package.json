@@ -28,10 +28,14 @@
     "db:seed": "npm run db:seed --workspace=apps/api",
     "docker:local:up": "docker compose -f infrastructure/docker/docker-compose.local.yml up -d",
     "docker:local:down": "docker compose -f infrastructure/docker/docker-compose.local.yml down",
-    "docker:local:build": "docker compose -f infrastructure/docker/docker-compose.local.yml build"
+    "docker:local:build": "docker compose -f infrastructure/docker/docker-compose.local.yml build",
+    "test:smtp": "node scripts/test-gmail-smtp.js",
+    "start:smtp-test-server": "node scripts/smtp-test-server.js"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
+    "@types/nodemailer": "^8.0.2",
+    "nodemailer": "^10.1.2",
     "typescript": "^5.6.3"
   },
   "engines": {
