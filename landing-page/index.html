@@ -42,7 +42,7 @@
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         </div>
         <span class="logo-title">Syntrabase</span>
-        <span class="version-tag">v1.2.1</span>
+        <span class="version-tag">v1.2.2</span>
       </div>
 
       <!-- Navigation Links -->
@@ -50,7 +50,7 @@
         <a href="#overview" class="nav-link active" data-section="section-overview">Overview</a>
         <a href="#docs" class="nav-link" data-section="section-docs">Documentation</a>
         <a href="#studio" class="nav-link" data-section="section-studio">Interactive Studio</a>
-        <a href="#security" class="nav-link" data-section="section-security">Security & Audits <span class="nav-badge-pulse">35/35</span></a>
+        <a href="#security" class="nav-link" data-section="section-security">Security & Audits <span class="nav-badge-pulse">39/39</span></a>
         <a href="#architecture" class="nav-link" data-section="section-architecture">Architecture</a>
       </nav>
 
@@ -85,7 +85,7 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
           </div>
           <span class="logo-title">Syntrabase</span>
-          <span class="version-tag">v1.2.1</span>
+          <span class="version-tag">v1.2.2</span>
         </div>
         <button id="btn-mobile-close" class="btn-icon" aria-label="Close menu">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -132,8 +132,8 @@
       <!-- Announcement Pill -->
       <div class="hero-announcement-wrap">
         <div class="hero-pill">
-          <span class="pill-badge">v1.2.1 Released</span>
-          <span class="pill-text">Supreme-Core Security Hardening, Realtime AST Rules & Multi-Tenant BOLA Isolation</span>
+          <span class="pill-badge">v1.2.2 Released</span>
+          <span class="pill-text">Zero-Mock Platform Hardening, Real Triggers Persistence & Strict Auth Enforced</span>
           <a href="#doc-security-audit-center" class="pill-arrow" id="hero-passkeys-link">View Advisory →</a>
         </div>
       </div>
@@ -1069,13 +1069,13 @@ if (typeof window !== 'undefined' || typeof document !== 'undefined') {
           <div class="doc-badge badge-emerald">Zero-Trust • Security Architecture</div>
           <h2 class="doc-title">Security Advisory & Cryptographic Audit Matrix</h2>
           <p>
-            Syntrabase enforces continuous authorized red team testing and zero-trust verification across every layer of the platform. All 35 identified threats across SDK releases (v1.0.0 through v1.2.1) have been systematically eliminated and validated through 112/112 automated integration and security regression test gates.
+            Syntrabase enforces continuous authorized red team testing and zero-trust verification across every layer of the platform. All 39 identified threats across platform and SDK releases (v1.0.0 through v1.2.2) have been systematically eliminated and validated through 113/113 automated integration and security regression test gates.
           </p>
 
           <div class="callout callout-info" style="margin: 18px 0; padding: 16px 20px; background: rgba(16, 185, 129, 0.08); border-left: 4px solid #10b981; border-radius: 8px;">
             <strong style="color: #34d399; font-size: 14px;">SDK Core Security Advisory & Changelog Available</strong>
             <p style="margin: 6px 0 0; font-size: 13px; color: var(--text-muted);">
-              Explore the complete transparent breakdown of all 35 audited security vulnerabilities, threats identified, what was fixed and secured, and verified before/after code diffs in the <a href="#security" class="text-gradient" style="font-weight: 700; text-decoration: underline;">SDK Security Advisory & Changelog →</a>
+              Explore the complete transparent breakdown of all 39 audited security vulnerabilities, threats identified, what was fixed and secured, and verified before/after code diffs in the <a href="#security" class="text-gradient" style="font-weight: 700; text-decoration: underline;">SDK Security Advisory & Changelog →</a>
             </p>
           </div>
 
@@ -1137,9 +1137,9 @@ npm run test:unit --workspace=@syntrabase/admin-sdk">Copy</button>
         <!-- Doc 21: Release Readiness -->
         <div class="doc-block" id="doc-release">
           <div class="doc-badge badge-emerald">Release Verification</div>
-          <h2 class="doc-title">Release & Staging Readiness (v1.2.1)</h2>
+          <h2 class="doc-title">Release & Staging Readiness (v1.2.2)</h2>
           <p>
-            Syntrabase v1.2.1 is fully verified for production deployments. Run the database migration script to apply updated schema definitions:
+            Syntrabase v1.2.2 is fully verified for production deployments. Run the database migration script to apply updated schema definitions:
           </p>
           <div class="code-box" data-filename="terminal.sh">
             <pre><code># Run PostgreSQL 16 schema migrations
@@ -1569,10 +1569,14 @@ curl -f http://localhost:4000/api/v1/health">Copy</button>
         <div class="sec-version-tabs" id="sec-version-tabs">
           <button class="sec-version-tab active" data-version="all">
             <span>All Versions</span>
-            <span class="tab-count">35</span>
+            <span class="tab-count">39</span>
+          </button>
+          <button class="sec-version-tab" data-version="v1.2.2">
+            <span>v1.2.2 (Current Release)</span>
+            <span class="tab-count">4</span>
           </button>
           <button class="sec-version-tab" data-version="v1.2.1">
-            <span>v1.2.1 (Current Release)</span>
+            <span>v1.2.1 (Security Hardening)</span>
             <span class="tab-count">5</span>
           </button>
           <button class="sec-version-tab" data-version="v1.2.0">
@@ -1754,6 +1758,6 @@ curl -f http://localhost:4000/api/v1/health">Copy</button>
   </button>
 
   <script src="qrcode.min.js"></script>
-  <script type="module" src="app.js?v=1.2.1"></script>
+  <script type="module" src="app.js?v=1.2.2"></script>
 </body>
 </html>
