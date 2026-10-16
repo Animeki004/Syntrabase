@@ -1,5 +1,5 @@
 // Syntrabase SDK Landing Page & Interactive Verification Engine
-// Version: 1.2.0 - Powered directly by actual @syntrabase/client-sdk
+// Version: 1.2.1 - Powered directly by actual @syntrabase/client-sdk
 import {
   initializeApp,
   getApp,
@@ -33,6 +33,12 @@ import {
   getDownloadURL,
   onSnapshot
 } from './sdk/index.js';
+
+import {
+  SECURITY_AUDITS,
+  SECURITY_KPIS,
+  filterAudits
+} from './security-audit.js';
 
 // =============================================================================
 // 1. Navigation, Theme & UI Controllers
@@ -278,6 +284,8 @@ function syncFromHash() {
     }
   } else if (hash === '#studio') {
     showSection('section-studio');
+  } else if (hash === '#security' || hash.startsWith('#sec-')) {
+    showSection('section-security');
   } else if (hash === '#architecture') {
     showSection('section-architecture');
   } else {
@@ -791,7 +799,7 @@ document.getElementById('btn-run-all-tests')?.addEventListener('click', async ()
 
   log('================================================================', 'info');
   log(`Starting Syntrabase Client SDK Automated Verification Suite [${modeBadge}]...`, 'info');
-  log(`Engine: @syntrabase/client-sdk v1.2.0 | API: ${currentAppInstance.options.apiUrl}`, 'info');
+  log(`Engine: @syntrabase/client-sdk v1.2.1 | API: ${currentAppInstance.options.apiUrl}`, 'info');
   log('================================================================', 'info');
 
   let passedCount = 0;
@@ -1433,3 +1441,195 @@ document.getElementById('btn-st-download-url')?.addEventListener('click', async 
     log(`getDownloadURL failed: ${err.message}`, 'error');
   }
 });
+
+// =============================================================================
+// 7. SDK & Core Security Advisory Changelog Controller
+// =============================================================================
+function initSecurityAuditsController() {
+  let activeVersion = 'all';
+  let activeSeverity = 'all';
+  let activeCategory = 'all';
+  let activeSearch = '';
+
+  const auditCardsContainer = document.getElementById('sec-audit-cards-container');
+  const auditCounter = document.getElementById('sec-audit-counter');
+  const searchInput = document.getElementById('sec-search-input');
+
+  // Render Exploded Audit Cards
+  function renderAuditCards() {
+    if (!auditCardsContainer) return;
+
+    const filtered = filterAudits({
+      version: activeVersion,
+      severity: activeSeverity,
+      category: activeCategory,
+      search: activeSearch,
+    });
+
+    if (auditCounter) {
+      auditCounter.textContent = `Showing ${filtered.length} of ${SECURITY_AUDITS.length} Security Updates`;
+    }
+
+    if (filtered.length === 0) {
+      auditCardsContainer.innerHTML = `
+        <div style="text-align: center; padding: 48px 20px; background: var(--card-bg); border: 1px dashed var(--card-border); border-radius: var(--radius-xl);">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--text-dim); margin-bottom: 12px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <h4 style="font-size: 16px; font-weight: 700; color: var(--text-main); margin-bottom: 6px;">No Security Audits Match Your Filter</h4>
+          <p style="font-size: 13px; color: var(--text-muted); margin: 0;">Try resetting your search query or selecting "All" in the severity and category filters.</p>
+        </div>
+      `;
+      return;
+    }
+
+    auditCardsContainer.innerHTML = filtered.map((item) => {
+      const sevClass = `sev-${item.severity.toLowerCase()}`;
+      return `
+        <div class="audit-card ${sevClass}" id="audit-${item.id}">
+          <div class="audit-card-header">
+            <div class="audit-card-title-group">
+              <div class="audit-meta-row">
+                <span class="audit-id-badge">${item.id}</span>
+                <span class="audit-version-badge">${escapeHtml(item.versionTag)}</span>
+                <span class="audit-cwe-badge">${escapeHtml(item.cwe)}</span>
+                <span class="audit-cwe-badge">${escapeHtml(item.categoryLabel)}</span>
+              </div>
+              <h3 class="audit-card-title">${escapeHtml(item.title)}</h3>
+              <div class="audit-component-path">${escapeHtml(item.component)}</div>
+            </div>
+
+            <div class="audit-severity-badge ${sevClass}">
+              <span class="sev-title">${item.severity}</span>
+              <span class="sev-score">CVSS ${item.cvss}</span>
+            </div>
+          </div>
+
+          <!-- 3-Column Exploded Threat & Fix Analysis -->
+          <div class="audit-exploded-grid">
+            <div class="audit-box box-exposed">
+              <div class="audit-box-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span>What Was Exposed</span>
+              </div>
+              <p>${escapeHtml(item.exposed)}</p>
+            </div>
+
+            <div class="audit-box box-threat">
+              <div class="audit-box-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <span>Threat & Blast Radius</span>
+              </div>
+              <p>${escapeHtml(item.threat)}</p>
+            </div>
+
+            <div class="audit-box box-remediation">
+              <div class="audit-box-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+                <span>What Was Updated & Secured</span>
+              </div>
+              <p>${escapeHtml(item.updated)}</p>
+            </div>
+          </div>
+
+          <!-- Collapsible Code Diff Accordion -->
+          ${item.diff ? `
+            <div class="audit-diff-container">
+              <button class="audit-diff-toggle" data-id="${item.id}" aria-expanded="false">
+                <span>View Vulnerability & Remediation Code Diff</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="audit-diff-body" id="diff-body-${item.id}">
+                <div class="diff-pane insecure">
+                  <div class="diff-pane-title">Insecure Code (Before Remediation)</div>
+                  <pre><code>${escapeHtml(item.diff.before)}</code></pre>
+                </div>
+                <div class="diff-pane secured">
+                  <div class="diff-pane-title">Hardened Production Code (After Fix)</div>
+                  <pre><code>${escapeHtml(item.diff.after)}</code></pre>
+                </div>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- Card Footer with Verification Proof -->
+          <div class="audit-card-footer">
+            <div class="audit-verification-status">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+              <span>${item.status}</span>
+              <span class="audit-test-ref">(${item.testResult})</span>
+            </div>
+            <span class="audit-test-ref">${escapeHtml(item.verification)}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Bind Diff Toggles
+    document.querySelectorAll('.audit-diff-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        const body = document.getElementById(`diff-body-${id}`);
+        if (body) {
+          const isOpen = body.classList.contains('open');
+          if (isOpen) {
+            body.classList.remove('open');
+            btn.classList.remove('open');
+            btn.setAttribute('aria-expanded', 'false');
+          } else {
+            body.classList.add('open');
+            btn.classList.add('open');
+            btn.setAttribute('aria-expanded', 'true');
+          }
+        }
+      });
+    });
+  }
+
+  // Bind Version Tabs
+  document.querySelectorAll('.sec-version-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.sec-version-tab').forEach((t) => t.classList.remove('active'));
+      tab.classList.add('active');
+      activeVersion = tab.getAttribute('data-version') || 'all';
+      renderAuditCards();
+    });
+  });
+
+  // Bind Severity Chips
+  document.querySelectorAll('.sec-filter-chip[data-sev]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.sec-filter-chip[data-sev]').forEach((c) => c.classList.remove('active'));
+      chip.classList.add('active');
+      activeSeverity = chip.getAttribute('data-sev') || 'all';
+      renderAuditCards();
+    });
+  });
+
+  // Bind Category Chips
+  document.querySelectorAll('.sec-filter-chip[data-cat]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.sec-filter-chip[data-cat]').forEach((c) => c.classList.remove('active'));
+      chip.classList.add('active');
+      activeCategory = chip.getAttribute('data-cat') || 'all';
+      renderAuditCards();
+    });
+  });
+
+  // Bind Search Input with debouncing
+  let searchTimer = null;
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        activeSearch = e.target.value;
+        renderAuditCards();
+      }, 150);
+    });
+  }
+
+  // Initial Render of all 30 audit cards
+  renderAuditCards();
+}
+
+// Initialize on page load
+initSecurityAuditsController();
+

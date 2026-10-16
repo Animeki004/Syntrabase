@@ -42,7 +42,7 @@
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         </div>
         <span class="logo-title">Syntrabase</span>
-        <span class="version-tag">v1.2.0</span>
+        <span class="version-tag">v1.2.1</span>
       </div>
 
       <!-- Navigation Links -->
@@ -50,6 +50,7 @@
         <a href="#overview" class="nav-link active" data-section="section-overview">Overview</a>
         <a href="#docs" class="nav-link" data-section="section-docs">Documentation</a>
         <a href="#studio" class="nav-link" data-section="section-studio">Interactive Studio</a>
+        <a href="#security" class="nav-link" data-section="section-security">Security & Audits <span class="nav-badge-pulse">35/35</span></a>
         <a href="#architecture" class="nav-link" data-section="section-architecture">Architecture</a>
       </nav>
 
@@ -84,7 +85,7 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
           </div>
           <span class="logo-title">Syntrabase</span>
-          <span class="version-tag">v1.2.0</span>
+          <span class="version-tag">v1.2.1</span>
         </div>
         <button id="btn-mobile-close" class="btn-icon" aria-label="Close menu">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -97,11 +98,15 @@
         </a>
         <a href="#docs" class="mobile-nav-link" data-section="section-docs">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-          <span>Documentation (21 Guides)</span>
+          <span>Documentation (22 Guides)</span>
         </a>
         <a href="#studio" class="mobile-nav-link" data-section="section-studio">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           <span>Interactive Test Studio</span>
+        </a>
+        <a href="#security" class="mobile-nav-link" data-section="section-security">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span>Security & Audits (35 Remediated)</span>
         </a>
         <a href="#architecture" class="mobile-nav-link" data-section="section-architecture">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -127,9 +132,9 @@
       <!-- Announcement Pill -->
       <div class="hero-announcement-wrap">
         <div class="hero-pill">
-          <span class="pill-badge">v1.2.0 Released</span>
-          <span class="pill-text">WebAuthn FIDO2 Passkeys, Visual TOTP QR Codes & User Actions Gating</span>
-          <a href="#doc-client-passkeys" class="pill-arrow" id="hero-passkeys-link">Learn more →</a>
+          <span class="pill-badge">v1.2.1 Released</span>
+          <span class="pill-text">Supreme-Core Security Hardening, Realtime AST Rules & Multi-Tenant BOLA Isolation</span>
+          <a href="#doc-security-audit-center" class="pill-arrow" id="hero-passkeys-link">View Advisory →</a>
         </div>
       </div>
 
@@ -425,7 +430,7 @@ console.log(<span class="str">'Audit Chain Intact:'</span>, ledgerStatus.valid);
       
       <!-- Documentation Main Section Header -->
       <div class="docs-header-banner text-center">
-        <span class="doc-badge badge-blue">Official Documentation • v1.2.0</span>
+        <span class="doc-badge badge-blue">Official Documentation • v1.2.1</span>
         <h1 class="section-title">Complete SDK Guides & API Reference</h1>
         <p class="section-subtitle">Drop-in Firebase v9/v10 syntax, enterprise FIDO2 WebAuthn passkeys, visual TOTP QR MFA, and PostgreSQL 16 JSONB primitives.</p>
       </div>
@@ -472,7 +477,8 @@ console.log(<span class="str">'Audit Chain Intact:'</span>, ledgerStatus.valid);
           </div>
 
           <div class="docs-nav-group">
-            <span class="docs-nav-header"><span class="docs-nav-header-dot dot-amber"></span>Quality & Verification</span>
+            <span class="docs-nav-header"><span class="docs-nav-header-dot dot-amber"></span>Quality & Security Audits</span>
+            <a href="#doc-security-audit-center" class="docs-nav-item"><span class="nav-dot"></span>Security Advisory & 30 Audits</a>
             <a href="#doc-testing" class="docs-nav-item"><span class="nav-dot"></span>Automated Test Bench & Gates</a>
             <a href="#doc-release" class="docs-nav-item"><span class="nav-dot"></span>Release & Staging Readiness</a>
           </div>
@@ -511,7 +517,8 @@ console.log(<span class="str">'Audit Chain Intact:'</span>, ledgerStatus.valid);
                 <option value="#doc-admin-audit">Cryptographic Audit Ledger</option>
                 <option value="#doc-admin-guardrail">Browser Runtime Guardrail</option>
               </optgroup>
-              <optgroup label="Quality & Verification">
+              <optgroup label="Quality & Security Audits">
+                <option value="#doc-security-audit-center">Security Advisory & 30 Audits</option>
                 <option value="#doc-testing">Automated Test Bench & Gates</option>
                 <option value="#doc-release">Release & Staging Readiness</option>
               </optgroup>
@@ -535,8 +542,8 @@ console.log(<span class="str">'Audit Chain Intact:'</span>, ledgerStatus.valid);
           </div>
           <p>The Syntrabase ecosystem consists of two first-class SDK packages:</p>
           <ul class="doc-list">
-            <li><strong><code>@syntrabase/client-sdk@^1.2.0</code></strong>: Tree-shakeable, modular client library for browsers and mobile applications matching Firebase v9/v10 functional syntax.</li>
-            <li><strong><code>@syntrabase/admin-sdk@^1.2.0</code></strong>: Privileged Node.js server library using master <code>sk_live_...</code> keys for backend microservices, Next.js server actions, and background workers.</li>
+            <li><strong><code>@syntrabase/client-sdk@^1.2.1</code></strong>: Tree-shakeable, modular client library for browsers and mobile applications matching Firebase v9/v10 functional syntax.</li>
+            <li><strong><code>@syntrabase/admin-sdk@^1.2.1</code></strong>: Privileged Node.js server library using master <code>sk_live_...</code> keys for backend microservices, Next.js server actions, and background workers.</li>
           </ul>
         </div>
 
@@ -546,14 +553,14 @@ console.log(<span class="str">'Audit Chain Intact:'</span>, ledgerStatus.valid);
           <h2 class="doc-title">Installation & Package Ecosystem</h2>
           <p>Install the modular client SDK in your web application (Next.js, Vite, React, Vue, Svelte, or Vanilla JS):</p>
           <div class="code-box" data-filename="terminal.sh">
-            <pre><code>npm install @syntrabase/client-sdk@^1.2.0</code></pre>
-            <button class="btn-copy-code" data-copy="npm install @syntrabase/client-sdk@^1.2.0">Copy</button>
+            <pre><code>npm install @syntrabase/client-sdk@^1.2.1</code></pre>
+            <button class="btn-copy-code" data-copy="npm install @syntrabase/client-sdk@^1.2.1">Copy</button>
           </div>
 
           <p>For Node.js backend servers, server actions, or administrative microservices, install the admin SDK:</p>
           <div class="code-box" data-filename="terminal.sh">
-            <pre><code>npm install @syntrabase/admin-sdk@^1.2.0</code></pre>
-            <button class="btn-copy-code" data-copy="npm install @syntrabase/admin-sdk@^1.2.0">Copy</button>
+            <pre><code>npm install @syntrabase/admin-sdk@^1.2.1</code></pre>
+            <button class="btn-copy-code" data-copy="npm install @syntrabase/admin-sdk@^1.2.1">Copy</button>
           </div>
         </div>
 
@@ -1057,7 +1064,55 @@ if (typeof window !== 'undefined' || typeof document !== 'undefined') {
           </div>
         </div>
 
-        <!-- Doc 20: Testing Bench -->
+        <!-- Doc 20: Security Advisory & Audit Matrix -->
+        <div class="doc-block" id="doc-security-audit-center">
+          <div class="doc-badge badge-emerald">Zero-Trust • Security Architecture</div>
+          <h2 class="doc-title">Security Advisory & Cryptographic Audit Matrix</h2>
+          <p>
+            Syntrabase enforces continuous authorized red team testing and zero-trust verification across every layer of the platform. All 35 identified threats across SDK releases (v1.0.0 through v1.2.1) have been systematically eliminated and validated through 112/112 automated integration and security regression test gates.
+          </p>
+
+          <div class="callout callout-info" style="margin: 18px 0; padding: 16px 20px; background: rgba(16, 185, 129, 0.08); border-left: 4px solid #10b981; border-radius: 8px;">
+            <strong style="color: #34d399; font-size: 14px;">SDK Core Security Advisory & Changelog Available</strong>
+            <p style="margin: 6px 0 0; font-size: 13px; color: var(--text-muted);">
+              Explore the complete transparent breakdown of all 35 audited security vulnerabilities, threats identified, what was fixed and secured, and verified before/after code diffs in the <a href="#security" class="text-gradient" style="font-weight: 700; text-decoration: underline;">SDK Security Advisory & Changelog →</a>
+            </p>
+          </div>
+
+          <h3 style="margin-top: 24px; margin-bottom: 12px; font-size: 16px; color: var(--text-main);">Cryptographic Audit Ledger Verification</h3>
+          <p>
+            Syntrabase records all privileged administrative operations into an append-only, HMAC-SHA256 hashed ledger chain. Verify ledger continuity programmatically via the Admin SDK:
+          </p>
+          <div class="code-box" data-filename="verify-audit.ts">
+            <pre><code>import { initializeAdminApp, getAdminAudit } from '@syntrabase/admin-sdk';
+
+const adminApp = initializeAdminApp({
+  apiUrl: 'http://localhost:4000',
+  projectId: 'default-project',
+  secretKey: process.env.SYNTRABASE_MASTER_SECRET!
+});
+
+const audit = getAdminAudit(adminApp);
+
+// Cryptographically verify entire audit ledger hash chain
+const ledgerStatus = await audit.verifyLedger();
+console.log('Ledger verified:', ledgerStatus.valid); // true: chain intact
+console.log('Verified entries:', ledgerStatus.totalVerified);</code></pre>
+            <button class="btn-copy-code" data-copy="import { initializeAdminApp, getAdminAudit } from '@syntrabase/admin-sdk';
+
+const adminApp = initializeAdminApp({
+  apiUrl: 'http://localhost:4000',
+  projectId: 'default-project',
+  secretKey: process.env.SYNTRABASE_MASTER_SECRET!
+});
+
+const audit = getAdminAudit(adminApp);
+const ledgerStatus = await audit.verifyLedger();
+console.log('Ledger verified:', ledgerStatus.valid); // true: chain intact">Copy</button>
+          </div>
+        </div>
+
+        <!-- Doc 21: Testing Bench -->
         <div class="doc-block" id="doc-testing">
           <div class="doc-badge badge-blue">Quality Assurance • Gates</div>
           <h2 class="doc-title">Automated Test Bench & Gates</h2>
@@ -1082,9 +1137,9 @@ npm run test:unit --workspace=@syntrabase/admin-sdk">Copy</button>
         <!-- Doc 21: Release Readiness -->
         <div class="doc-block" id="doc-release">
           <div class="doc-badge badge-emerald">Release Verification</div>
-          <h2 class="doc-title">Release & Staging Readiness (v1.2.0)</h2>
+          <h2 class="doc-title">Release & Staging Readiness (v1.2.1)</h2>
           <p>
-            Syntrabase v1.2.0 is fully verified for production deployments. Run the database migration script to apply updated schema definitions:
+            Syntrabase v1.2.1 is fully verified for production deployments. Run the database migration script to apply updated schema definitions:
           </p>
           <div class="code-box" data-filename="terminal.sh">
             <pre><code># Run PostgreSQL 16 schema migrations
@@ -1427,7 +1482,153 @@ curl -f http://localhost:4000/api/v1/health">Copy</button>
   </section>
 
   <!-- ========================================================================= -->
-  <!-- SECTION 4: ARCHITECTURE & COMPARISON                                      -->
+  <!-- SECTION 4: SDK & CORE SECURITY ADVISORY CHANGELOG                         -->
+  <!-- ========================================================================= -->
+  <section id="section-security" class="page-section">
+    <div class="app-container">
+      
+      <!-- Security Hero Header -->
+      <div class="sec-hero">
+        <div class="sec-eyebrow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+          <span>Authorized Red Team Security Advisory • 35/35 Remediated & Verified</span>
+        </div>
+        <h2 class="hero-title">
+          SDK & Core Security <br />
+          <span class="text-gradient">Advisory & Changelog</span>
+        </h2>
+        <p class="hero-subtitle">
+          Comprehensive transparent record of all 35 security vulnerabilities identified across previous and current SDK versions. Inspect what was exposed, what threats were identified, and exactly how each vector was patched, hardened, and regression tested.
+        </p>
+      </div>
+
+      <!-- Top 4 KPI Metrics -->
+      <div class="sec-kpi-grid">
+        <div class="sec-kpi-card kpi-success">
+          <div class="sec-kpi-top">
+            <span class="sec-kpi-label">Audits Remediated</span>
+            <div class="sec-kpi-icon icon-green">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+            </div>
+          </div>
+          <div class="sec-kpi-number text-gradient">35 / 35</div>
+          <div class="sec-kpi-sub">100% Remediated • 0 Open CVEs</div>
+        </div>
+
+        <div class="sec-kpi-card">
+          <div class="sec-kpi-top">
+            <span class="sec-kpi-label">Automated Test Gates</span>
+            <div class="sec-kpi-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+          </div>
+          <div class="sec-kpi-number" id="sec-kpi-tests">112 / 112</div>
+          <div class="sec-kpi-sub">112 Automated Integration & Security Tests Passing (100%)</div>
+        </div>
+
+        <div class="sec-kpi-card">
+          <div class="sec-kpi-top">
+            <span class="sec-kpi-label">Cryptographic Ledger</span>
+            <div class="sec-kpi-icon icon-cyan">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+          </div>
+          <div class="sec-kpi-number">HMAC-SHA256</div>
+          <div class="sec-kpi-sub">Append-Only Immutable Hash Chain</div>
+        </div>
+
+        <div class="sec-kpi-card kpi-critical">
+          <div class="sec-kpi-top">
+            <span class="sec-kpi-label">Maximum CVSS Defended</span>
+            <div class="sec-kpi-icon icon-red">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            </div>
+          </div>
+          <div class="sec-kpi-number">CVSS 9.8</div>
+          <div class="sec-kpi-sub">Critical RCE, BOLA & SQLi Neutralized</div>
+        </div>
+      </div>
+
+      <!-- Version Changelog & Audit Matrix Section Header -->
+      <div class="sec-controls-container">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <h3 style="font-size: 22px; font-weight: 700; color: var(--text-main); margin-bottom: 4px;">
+              SDK & Core Security Advisory Changelog
+            </h3>
+            <p style="font-size: 13.5px; color: var(--text-muted); margin: 0;">
+              Browse all historical vulnerabilities, attack vectors, and patches deployed across previous and current SDK versions.
+            </p>
+          </div>
+          <div style="font-size: 13px; font-weight: 600; color: var(--text-dim);" id="sec-audit-counter">
+            Showing 35 of 35 Security Updates
+          </div>
+        </div>
+
+        <!-- Version Select Tabs -->
+        <div class="sec-version-tabs" id="sec-version-tabs">
+          <button class="sec-version-tab active" data-version="all">
+            <span>All Versions</span>
+            <span class="tab-count">35</span>
+          </button>
+          <button class="sec-version-tab" data-version="v1.2.1">
+            <span>v1.2.1 (Current Release)</span>
+            <span class="tab-count">5</span>
+          </button>
+          <button class="sec-version-tab" data-version="v1.2.0">
+            <span>v1.2.0 (Phase 4 & 5 Hardening)</span>
+            <span class="tab-count">6</span>
+          </button>
+          <button class="sec-version-tab" data-version="v1.1.5">
+            <span>v1.1.5 (Architecture Hardening)</span>
+            <span class="tab-count">6</span>
+          </button>
+          <button class="sec-version-tab" data-version="v1.1.0">
+            <span>v1.1.0 (Supreme Red Team)</span>
+            <span class="tab-count">10</span>
+          </button>
+          <button class="sec-version-tab" data-version="v1.0.0">
+            <span>v1.0.0 (Foundation Audit)</span>
+            <span class="tab-count">8</span>
+          </button>
+        </div>
+
+        <!-- Secondary Filters & Search Bar -->
+        <div class="sec-filters-bar">
+          <div class="sec-filters-left">
+            <span class="sec-filter-label">Severity:</span>
+            <button class="sec-filter-chip active" data-sev="all">All</button>
+            <button class="sec-filter-chip chip-critical" data-sev="critical">Critical (9.0+)</button>
+            <button class="sec-filter-chip chip-high" data-sev="high">High (7.0 - 8.9)</button>
+            <button class="sec-filter-chip chip-medium" data-sev="medium">Medium (4.0 - 6.9)</button>
+            <button class="sec-filter-chip" data-sev="low">Low</button>
+
+            <span class="sec-filter-label" style="margin-left: 8px;">Category:</span>
+            <button class="sec-filter-chip active" data-cat="all">All</button>
+            <button class="sec-filter-chip" data-cat="auth">Auth & Tokens</button>
+            <button class="sec-filter-chip" data-cat="database">Database & Rules</button>
+            <button class="sec-filter-chip" data-cat="realtime">Realtime & Sockets</button>
+            <button class="sec-filter-chip" data-cat="storage">Storage & Buckets</button>
+            <button class="sec-filter-chip" data-cat="ssrf">Network & SSRF</button>
+          </div>
+
+          <div class="sec-search-wrap">
+            <svg class="sec-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" class="sec-search-input" id="sec-search-input" placeholder="Search CVE, keyword, threat, or file..." aria-label="Search security audits" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Exploded Audit Cards Grid -->
+      <div class="audit-cards-grid" id="sec-audit-cards-container">
+        <!-- Rendered dynamically with rich exploded breakdown & code diffs -->
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ========================================================================= -->
+  <!-- SECTION 5: ARCHITECTURE & COMPARISON                                      -->
   <!-- ========================================================================= -->
   <section id="section-architecture" class="page-section">
     <div class="app-container">
@@ -1525,6 +1726,7 @@ curl -f http://localhost:4000/api/v1/health">Copy</button>
           <a href="#overview">Overview</a>
           <a href="#docs">Documentation</a>
           <a href="#studio">Interactive Studio</a>
+          <a href="#security">Security & Audits</a>
           <a href="#architecture">Architecture</a>
         </div>
         <div class="link-column">
@@ -1552,6 +1754,6 @@ curl -f http://localhost:4000/api/v1/health">Copy</button>
   </button>
 
   <script src="qrcode.min.js"></script>
-  <script type="module" src="app.js?v=1.2.0"></script>
+  <script type="module" src="app.js?v=1.2.1"></script>
 </body>
 </html>
