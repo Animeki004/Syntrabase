@@ -1,6 +1,6 @@
 {
   "name": "@syntrabase/schemas",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "description": "Zod runtime validation schemas for the Syntrabase platform",
   "main": "dist/index.js",
