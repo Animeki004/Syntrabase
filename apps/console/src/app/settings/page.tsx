@@ -56,7 +56,7 @@ function formatBytes(bytes: number) {
 
 export default function SettingsPage() {
   const { addToast } = useToast();
-  const { activeProject } = useProject();
+  const { activeProject, deleteProject } = useProject();
   const projectId = activeProject.id;
   const [keys, setKeys] = useState<SecretKeyRecord[]>(INITIAL_KEYS);
   const [publishableKey, setPublishableKey] = useState<string>('');
@@ -77,6 +77,33 @@ export default function SettingsPage() {
   const [revokingKey, setRevokingKey] = useState<SecretKeyRecord | null>(null);
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
+  // Project Deletion State
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmationInput, setDeleteConfirmationInput] = useState('');
+  const [isDeletingProject, setIsDeletingProject] = useState(false);
+
+  const isDefaultProject = activeProject.id === '00000000-0000-0000-0000-000000000020' || activeProject.slug === 'default-project' || activeProject.slug === 'default';
+
+  const handleDeleteProject = async () => {
+    if (!deleteConfirmationInput || deleteConfirmationInput.trim().toLowerCase() !== activeProject.name.trim().toLowerCase()) {
+      addToast(`Please type "${activeProject.name}" exactly to confirm deletion`, 'error');
+      return;
+    }
+    setIsDeletingProject(true);
+    try {
+      const ok = await deleteProject(activeProject.id, deleteConfirmationInput.trim());
+      if (ok) {
+        setShowDeleteModal(false);
+        setDeleteConfirmationInput('');
+        if (typeof window !== 'undefined') {
+          window.location.href = '/';
+        }
+      }
+    } finally {
+      setIsDeletingProject(false);
+    }
+  };
 
   const [copiedPublishable, setCopiedPublishable] = useState(false);
   const [copiedSecret, setCopiedSecret] = useState(false);
@@ -1258,20 +1285,110 @@ export default function SettingsPage() {
             <CardTitle style={{ color: 'var(--accent-rose)' }}>Danger Zone</CardTitle>
           </div>
         </CardHeader>
-        <CardContent style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-              Emergency Credential Invalidation
+        <CardContent style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', width: '100%' }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                Emergency Credential Invalidation
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                Immediately revoke all active user tokens and rotate internal signing secrets.
+              </div>
             </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              Immediately revoke all active user tokens and rotate internal signing secrets.
-            </div>
+            <Button variant="danger" onClick={() => setShowEmergencyModal(true)}>
+              Emergency Revoke All
+            </Button>
           </div>
-          <Button variant="danger" onClick={() => setShowEmergencyModal(true)}>
-            Emergency Revoke All
-          </Button>
+
+          <div style={{ height: '1px', width: '100%', background: 'rgba(239, 68, 68, 0.2)' }} />
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', width: '100%' }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--accent-rose)' }}>
+                Delete Project
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                {isDefaultProject
+                  ? 'The default platform cluster project is protected and cannot be deleted.'
+                  : 'Permanently destroy this project, its collections, databases, storage objects, and credentials.'}
+              </div>
+            </div>
+            <Button
+              variant="danger"
+              disabled={isDefaultProject}
+              onClick={() => setShowDeleteModal(true)}
+              icon={<Trash2 size={14} />}
+            >
+              Delete Project
+            </Button>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Delete Project Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          if (!isDeletingProject) {
+            setShowDeleteModal(false);
+            setDeleteConfirmationInput('');
+          }
+        }}
+        title={`Delete Project: ${activeProject.name}`}
+        size="md"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div
+            style={{
+              padding: '12px 14px',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid var(--accent-rose)',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '0.82rem',
+              color: '#f87171',
+              lineHeight: 1.5,
+            }}
+          >
+            <strong>Warning: This action is permanent and catastrophic.</strong>
+            <div style={{ marginTop: '4px' }}>
+              All documents, custom databases, uploaded storage files, active API keys, and email DNS records associated with <strong>{activeProject.name}</strong> will be immediately erased. This action cannot be reversed.
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+              To confirm, type <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-rose)', fontWeight: 700 }}>{activeProject.name}</span> below:
+            </label>
+            <Input
+              value={deleteConfirmationInput}
+              onChange={(e) => setDeleteConfirmationInput(e.target.value)}
+              placeholder={activeProject.name}
+              autoFocus
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
+            <Button
+              variant="secondary"
+              disabled={isDeletingProject}
+              onClick={() => {
+                setShowDeleteModal(false);
+                setDeleteConfirmationInput('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              disabled={isDeletingProject || deleteConfirmationInput.trim().toLowerCase() !== activeProject.name.trim().toLowerCase()}
+              onClick={handleDeleteProject}
+              icon={<Trash2 size={14} />}
+            >
+              {isDeletingProject ? 'Erasing Project...' : 'I Understand, Delete Project'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Generate Key Modal */}
       <Modal

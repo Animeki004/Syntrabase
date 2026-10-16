@@ -122,7 +122,11 @@ export class ProjectService {
    * Authoritatively verifies that the requesting developer owns the project,
    * is an organization member, or is a platform Super Admin.
    */
-  public static async assertProjectAccess(developerId: string, projectId: string): Promise<void> {
+  public static async assertProjectAccess(
+    developerId: string,
+    projectId: string,
+    allowSuspended: boolean = false
+  ): Promise<void> {
     if (!developerId) {
       const err: any = new Error('UNAUTHORIZED: Developer authentication required');
       err.statusCode = 401;
@@ -135,8 +139,8 @@ export class ProjectService {
     }
 
     const resolvedProjectId = await this.resolveProjectId(projectId);
-    const res = await query(
-      `SELECT p.id 
+    const res = await query<{ id: string; status: string }>(
+      `SELECT p.id, p.status 
        FROM projects p
        JOIN organizations o ON o.id = p.organization_id
        LEFT JOIN organization_members om ON om.organization_id = o.id
@@ -149,6 +153,40 @@ export class ProjectService {
       const err: any = new Error('FORBIDDEN: You do not have permission to access or modify this project');
       err.statusCode = 403;
       throw err;
+    }
+
+    const projectStatus = res.rows[0]?.status;
+    if (!allowSuspended && projectStatus === 'suspended') {
+      const err: any = new Error('PROJECT_SUSPENDED: This project has been suspended by administration. All operations, database read/writes, and services are locked.');
+      err.statusCode = 403;
+      err.code = 'PROJECT_SUSPENDED';
+      throw err;
+    }
+  }
+
+  /**
+   * Chokes out any API traffic, database CRUD, storage, or operational calls if the project is suspended.
+   */
+  public static async assertProjectNotSuspended(projectId: string): Promise<void> {
+    if (!projectId) return;
+    const resolvedProjectId = await this.resolveProjectId(projectId);
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedProjectId);
+    try {
+      const sql = isUuid
+        ? 'SELECT status FROM projects WHERE id = $1'
+        : 'SELECT status FROM projects WHERE slug = $1';
+      const res = await query<{ status: string }>(sql, [resolvedProjectId]);
+      if (res.rows.length > 0 && res.rows[0].status === 'suspended') {
+        const err: any = new Error('PROJECT_SUSPENDED: This project has been suspended by administration. All operations, database read/writes, authentication, storage, and services are locked.');
+        err.statusCode = 403;
+        err.code = 'PROJECT_SUSPENDED';
+        throw err;
+      }
+    } catch (err: any) {
+      if (err.code === 'PROJECT_SUSPENDED') {
+        throw err;
+      }
+      // Non-persisted mock project or offline DB test -> safe fallback
     }
   }
 
@@ -347,5 +385,108 @@ export class ProjectService {
         maxDatabases: 1,
       };
     });
+  }
+
+  /**
+   * Securely and irreversibly deletes a project with cascading teardown of all
+   * associated databases, environments, credentials, storage, and email outbox items.
+   * Requires confirmation of project name to prevent accidental deletion.
+   */
+  public static async deleteProject(
+    developerId: string,
+    projectId: string,
+    confirmationName: string
+  ): Promise<{ success: boolean; deletedProjectId: string }> {
+    if (!developerId) {
+      const err: any = new Error('UNAUTHORIZED: Developer authentication required');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    const resolvedProjectId = await this.resolveProjectId(projectId);
+
+    // Protected default system project check
+    if (
+      resolvedProjectId === '00000000-0000-0000-0000-000000000020' ||
+      projectId === 'default-project' ||
+      projectId === 'default'
+    ) {
+      const err: any = new Error('FORBIDDEN: The default platform project cannot be deleted');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // Verify ownership
+    const { AuthService } = await import('./auth.service.js');
+    const isSuper = await AuthService.isSuperAdmin(developerId);
+
+    const projRes = await query<{ id: string; name: string; slug: string }>(
+      `SELECT p.id, p.name, p.slug 
+       FROM projects p
+       JOIN organizations o ON o.id = p.organization_id
+       WHERE p.id = $1 AND ($2 = TRUE OR o.owner_id = $3)
+       LIMIT 1`,
+      [resolvedProjectId, isSuper, developerId]
+    );
+
+    if (projRes.rows.length === 0) {
+      const err: any = new Error('FORBIDDEN: You do not have owner authority to delete this project');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const project = projRes.rows[0];
+    const cleanConfirm = String(confirmationName || '').trim().toLowerCase();
+    if (cleanConfirm !== project.name.trim().toLowerCase() && cleanConfirm !== project.slug.trim().toLowerCase()) {
+      const err: any = new Error(`INVALID_CONFIRMATION: Provided confirmation "${confirmationName}" does not match project name "${project.name}"`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Execute atomic cascading deletion
+    await withTransaction(async (client) => {
+      // 1. Delete email outbox, logs, configurations, and identities
+      await client.query('DELETE FROM email_action_tokens WHERE project_id = $1', [project.id]);
+      await client.query('DELETE FROM email_delivery_logs WHERE project_id = $1', [project.id]);
+      await client.query('DELETE FROM email_outbox_queue WHERE project_id = $1', [project.id]);
+      await client.query('DELETE FROM authorized_sender_identities WHERE project_id = $1', [project.id]);
+      await client.query('DELETE FROM custom_sender_domains WHERE project_id = $1', [project.id]);
+      await client.query('DELETE FROM email_provider_accounts WHERE project_id = $1', [project.id]);
+      await client.query('DELETE FROM email_provider_configs WHERE project_id = $1', [project.id]);
+
+      // 2. Delete contact submissions and messages
+      await client.query('DELETE FROM contact_submissions WHERE project_id = $1', [project.id]);
+
+      // 3. Delete auth configs, logs, sessions, passkeys
+      await client.query('DELETE FROM project_auth_configs WHERE project_id = $1', [project.id]);
+      await client.query('DELETE FROM auth_activity_logs WHERE project_id = $1', [project.id]);
+      await client.query('DELETE FROM mfa_challenge_sessions WHERE project_id = $1', [project.id]);
+      await client.query('DELETE FROM app_user_passkeys WHERE project_id = $1', [project.id]);
+      await client.query('DELETE FROM app_user_identities WHERE project_id = $1', [project.id]);
+
+      // 4. Delete function executions & triggers
+      await client.query('DELETE FROM cloud_function_executions WHERE project_id = $1', [project.id]);
+      await client.query('DELETE FROM cloud_function_triggers WHERE project_id = $1', [project.id]);
+
+      // 5. Delete composite indexes & security events
+      await client.query('DELETE FROM composite_indexes WHERE project_id = $1', [project.id]);
+      await client.query('DELETE FROM security_events WHERE project_id = $1', [project.id]);
+      await client.query('DELETE FROM internal_notifications WHERE project_id = $1', [project.id]);
+
+      // 6. Delete project itself (PostgreSQL foreign keys cascade to environments, databases, documents, credentials, users, storage, etc.)
+      await client.query('DELETE FROM projects WHERE id = $1', [project.id]);
+    });
+
+    const { AuditService } = await import('./audit.service.js');
+    await AuditService.log({
+      actorId: developerId,
+      actorType: 'developer',
+      action: 'project.deleted',
+      targetResource: `project:${project.id}`,
+      projectId: project.id,
+      payload: { projectName: project.name, slug: project.slug },
+    });
+
+    return { success: true, deletedProjectId: project.id };
   }
 }

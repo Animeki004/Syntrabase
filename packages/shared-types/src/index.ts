@@ -417,6 +417,10 @@ export interface PlanLimits {
   maxRealtimeConnections: number;
   maxProjects?: number;
   maxDatabases?: number;
+  maxEmailsPerDay?: number;
+  maxEmailsPerMonth?: number;
+  maxCustomDomains?: number;
+  maxDedicatedAccounts?: number;
 }
 
 export interface Plan {
@@ -432,6 +436,10 @@ export interface Plan {
   maxRealtimeConnections: number;
   maxProjects?: number;
   maxDatabases?: number;
+  maxEmailsPerDay?: number;
+  maxEmailsPerMonth?: number;
+  maxCustomDomains?: number;
+  maxDedicatedAccounts?: number;
   capabilities: PlanCapabilities;
   createdAt: string;
   updatedAt: string;
@@ -900,6 +908,11 @@ export interface EmailPlatformPolicy {
   globalSendingEnabled: boolean;
   emergencyShutdown: boolean;
   dailyProjectCap: number;
+  monthlyProjectCap?: number;
+  burstRateLimitPerMinute?: number;
+  enforcementAction?: 'throttle_and_queue' | 'reject';
+  allowedDomainsPerProject?: number;
+  requireEmailVerification?: boolean;
   maxRetryAttempts: number;
   defaultProviderType: EmailProviderType;
   updatedAt: string;

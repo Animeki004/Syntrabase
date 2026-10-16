@@ -59,15 +59,15 @@ export const realtimeRoutes: FastifyPluginAsync = async (server: FastifyInstance
           if (client.tokenPayload?.isPlatformAdmin) {
             // Super Admin permitted
           } else if (client.projectId === 'platform') {
-            // Console developer: verify ownership
+            // Console developer: verify ownership and status
             try {
               const { ProjectService } = await import('../services/project.service.js');
               await ProjectService.assertProjectAccess(client.userId!, targetProjectId);
-            } catch {
+            } catch (err: any) {
               ws.send(JSON.stringify({
                 type: 'error',
                 subscriptionId,
-                message: 'FORBIDDEN: Cross-project developer subscription denied',
+                message: (err as Error).message || 'FORBIDDEN: Cross-project developer subscription denied',
               }));
               return;
             }
@@ -78,6 +78,21 @@ export const realtimeRoutes: FastifyPluginAsync = async (server: FastifyInstance
               message: 'FORBIDDEN: Cross-project subscription denied — client token belongs to another project',
             }));
             return;
+          }
+
+          // Choke out realtime subscriptions if project is suspended
+          if (!client.tokenPayload?.isPlatformAdmin) {
+            try {
+              const { ProjectService } = await import('../services/project.service.js');
+              await ProjectService.assertProjectNotSuspended(targetProjectId);
+            } catch (err: any) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                subscriptionId,
+                message: (err as Error).message,
+              }));
+              return;
+            }
           }
 
           // Evaluate security rules for subscription

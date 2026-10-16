@@ -57,7 +57,7 @@ function getFileIcon(type: string) {
 
 export default function StoragePage() {
   const { addToast } = useToast();
-  const { activeProject } = useProject();
+  const { activeProject, isSuspended } = useProject();
   const projectId = activeProject?.id || '';
   const [files, setFiles] = useState<StorageItem[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(true);
@@ -249,6 +249,34 @@ export default function StoragePage() {
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {isSuspended && (
+        <div
+          style={{
+            padding: '14px 18px',
+            backgroundColor: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            borderRadius: '8px',
+            color: 'var(--danger)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Lock size={18} />
+            <span>
+              STORAGE LOCKDOWN: Project &ldquo;{activeProject?.name}&rdquo; is suspended. Object uploads, downloads, and signed URLs are locked.
+            </span>
+          </div>
+          <span style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: '4px', background: 'var(--danger)', color: '#fff' }}>
+            LOCKED OUT
+          </span>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
         <div>

@@ -1188,14 +1188,19 @@ export class AuthService {
    * Enforces that the caller has authorized access to a target project.
    * Supports either API secret key (x-api-key) or developer session Bearer token.
    */
-  public static async requireProjectAccess(req: any, projectId: string): Promise<{ callerId: string; type: 'developer' | 'apikey' }> {
+  public static async requireProjectAccess(
+    req: any,
+    projectId: string,
+    allowSuspended: boolean = false
+  ): Promise<{ callerId: string; type: 'developer' | 'apikey' }> {
     const apiKey = req.headers?.['x-api-key'] as string;
     if (apiKey?.startsWith('sk_live_')) {
       const { CredentialService } = await import('./credential.service.js');
       const validSecret = await CredentialService.validateCredential(apiKey, req.headers?.origin as string);
       if (!validSecret.valid) {
-        const err: any = new Error('UNAUTHORIZED: Invalid or revoked API secret key');
-        err.statusCode = 401;
+        const err: any = new Error(validSecret.error || 'UNAUTHORIZED: Invalid or revoked API secret key');
+        err.statusCode = validSecret.error?.includes('PROJECT_SUSPENDED') ? 403 : 401;
+        err.code = validSecret.error?.includes('PROJECT_SUSPENDED') ? 'PROJECT_SUSPENDED' : 'UNAUTHORIZED';
         throw err;
       }
       const { ProjectService } = await import('./project.service.js');
@@ -1223,13 +1228,16 @@ export class AuthService {
         // 2. Developer Console Session: Strictly verify active session and assert project ownership
         if (payload.projectId === 'platform') {
           const devId = await this.requireDeveloper(req);
-          await ProjectService.assertProjectAccess(devId, resolvedId);
+          await ProjectService.assertProjectAccess(devId, resolvedId, allowSuspended);
           return { callerId: devId, type: 'developer' };
         }
 
         // 3. Application End-User Token: Disallow administrative project access unless explicit admin custom claim
         if (payload.projectId === resolvedId || payload.projectId === projectId) {
           if (payload.claims && (payload.claims.admin === true || payload.claims.role === 'admin')) {
+            if (!allowSuspended) {
+              await ProjectService.assertProjectNotSuspended(resolvedId);
+            }
             return { callerId: payload.uid, type: 'developer' };
           }
           const err: any = new Error('FORBIDDEN: Administrative project access denied for application end-users');
@@ -1245,6 +1253,7 @@ export class AuthService {
           err.message?.includes('FORBIDDEN') ||
           err.message?.includes('UNAUTHORIZED') ||
           err.message?.includes('ACCOUNT_SUSPENDED') ||
+          err.message?.includes('PROJECT_SUSPENDED') ||
           err.message?.includes('SESSION_REVOKED')
         ) {
           throw err;
@@ -1255,7 +1264,7 @@ export class AuthService {
 
     const devId = await this.requireDeveloper(req);
     const { ProjectService } = await import('./project.service.js');
-    await ProjectService.assertProjectAccess(devId, projectId);
+    await ProjectService.assertProjectAccess(devId, projectId, allowSuspended);
     return { callerId: devId, type: 'developer' };
   }
 

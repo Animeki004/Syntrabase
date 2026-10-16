@@ -42,12 +42,19 @@ const DEFAULT_FALLBACK_PLAN: Plan = {
   maxRealtimeConnections: 25,
   maxProjects: 3,
   maxDatabases: 1,
+  maxEmailsPerDay: 100,
+  maxEmailsPerMonth: 3000,
+  maxCustomDomains: 1,
+  maxDedicatedAccounts: 0,
   capabilities: {
     'database.documents': true,
     'database.realtime': true,
     'storage.objects': false,
     'auth.email': true,
     'auth.anonymous': true,
+    'email.transactional': true,
+    'email.custom_domains': true,
+    'email.dedicated_brevo': false,
   },
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
@@ -72,13 +79,20 @@ export class PlanService {
         max_realtime_connections: number | null;
         max_projects: number | null;
         max_databases: number | null;
+        max_emails_per_day: number | null;
+        max_emails_per_month: number | null;
+        max_custom_domains: number | null;
+        max_dedicated_accounts: number | null;
         capabilities: PlanCapabilities | null;
       }>(
         `SELECT p.id as project_id, p.plan_id, p.plan_overrides,
                 pl.name as plan_name, pl.slug as plan_slug,
                 pl.max_db_storage_bytes, pl.max_doc_size_bytes, pl.max_api_requests_per_window,
                 pl.max_file_storage_bytes, pl.max_realtime_connections,
-                pl.max_projects, pl.max_databases, pl.capabilities
+                pl.max_projects, pl.max_databases,
+                pl.max_emails_per_day, pl.max_emails_per_month,
+                pl.max_custom_domains, pl.max_dedicated_accounts,
+                pl.capabilities
          FROM projects p
          LEFT JOIN plans pl ON pl.id = p.plan_id
          WHERE p.id::text = $1 OR p.slug = $1`,
@@ -102,6 +116,10 @@ export class PlanService {
         maxRealtimeConnections: row?.max_realtime_connections || DEFAULT_FALLBACK_PLAN.maxRealtimeConnections,
         maxProjects: row?.max_projects ?? DEFAULT_FALLBACK_PLAN.maxProjects ?? 3,
         maxDatabases: row?.max_databases ?? DEFAULT_FALLBACK_PLAN.maxDatabases ?? 1,
+        maxEmailsPerDay: row?.max_emails_per_day ?? DEFAULT_FALLBACK_PLAN.maxEmailsPerDay ?? 100,
+        maxEmailsPerMonth: row?.max_emails_per_month ?? DEFAULT_FALLBACK_PLAN.maxEmailsPerMonth ?? 3000,
+        maxCustomDomains: row?.max_custom_domains ?? DEFAULT_FALLBACK_PLAN.maxCustomDomains ?? 1,
+        maxDedicatedAccounts: row?.max_dedicated_accounts ?? DEFAULT_FALLBACK_PLAN.maxDedicatedAccounts ?? 0,
       };
 
       const overrides = row?.plan_overrides || {};
@@ -371,6 +389,10 @@ export class PlanService {
         max_realtime_connections: number;
         max_projects: number;
         max_databases: number;
+        max_emails_per_day?: number;
+        max_emails_per_month?: number;
+        max_custom_domains?: number;
+        max_dedicated_accounts?: number;
         capabilities: PlanCapabilities;
         created_at: string;
         updated_at: string;
@@ -396,6 +418,10 @@ export class PlanService {
         maxRealtimeConnections: row.max_realtime_connections,
         maxProjects: row.max_projects ?? 3,
         maxDatabases: row.max_databases ?? 1,
+        maxEmailsPerDay: row.max_emails_per_day ?? 100,
+        maxEmailsPerMonth: row.max_emails_per_month ?? 3000,
+        maxCustomDomains: row.max_custom_domains ?? 1,
+        maxDedicatedAccounts: row.max_dedicated_accounts ?? 0,
         capabilities: row.capabilities,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -421,6 +447,10 @@ export class PlanService {
     maxRealtimeConnections?: number;
     maxProjects?: number;
     maxDatabases?: number;
+    maxEmailsPerDay?: number;
+    maxEmailsPerMonth?: number;
+    maxCustomDomains?: number;
+    maxDedicatedAccounts?: number;
     capabilities: PlanCapabilities;
   }): Promise<Plan> {
     if (data.isDefault) {
@@ -431,14 +461,17 @@ export class PlanService {
       `INSERT INTO plans (
         name, slug, description, is_default, max_db_storage_bytes, max_doc_size_bytes,
         max_api_requests_per_window, max_file_storage_bytes, max_realtime_connections,
-        max_projects, max_databases, capabilities
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        max_projects, max_databases, max_emails_per_day, max_emails_per_month,
+        max_custom_domains, max_dedicated_accounts, capabilities
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING id, name, slug, description, is_default as "isDefault",
                 max_db_storage_bytes as "maxDbStorageBytes", max_doc_size_bytes as "maxDocSizeBytes",
                 max_api_requests_per_window as "maxApiRequestsPerWindow",
                 max_file_storage_bytes as "maxFileStorageBytes",
                 max_realtime_connections as "maxRealtimeConnections",
                 max_projects as "maxProjects", max_databases as "maxDatabases",
+                max_emails_per_day as "maxEmailsPerDay", max_emails_per_month as "maxEmailsPerMonth",
+                max_custom_domains as "maxCustomDomains", max_dedicated_accounts as "maxDedicatedAccounts",
                 capabilities, created_at as "createdAt", updated_at as "updatedAt"`,
       [
         data.name,
@@ -452,6 +485,10 @@ export class PlanService {
         data.maxRealtimeConnections || 25,
         data.maxProjects || 3,
         data.maxDatabases || 1,
+        data.maxEmailsPerDay || 100,
+        data.maxEmailsPerMonth || 3000,
+        data.maxCustomDomains ?? 1,
+        data.maxDedicatedAccounts ?? 0,
         JSON.stringify(data.capabilities),
       ]
     );
@@ -499,6 +536,22 @@ export class PlanService {
       fields.push(`max_databases = $${idx++}`);
       values.push(updates.maxDatabases);
     }
+    if (updates.maxEmailsPerDay !== undefined) {
+      fields.push(`max_emails_per_day = $${idx++}`);
+      values.push(updates.maxEmailsPerDay);
+    }
+    if (updates.maxEmailsPerMonth !== undefined) {
+      fields.push(`max_emails_per_month = $${idx++}`);
+      values.push(updates.maxEmailsPerMonth);
+    }
+    if (updates.maxCustomDomains !== undefined) {
+      fields.push(`max_custom_domains = $${idx++}`);
+      values.push(updates.maxCustomDomains);
+    }
+    if (updates.maxDedicatedAccounts !== undefined) {
+      fields.push(`max_dedicated_accounts = $${idx++}`);
+      values.push(updates.maxDedicatedAccounts);
+    }
     if (updates.capabilities !== undefined) {
       fields.push(`capabilities = $${idx++}`);
       values.push(JSON.stringify(updates.capabilities));
@@ -519,6 +572,8 @@ export class PlanService {
                  max_file_storage_bytes as "maxFileStorageBytes",
                  max_realtime_connections as "maxRealtimeConnections",
                  max_projects as "maxProjects", max_databases as "maxDatabases",
+                 max_emails_per_day as "maxEmailsPerDay", max_emails_per_month as "maxEmailsPerMonth",
+                 max_custom_domains as "maxCustomDomains", max_dedicated_accounts as "maxDedicatedAccounts",
                  capabilities, created_at as "createdAt", updated_at as "updatedAt"`,
       values
     );

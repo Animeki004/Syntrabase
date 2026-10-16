@@ -100,11 +100,22 @@ export class CredentialService {
       expires_at: string | null;
       last_used_at: string | null;
       created_at: string;
-    }>('SELECT * FROM api_credentials WHERE key_identifier = $1', [keyIdentifier]);
+      project_status?: string;
+    }>(
+      `SELECT c.*, p.status as project_status
+       FROM api_credentials c
+       LEFT JOIN projects p ON p.id = c.project_id
+       WHERE c.key_identifier = $1`,
+      [keyIdentifier]
+    );
 
     const cred = res.rows[0];
     if (!cred || cred.revoked) {
       return { valid: false, error: 'Invalid or revoked API key' };
+    }
+
+    if (cred.project_status === 'suspended') {
+      return { valid: false, error: 'PROJECT_SUSPENDED: This project has been suspended by platform administration' };
     }
 
     if (cred.expires_at && new Date(cred.expires_at) < new Date()) {

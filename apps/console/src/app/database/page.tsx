@@ -94,7 +94,7 @@ interface FieldBuilderRow {
 
 export default function FirebaseStudioReplicaPage() {
   const { addToast } = useToast();
-  const { activeProject } = useProject();
+  const { activeProject, isSuspended } = useProject();
   const projectId = activeProject.id;
 
   // Real Database Management State
@@ -1435,6 +1435,33 @@ export default function FirebaseStudioReplicaPage() {
 
   return (
     <div className="firebase-studio-root animate-fade-in">
+      {isSuspended && (
+        <div
+          style={{
+            padding: '12px 18px',
+            backgroundColor: 'rgba(239, 68, 68, 0.15)',
+            borderBottom: '1px solid rgba(239, 68, 68, 0.4)',
+            color: 'var(--danger)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Lock size={18} />
+            <span>
+              DATABASE LOCKDOWN: Project &ldquo;{activeProject.name}&rdquo; is suspended. All collection queries, document reads, document writes, and mutations are rejected with 403 Forbidden.
+            </span>
+          </div>
+          <span style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: '4px', background: 'var(--danger)', color: '#fff' }}>
+            SUSPENDED
+          </span>
+        </div>
+      )}
+
       {/* =======================================================================
           1. HEADER SECTION (CLEAN, PURPOSE-BUILT, NO GOOGLE MARKETING CLUTTER)
           ======================================================================= */}

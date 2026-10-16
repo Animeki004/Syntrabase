@@ -57,7 +57,7 @@ import {
 
 export default function SyntrabaseAuthPage() {
   const { addToast } = useToast();
-  const { activeProject } = useProject();
+  const { activeProject, isSuspended } = useProject();
   const projectId = activeProject.id;
 
   // Main Tabs
@@ -798,6 +798,34 @@ export default function SyntrabaseAuthPage() {
 
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      {isSuspended && (
+        <div
+          style={{
+            padding: '14px 18px',
+            backgroundColor: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            borderRadius: '8px',
+            color: 'var(--danger)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Lock size={18} />
+            <span>
+              AUTHENTICATION LOCKDOWN: Project &ldquo;{activeProject.name}&rdquo; is suspended. All user sign-ups, sign-ins, token issuance, and password resets are locked down.
+            </span>
+          </div>
+          <span style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: '4px', background: 'var(--danger)', color: '#fff' }}>
+            LOCKED OUT
+          </span>
+        </div>
+      )}
+
       {/* ========================================================================= */}
       {/* 1. TOP HEADER & NAVIGATION TABS                                            */}
       {/* ========================================================================= */}

@@ -33,12 +33,26 @@ import { EmailTemplateType, AuthProviderId } from '@syntrabase/shared-types';
 
 
 export const authRoutes: FastifyPluginAsync = async (server: FastifyInstance) => {
-  // Canonicalize any :projectId parameter to a valid UUID before hitting database handlers
+  // Canonicalize any :projectId parameter to a valid UUID and enforce suspension choke-out
   server.addHook('preHandler', async (req) => {
     if (req.params && typeof req.params === 'object' && 'projectId' in req.params) {
       const p = req.params as { projectId?: string };
       if (p.projectId) {
         p.projectId = await ProjectService.resolveProjectId(p.projectId);
+        
+        // Choke out end-user app authentication operations if project is suspended
+        const url = req.url || '';
+        if (
+          url.includes('/auth/register') ||
+          url.includes('/auth/login') ||
+          url.includes('/auth/anonymous') ||
+          url.includes('/auth/verify-email') ||
+          url.includes('/auth/resend-verification') ||
+          url.includes('/auth/forgot-password') ||
+          url.includes('/auth/reset-password')
+        ) {
+          await ProjectService.assertProjectNotSuspended(p.projectId);
+        }
       }
     }
   });

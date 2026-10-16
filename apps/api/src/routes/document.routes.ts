@@ -46,7 +46,9 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     if (apiKey?.startsWith('sk_live_')) {
       const validSecret = await CredentialService.validateCredential(apiKey, req.headers.origin as string);
       if (!validSecret.valid) {
-        throw new Error('UNAUTHORIZED: Invalid or revoked API secret key');
+        const err: any = new Error(validSecret.error || 'UNAUTHORIZED: Invalid or revoked API secret key');
+        err.statusCode = validSecret.error?.includes('PROJECT_SUSPENDED') ? 403 : 401;
+        throw err;
       }
       if (validSecret.credential?.projectId !== projectId) {
         throw new Error('FORBIDDEN: Cross-project access denied — secret key belongs to another project');
@@ -73,12 +75,15 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
           }
         }
       } catch (err: any) {
-        if (err.message.includes('FORBIDDEN')) {
+        if (err.message.includes('FORBIDDEN') || err.message.includes('PROJECT_SUSPENDED')) {
           throw err;
         }
         // Unauthenticated or invalid token
       }
     }
+
+    // Suspension choke-out: If project is suspended, no operational database CRUD is permitted
+    await ProjectService.assertProjectNotSuspended(projectId);
 
     // Fetch active rules for the project
     let rulesSource: string | null = null;
@@ -206,8 +211,13 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     // 1. Evaluate read rule & cross-project isolation first
     try {
       await checkPermission(req, projectId, docPath, 'get');
-    } catch (err) {
-      return reply.status(403).send({ error: (err as Error).message });
+    } catch (err: any) {
+      const isSuspended = err?.code === 'PROJECT_SUSPENDED' || err?.message?.includes('PROJECT_SUSPENDED');
+      return reply.status(403).send({
+        error: isSuspended ? 'PROJECT_SUSPENDED' : (err as Error).message,
+        message: (err as Error).message,
+        code: isSuspended ? 'PROJECT_SUSPENDED' : (err?.code || 'FORBIDDEN'),
+      });
     }
 
     let doc = null;
@@ -261,8 +271,13 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
 
     try {
       await checkPermission(req, projectId, docPath, method, body.data, existing?.data);
-    } catch (err) {
-      return reply.status(403).send({ error: (err as Error).message });
+    } catch (err: any) {
+      const isSuspended = err?.code === 'PROJECT_SUSPENDED' || err?.message?.includes('PROJECT_SUSPENDED');
+      return reply.status(403).send({
+        error: isSuspended ? 'PROJECT_SUSPENDED' : (err as Error).message,
+        message: (err as Error).message,
+        code: isSuspended ? 'PROJECT_SUSPENDED' : (err?.code || 'FORBIDDEN'),
+      });
     }
 
     let savedDoc: any = { id: documentId, path: docPath, data: body.data, version: 1 };
@@ -313,8 +328,13 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
 
     try {
       await checkPermission(req, projectId, docPath, 'update', body.data, existing?.data);
-    } catch (err) {
-      return reply.status(403).send({ error: (err as Error).message });
+    } catch (err: any) {
+      const isSuspended = err?.code === 'PROJECT_SUSPENDED' || err?.message?.includes('PROJECT_SUSPENDED');
+      return reply.status(403).send({
+        error: isSuspended ? 'PROJECT_SUSPENDED' : (err as Error).message,
+        message: (err as Error).message,
+        code: isSuspended ? 'PROJECT_SUSPENDED' : (err?.code || 'FORBIDDEN'),
+      });
     }
 
     let updatedDoc: any = { id: documentId, path: docPath, data: body.data, version: 2 };
@@ -348,8 +368,13 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
 
     try {
       await checkPermission(req, projectId, docPath, 'delete', undefined, existing?.data);
-    } catch (err) {
-      return reply.status(403).send({ error: (err as Error).message });
+    } catch (err: any) {
+      const isSuspended = err?.code === 'PROJECT_SUSPENDED' || err?.message?.includes('PROJECT_SUSPENDED');
+      return reply.status(403).send({
+        error: isSuspended ? 'PROJECT_SUSPENDED' : (err as Error).message,
+        message: (err as Error).message,
+        code: isSuspended ? 'PROJECT_SUSPENDED' : (err?.code || 'FORBIDDEN'),
+      });
     }
 
     try {
@@ -393,8 +418,13 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
 
     try {
       await checkPermission(req, projectId, `/${body.collectionPath}`, 'list');
-    } catch (err) {
-      return reply.status(403).send({ error: (err as Error).message });
+    } catch (err: any) {
+      const isSuspended = err?.code === 'PROJECT_SUSPENDED' || err?.message?.includes('PROJECT_SUSPENDED');
+      return reply.status(403).send({
+        error: isSuspended ? 'PROJECT_SUSPENDED' : (err as Error).message,
+        message: (err as Error).message,
+        code: isSuspended ? 'PROJECT_SUSPENDED' : (err?.code || 'FORBIDDEN'),
+      });
     }
 
     const docs = await DocumentService.queryDocs(

@@ -23,7 +23,8 @@ import {
   ChevronsUpDown,
   Plus,
   Mail,
-  MessageSquare
+  MessageSquare,
+  ShieldAlert
 } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { ThemeProvider } from './ThemeContext';
@@ -692,6 +693,41 @@ function ShellInner({ children }: { children: React.ReactNode }) {
         </header>
 
         <main className={`page-body ${pathname === '/database' ? 'page-body-full-bleed' : ''}`}>
+          {activeProject?.status === 'suspended' && (
+            <div
+              style={{
+                backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                borderRadius: '8px',
+                padding: '16px 20px',
+                marginBottom: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '16px',
+                color: 'var(--danger)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <ShieldAlert size={24} style={{ flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.92rem' }}>
+                    PROJECT SUSPENDED — OPERATIONAL LOCKDOWN ACTIVE
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    This tenant has been administratively suspended. All database mutations, storage uploads, user authentication, and email routing are choked out and locked.
+                  </div>
+                </div>
+              </div>
+              <Link
+                href="/contact"
+                className="btn btn-danger"
+                style={{ fontSize: '0.78rem', whiteSpace: 'nowrap', padding: '6px 14px' }}
+              >
+                Contact Super Admin
+              </Link>
+            </div>
+          )}
           {children}
         </main>
       </div>

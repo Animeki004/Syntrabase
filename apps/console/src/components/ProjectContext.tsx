@@ -8,6 +8,7 @@ export interface ProjectItem {
   id: string;
   name: string;
   slug?: string;
+  status?: string;
   planId?: string;
   planName?: string;
   planSlug?: string;
@@ -20,11 +21,13 @@ export interface ProjectItem {
 interface ProjectContextType {
   projects: ProjectItem[];
   activeProject: ProjectItem;
+  isSuspended: boolean;
   maxProjects: number;
   currentProjectCount: number;
   isLoading: boolean;
   setActiveProjectId: (projectId: string) => void;
   createProject: (name: string, customId?: string) => Promise<boolean>;
+  deleteProject: (projectId: string, confirmationName: string) => Promise<boolean>;
   refreshProjects: () => Promise<void>;
 }
 
@@ -32,6 +35,7 @@ const DEFAULT_PROJECT: ProjectItem = {
   id: '00000000-0000-0000-0000-000000000020',
   name: 'Syntrabase Production Cluster',
   slug: 'default-project',
+  status: 'active',
   planName: 'Pro Tier',
   planSlug: 'pro',
 };
@@ -39,11 +43,13 @@ const DEFAULT_PROJECT: ProjectItem = {
 const ProjectContext = createContext<ProjectContextType>({
   projects: [DEFAULT_PROJECT],
   activeProject: DEFAULT_PROJECT,
+  isSuspended: false,
   maxProjects: 1,
   currentProjectCount: 1,
   isLoading: false,
   setActiveProjectId: () => {},
   createProject: async () => false,
+  deleteProject: async () => false,
   refreshProjects: async () => {},
 });
 
@@ -207,16 +213,55 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const deleteProject = async (projectId: string, confirmationName: string): Promise<boolean> => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      if (!token) {
+        addToast('Authentication required to delete a project', 'error');
+        return false;
+      }
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      };
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}`, {
+        method: 'DELETE',
+        headers,
+        body: JSON.stringify({
+          confirmationName: confirmationName.trim(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        addToast(data.message || 'Failed to delete project', 'error');
+        return false;
+      }
+
+      addToast('Project deleted successfully', 'success');
+      await fetchProjects();
+      return true;
+    } catch (err: any) {
+      addToast(err.message || 'Network error deleting project', 'error');
+      return false;
+    }
+  };
+
+  const isSuspended = activeProject?.status === 'suspended';
+
   return (
     <ProjectContext.Provider
       value={{
         projects,
         activeProject,
+        isSuspended,
         maxProjects,
         currentProjectCount,
         isLoading,
         setActiveProjectId,
         createProject,
+        deleteProject,
         refreshProjects: fetchProjects,
       }}
     >

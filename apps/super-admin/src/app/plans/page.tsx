@@ -20,7 +20,8 @@ import {
   CheckCircle2,
   Building2,
   Lock,
-  RefreshCw
+  RefreshCw,
+  Mail
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -44,13 +45,20 @@ interface PlanData {
   maxApiRequestsPerWindow: number;
   maxFileStorageBytes: number;
   maxRealtimeConnections: number;
+  maxEmailsPerDay?: number;
+  maxEmailsPerMonth?: number;
+  maxCustomDomains?: number;
+  maxDedicatedAccounts?: number;
   capabilities: {
     'database.documents': boolean;
     'database.realtime': boolean;
     'storage.objects': boolean;
     'auth.email': boolean;
     'auth.anonymous': boolean;
-    [key: string]: boolean;
+    'email.send'?: boolean;
+    'email.custom_domains'?: boolean;
+    'email.dedicated_provider'?: boolean;
+    [key: string]: boolean | undefined;
   };
   projectCount: number;
 }
@@ -97,6 +105,13 @@ export default function PlansManagementPage() {
   const [editMaxDbStorage, setEditMaxDbStorage] = useState(50); // in MB
   const [editStorageEnabled, setEditStorageEnabled] = useState(false);
   const [editMaxFileStorage, setEditMaxFileStorage] = useState(0); // in GB
+  const [editMaxEmailsPerDay, setEditMaxEmailsPerDay] = useState(100);
+  const [editMaxEmailsPerMonth, setEditMaxEmailsPerMonth] = useState(3000);
+  const [editMaxCustomDomains, setEditMaxCustomDomains] = useState(0);
+  const [editMaxDedicatedAccounts, setEditMaxDedicatedAccounts] = useState(0);
+  const [editEmailSendEnabled, setEditEmailSendEnabled] = useState(true);
+  const [editCustomDomainsEnabled, setEditCustomDomainsEnabled] = useState(false);
+  const [editDedicatedProviderEnabled, setEditDedicatedProviderEnabled] = useState(false);
 
   const getAdminToken = () => {
     if (typeof window !== 'undefined') {
@@ -163,8 +178,15 @@ export default function PlansManagementPage() {
     setEditMaxDatabases(plan.maxDatabases || (plan.slug === 'free' ? 1 : plan.slug === 'pro' ? 5 : 25));
     setEditMaxDocSize(Math.round(plan.maxDocSizeBytes / (1024 * 1024)));
     setEditMaxDbStorage(Math.round(plan.maxDbStorageBytes / (1024 * 1024)));
-    setEditStorageEnabled(plan.capabilities['storage.objects']);
+    setEditStorageEnabled(Boolean(plan.capabilities['storage.objects']));
     setEditMaxFileStorage(Math.round(plan.maxFileStorageBytes / (1024 * 1024 * 1024)));
+    setEditMaxEmailsPerDay(plan.maxEmailsPerDay ?? (plan.slug === 'free' ? 100 : plan.slug === 'pro' ? 1000 : 10000));
+    setEditMaxEmailsPerMonth(plan.maxEmailsPerMonth ?? (plan.slug === 'free' ? 3000 : plan.slug === 'pro' ? 30000 : 300000));
+    setEditMaxCustomDomains(plan.maxCustomDomains ?? (plan.slug === 'free' ? 0 : plan.slug === 'pro' ? 3 : 10));
+    setEditMaxDedicatedAccounts(plan.maxDedicatedAccounts ?? (plan.slug === 'free' ? 0 : plan.slug === 'pro' ? 1 : 5));
+    setEditEmailSendEnabled(plan.capabilities['email.send'] !== false);
+    setEditCustomDomainsEnabled(Boolean(plan.capabilities['email.custom_domains']));
+    setEditDedicatedProviderEnabled(Boolean(plan.capabilities['email.dedicated_provider']));
   };
 
   const handleSavePlan = async () => {
@@ -185,9 +207,16 @@ export default function PlansManagementPage() {
           maxDocSizeBytes: editMaxDocSize * 1024 * 1024,
           maxDbStorageBytes: editMaxDbStorage * 1024 * 1024,
           maxFileStorageBytes: editStorageEnabled ? editMaxFileStorage * 1024 * 1024 * 1024 : 0,
+          maxEmailsPerDay: editMaxEmailsPerDay,
+          maxEmailsPerMonth: editMaxEmailsPerMonth,
+          maxCustomDomains: editMaxCustomDomains,
+          maxDedicatedAccounts: editMaxDedicatedAccounts,
           capabilities: {
             ...editingPlan.capabilities,
             'storage.objects': editStorageEnabled,
+            'email.send': editEmailSendEnabled,
+            'email.custom_domains': editCustomDomainsEnabled,
+            'email.dedicated_provider': editDedicatedProviderEnabled,
           },
         }),
       });
@@ -462,6 +491,22 @@ export default function PlansManagementPage() {
                         <span style={{ color: 'var(--text-muted)' }}>Max Databases / Project:</span>
                         <strong style={{ color: 'var(--text-primary)' }}>{plan.maxDatabases ?? (plan.slug === 'free' ? 1 : plan.slug === 'pro' ? 5 : 25)} databases</strong>
                       </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Daily Outbound Emails:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>{plan.maxEmailsPerDay ?? (plan.slug === 'free' ? 100 : plan.slug === 'pro' ? 1000 : 10000)} emails/day</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Monthly Outbound Emails:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>{(plan.maxEmailsPerMonth ?? (plan.slug === 'free' ? 3000 : plan.slug === 'pro' ? 30000 : 300000)).toLocaleString()} emails/mo</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Custom DNS Domains:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>{plan.maxCustomDomains ?? (plan.slug === 'free' ? 0 : plan.slug === 'pro' ? 3 : 10)} domains</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Dedicated Brevo Accounts:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>{plan.maxDedicatedAccounts ?? (plan.slug === 'free' ? 0 : plan.slug === 'pro' ? 1 : 5)} accounts</strong>
+                      </div>
                     </div>
                   </div>
 
@@ -719,6 +764,115 @@ export default function PlansManagementPage() {
                   />
                 </div>
               )}
+            </div>
+
+            {/* Transactional Email Quotas & Capabilities */}
+            <div
+              style={{
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                padding: '14px',
+                background: 'var(--bg-secondary)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+              }}
+            >
+              <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Mail size={16} color="var(--accent-blue)" />
+                Transactional Email Quotas &amp; Delivery Policies
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                    Max Emails / Day
+                  </label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={editMaxEmailsPerDay}
+                    onChange={(e) => setEditMaxEmailsPerDay(parseInt(e.target.value, 10) || 0)}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                    Max Emails / Month
+                  </label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={editMaxEmailsPerMonth}
+                    onChange={(e) => setEditMaxEmailsPerMonth(parseInt(e.target.value, 10) || 0)}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                    Max Custom DNS Domains
+                  </label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={editMaxCustomDomains}
+                    onChange={(e) => setEditMaxCustomDomains(parseInt(e.target.value, 10) || 0)}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                    Max Dedicated Brevo Accounts
+                  </label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={editMaxDedicatedAccounts}
+                    onChange={(e) => setEditMaxDedicatedAccounts(parseInt(e.target.value, 10) || 0)}
+                  />
+                </div>
+              </div>
+
+              {/* Email Capability Toggles */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '8px', borderTop: '1px dashed var(--border-color)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    <code>email.send</code>: Allow outbound transactional email dispatch
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editEmailSendEnabled}
+                    onChange={(e) => setEditEmailSendEnabled(e.target.checked)}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    <code>email.custom_domains</code>: Allow custom DKIM/SPF domain verification
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editCustomDomainsEnabled}
+                    onChange={(e) => setEditCustomDomainsEnabled(e.target.checked)}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    <code>email.dedicated_provider</code>: Allow dedicated Brevo API keys rotation
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editDedicatedProviderEnabled}
+                    onChange={(e) => setEditDedicatedProviderEnabled(e.target.checked)}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                </div>
+              </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>

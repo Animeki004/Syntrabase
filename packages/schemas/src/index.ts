@@ -191,12 +191,19 @@ export const CreatePlanSchema = z.object({
   maxRealtimeConnections: z.number().int().min(1).default(25),
   maxProjects: z.number().int().min(1).default(3),
   maxDatabases: z.number().int().min(1).default(1),
+  maxEmailsPerDay: z.number().int().min(0).default(100),
+  maxEmailsPerMonth: z.number().int().min(0).default(3000),
+  maxCustomDomains: z.number().int().min(0).default(1),
+  maxDedicatedAccounts: z.number().int().min(0).default(0),
   capabilities: PlanCapabilitiesSchema.default({
     'database.documents': true,
     'database.realtime': true,
     'storage.objects': false,
     'auth.email': true,
     'auth.anonymous': true,
+    'email.transactional': true,
+    'email.custom_domains': true,
+    'email.dedicated_brevo': false,
   }),
 });
 

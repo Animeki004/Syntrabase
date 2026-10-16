@@ -49,6 +49,11 @@ let inMemoryPolicy: EmailPlatformPolicy = {
   globalSendingEnabled: true,
   emergencyShutdown: false,
   dailyProjectCap: 500,
+  monthlyProjectCap: 15000,
+  burstRateLimitPerMinute: 30,
+  enforcementAction: 'throttle_and_queue',
+  allowedDomainsPerProject: 5,
+  requireEmailVerification: false,
   maxRetryAttempts: 5,
   defaultProviderType: 'brevo',
   updatedAt: new Date().toISOString(),
@@ -747,6 +752,11 @@ export class EmailService {
         `SELECT id, global_sending_enabled as "globalSendingEnabled",
                 emergency_shutdown as "emergencyShutdown",
                 daily_project_cap as "dailyProjectCap",
+                monthly_project_cap as "monthlyProjectCap",
+                burst_rate_limit_per_minute as "burstRateLimitPerMinute",
+                enforcement_action as "enforcementAction",
+                allowed_domains_per_project as "allowedDomainsPerProject",
+                require_email_verification as "requireEmailVerification",
                 max_retry_attempts as "maxRetryAttempts",
                 default_provider_type as "defaultProviderType",
                 updated_at as "updatedAt"
@@ -764,12 +774,22 @@ export class EmailService {
       const updated: EmailPlatformPolicy = { ...current, ...updates, updatedAt: new Date().toISOString() };
       inMemoryPolicy = updated;
       await query(
-        `INSERT INTO email_platform_policy (id, global_sending_enabled, emergency_shutdown, daily_project_cap, max_retry_attempts, default_provider_type, updated_at)
-         VALUES (1, $1, $2, $3, $4, $5, NOW())
+        `INSERT INTO email_platform_policy (
+           id, global_sending_enabled, emergency_shutdown, daily_project_cap,
+           monthly_project_cap, burst_rate_limit_per_minute, enforcement_action,
+           allowed_domains_per_project, require_email_verification,
+           max_retry_attempts, default_provider_type, updated_at
+         )
+         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
          ON CONFLICT (id) DO UPDATE
          SET global_sending_enabled = EXCLUDED.global_sending_enabled,
              emergency_shutdown = EXCLUDED.emergency_shutdown,
              daily_project_cap = EXCLUDED.daily_project_cap,
+             monthly_project_cap = EXCLUDED.monthly_project_cap,
+             burst_rate_limit_per_minute = EXCLUDED.burst_rate_limit_per_minute,
+             enforcement_action = EXCLUDED.enforcement_action,
+             allowed_domains_per_project = EXCLUDED.allowed_domains_per_project,
+             require_email_verification = EXCLUDED.require_email_verification,
              max_retry_attempts = EXCLUDED.max_retry_attempts,
              default_provider_type = EXCLUDED.default_provider_type,
              updated_at = NOW()`,
@@ -777,6 +797,11 @@ export class EmailService {
           updated.globalSendingEnabled,
           updated.emergencyShutdown,
           updated.dailyProjectCap,
+          updated.monthlyProjectCap ?? 15000,
+          updated.burstRateLimitPerMinute ?? 30,
+          updated.enforcementAction ?? 'throttle_and_queue',
+          updated.allowedDomainsPerProject ?? 5,
+          updated.requireEmailVerification ?? false,
           updated.maxRetryAttempts,
           updated.defaultProviderType,
         ]
@@ -1446,6 +1471,30 @@ export class EmailService {
     }
     if (!policy.globalSendingEnabled) {
       throw new EmailDeliveryError('Global outbound email sending is currently disabled.');
+    }
+
+    // Check project status (lock out suspended projects)
+    const { ProjectService } = await import('./project.service.js');
+    const rawId = await ProjectService.resolveProjectId(params.projectId);
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId);
+    const projRes = await query<{ status: string }>(
+      isUuid ? 'SELECT status FROM projects WHERE id = $1' : 'SELECT status FROM projects WHERE slug = $1',
+      [rawId]
+    ).catch(() => ({ rows: [] }));
+    if (projRes.rows[0]?.status === 'suspended') {
+      throw new EmailDeliveryError('PROJECT_SUSPENDED: Outbound email delivery is paused because this project is suspended.');
+    }
+
+    // Check plan daily quota
+    const { PlanService } = await import('./plan.service.js');
+    const planContext = await PlanService.getProjectPlanContext(rawId);
+    const effectiveDailyCap = planContext.limits.maxEmailsPerDay ?? policy.dailyProjectCap ?? 100;
+
+    const todayLogs = await this.getDeliveryLogs(params.projectId, 1000, rawId);
+    const countToday = todayLogs.filter((l: any) => new Date(l.createdAt || 0).toDateString() === new Date().toDateString()).length;
+
+    if (countToday >= effectiveDailyCap && policy.enforcementAction === 'reject') {
+      throw new EmailDeliveryError(`DAILY_EMAIL_QUOTA_EXCEEDED: Project has reached its plan limit of ${effectiveDailyCap} emails today.`);
     }
 
     const id = crypto.randomUUID();

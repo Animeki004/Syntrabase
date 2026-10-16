@@ -18,6 +18,10 @@ const CreateProjectRequestSchema = z.object({
   slug: z.string().min(2).max(64).regex(/^[a-z0-9-]+$/).optional(),
 });
 
+const DeleteProjectRequestSchema = z.object({
+  confirmationName: z.string().min(1, 'Project name confirmation is required to delete this project'),
+});
+
 export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance) => {
   // Canonicalize any :projectId parameter to a valid UUID before hitting database handlers
   server.addHook('preHandler', async (req) => {
@@ -125,12 +129,12 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     return reply.status(201).send({ project });
   });
 
-  // 3. Get single project metadata (requires developer project access)
+  // 3. Get single project metadata (requires developer project access, allowSuspended so console can show lockdown)
   server.get('/api/v1/projects/:projectId', async (req, reply) => {
     const { projectId: rawId } = req.params as { projectId: string };
     const projectId = await ProjectService.resolveProjectId(rawId);
     if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
-      await AuthService.requireProjectAccess(req, projectId);
+      await AuthService.requireProjectAccess(req, projectId, true);
     }
     const project = await ProjectService.getProject(projectId);
     if (!project) {
@@ -139,12 +143,23 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     return reply.send({ project });
   });
 
+  // 3b. Delete project (requires developer ownership & confirmation match, protected default project)
+  server.delete('/api/v1/projects/:projectId', async (req, reply) => {
+    const devId = await requireDeveloperId(req);
+    const { projectId: rawId } = req.params as { projectId: string };
+    const projectId = await ProjectService.resolveProjectId(rawId);
+    const body = DeleteProjectRequestSchema.parse(req.body || {});
+
+    const result = await ProjectService.deleteProject(devId, projectId, body.confirmationName);
+    return reply.send(result);
+  });
+
   // 3b. Project Realtime Telemetry & Overview
   server.get('/api/v1/projects/:projectId/overview', async (req, reply) => {
     const { projectId: rawId } = req.params as { projectId: string };
     const projectId = await ProjectService.resolveProjectId(rawId);
     if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
-      await AuthService.requireProjectAccess(req, projectId);
+      await AuthService.requireProjectAccess(req, projectId, true);
     }
     const project = await ProjectService.getProject(projectId);
 
@@ -689,7 +704,7 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
 
       if (!isDedicated) {
         // MANAGED DELIVERY MODE:
-        // Strictly return project metrics only. NEVER leak super-admin accounts, credentials, or admin policy caps.
+        // Strictly return project metrics and authoritative plan quotas. NEVER leak super-admin accounts or credentials.
         return reply.send({
           isDedicated: false,
           dedicatedBrevoEnabled: false,
@@ -700,6 +715,10 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
           projectSentToday: todayLogs.length,
           planName: planContext.planName,
           planSlug: planContext.planSlug,
+          maxEmailsPerDay: planContext.limits.maxEmailsPerDay ?? 100,
+          maxEmailsPerMonth: planContext.limits.maxEmailsPerMonth ?? 3000,
+          maxCustomDomains: planContext.limits.maxCustomDomains ?? 0,
+          maxDedicatedAccounts: planContext.limits.maxDedicatedAccounts ?? 0,
           activeAccount: null,
         });
       }
@@ -719,6 +738,10 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
         projectSentToday: todayLogs.length,
         planName: planContext.planName,
         planSlug: planContext.planSlug,
+        maxEmailsPerDay: planContext.limits.maxEmailsPerDay ?? 100,
+        maxEmailsPerMonth: planContext.limits.maxEmailsPerMonth ?? 3000,
+        maxCustomDomains: planContext.limits.maxCustomDomains ?? 0,
+        maxDedicatedAccounts: planContext.limits.maxDedicatedAccounts ?? 0,
         activeAccount: activeDedicated ? {
           id: activeDedicated.id,
           accountName: activeDedicated.accountName,

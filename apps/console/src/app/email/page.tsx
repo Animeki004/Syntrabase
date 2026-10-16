@@ -47,6 +47,10 @@ interface ProjectEmailOverview {
   globalSendingEnabled: boolean;
   emergencyShutdown?: boolean;
   dailyProjectCap?: number;
+  maxEmailsPerDay?: number;
+  maxEmailsPerMonth?: number;
+  maxCustomDomains?: number;
+  maxDedicatedAccounts?: number;
   projectSentToday: number;
   isDedicated: boolean;
   dedicatedBrevoEnabled?: boolean;
@@ -82,7 +86,7 @@ interface ProjectDeliveryLog {
 
 export default function ProjectEmailPage() {
   const { addToast } = useToast();
-  const { activeProject } = useProject();
+  const { activeProject, isSuspended } = useProject();
   const projectId = activeProject.id;
 
   const [activeTab, setActiveTab] = useState<'domains' | 'senders' | 'logs' | 'brevo'>('domains');
@@ -850,6 +854,37 @@ export default function ProjectEmailPage() {
         </div>
       </Card>
 
+      {/* Project Suspension Lockdown Banner */}
+      {isSuspended && (
+        <div
+          style={{
+            padding: '14px 18px',
+            backgroundColor: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '14px',
+            color: 'var(--danger)',
+            marginBottom: '20px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Lock size={22} style={{ flexShrink: 0 }} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.92rem' }}>EMAIL GATEWAY LOCKDOWN ACTIVE</div>
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                Project &ldquo;{activeProject.name}&rdquo; is suspended. Outbound transactional email dispatch, domain verification, and test messages are completely choked out and locked.
+              </div>
+            </div>
+          </div>
+          <span style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: '4px', background: 'var(--danger)', color: '#fff' }}>
+            LOCKED OUT
+          </span>
+        </div>
+      )}
+
       {/* Emergency Platform Shutdown Alert Banner */}
       {overview?.emergencyShutdown && (
         <div
@@ -936,7 +971,7 @@ export default function ProjectEmailPage() {
                   {(overview?.projectSentToday ?? 0).toLocaleString()}
                 </span>
                 <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                  messages sent today
+                  / {(overview?.maxEmailsPerDay ?? 100).toLocaleString()} daily quota
                 </span>
               </div>
 
@@ -945,7 +980,7 @@ export default function ProjectEmailPage() {
                 <div
                   style={{
                     height: '100%',
-                    width: `${Math.min(100, Math.max(5, (overview?.projectSentToday ?? 0) * 10))}%`,
+                    width: `${Math.min(100, Math.max(0, (((overview?.projectSentToday ?? 0) / (overview?.maxEmailsPerDay || 100)) * 100)))}%`,
                     backgroundColor: 'var(--primary)',
                     transition: 'width 0.3s ease',
                   }}
@@ -953,8 +988,8 @@ export default function ProjectEmailPage() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                <span>{deliveryLogs.filter(l => l.deliveryStatus === 'delivered').length} verified delivered</span>
-                <span>{deliveryLogs.filter(l => l.deliveryStatus === 'failed' || l.deliveryStatus === 'bounced').length} failed</span>
+                <span>Monthly Cap: {(overview?.maxEmailsPerMonth ?? 3000).toLocaleString()} emails</span>
+                <span>{deliveryLogs.filter(l => l.deliveryStatus === 'delivered').length} delivered today</span>
               </div>
             </div>
           </Card>

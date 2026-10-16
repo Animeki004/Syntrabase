@@ -81,6 +81,11 @@ export default function GlobalEmailControlPage() {
     globalSendingEnabled: true,
     emergencyShutdown: false,
     dailyProjectCap: 500,
+    monthlyProjectCap: 15000,
+    burstRateLimitPerMinute: 60,
+    enforcementAction: 'reject',
+    allowedDomainsPerProject: 5,
+    requireEmailVerification: true,
     maxRetryAttempts: 5,
     defaultProviderType: 'brevo',
     updatedAt: new Date().toISOString(),
@@ -1531,38 +1536,150 @@ export default function GlobalEmailControlPage() {
               </Button>
             </div>
 
-            {/* Daily Project Cap */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
-                Daily Project Sending Cap (Emails / 24h)
-              </label>
-              <Input
-                type="number"
-                value={policy.dailyProjectCap}
-                onChange={(e) => setPolicy({ ...policy, dailyProjectCap: parseInt(e.target.value, 10) || 100 })}
-              />
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Maximum transactional emails allowed per project per day to prevent abuse and protect provider limits.
-              </span>
+            {/* Quota & Rate Limit Controls */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                  Daily Project Sending Cap (Emails / 24h)
+                </label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={policy.dailyProjectCap}
+                  onChange={(e) => setPolicy({ ...policy, dailyProjectCap: parseInt(e.target.value, 10) || 100 })}
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Platform fallback daily quota enforced on managed tenant gateways.
+                </span>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                  Monthly Project Cap (Emails / Mo)
+                </label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={policy.monthlyProjectCap || 15000}
+                  onChange={(e) => setPolicy({ ...policy, monthlyProjectCap: parseInt(e.target.value, 10) || 1000 })}
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Platform-wide monthly cap across all project environments.
+                </span>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                  Burst Rate Limit (Emails / Min)
+                </label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={policy.burstRateLimitPerMinute || 60}
+                  onChange={(e) => setPolicy({ ...policy, burstRateLimitPerMinute: parseInt(e.target.value, 10) || 60 })}
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Max allowable burst dispatch frequency per project per minute.
+                </span>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                  Allowed Custom Domains / Project
+                </label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={policy.allowedDomainsPerProject ?? 5}
+                  onChange={(e) => setPolicy({ ...policy, allowedDomainsPerProject: parseInt(e.target.value, 10) || 0 })}
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Maximum custom sender domains a project can register and verify.
+                </span>
+              </div>
             </div>
 
-            {/* Max Retry Attempts */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
-                Maximum Delivery Retries
-              </label>
-              <Input
-                type="number"
-                value={policy.maxRetryAttempts}
-                onChange={(e) => setPolicy({ ...policy, maxRetryAttempts: parseInt(e.target.value, 10) || 5 })}
+            {/* Enforcement Policy & Verification */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                  Quota Exhaustion Enforcement Action
+                </label>
+                <select
+                  value={policy.enforcementAction || 'reject'}
+                  onChange={(e) => setPolicy({ ...policy, enforcementAction: e.target.value as 'throttle_and_queue' | 'reject' })}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-subtle)',
+                    background: 'var(--bg-surface)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  <option value="reject">Reject Immediately (429 Email Quota Exceeded)</option>
+                  <option value="throttle_and_queue">Throttle &amp; Buffer (Queue in Outbox with Delay)</option>
+                </select>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Action executed when a project breaches daily or monthly allowances.
+                </span>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                  Maximum Delivery Retries
+                </label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={policy.maxRetryAttempts}
+                  onChange={(e) => setPolicy({ ...policy, maxRetryAttempts: parseInt(e.target.value, 10) || 5 })}
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Number of retry attempts with exponential backoff before marking failed.
+                </span>
+              </div>
+            </div>
+
+            {/* Verification Requirement Toggle */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '14px',
+                borderRadius: '6px',
+                border: '1px solid var(--border-subtle)',
+                background: 'var(--bg-surface-subtle)',
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                  Require Sender Domain &amp; Address Verification
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  When enabled, projects can only dispatch from verified DNS domains or validated sender identities.
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={policy.requireEmailVerification ?? true}
+                onChange={(e) => setPolicy({ ...policy, requireEmailVerification: e.target.checked })}
+                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
               />
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Number of retry attempts with exponential backoff before marking message permanently failed.
-              </span>
             </div>
 
             <Button
-              onClick={() => handleSavePolicy({ dailyProjectCap: policy.dailyProjectCap, maxRetryAttempts: policy.maxRetryAttempts })}
+              onClick={() => handleSavePolicy({
+                dailyProjectCap: policy.dailyProjectCap,
+                monthlyProjectCap: policy.monthlyProjectCap,
+                burstRateLimitPerMinute: policy.burstRateLimitPerMinute,
+                enforcementAction: policy.enforcementAction,
+                allowedDomainsPerProject: policy.allowedDomainsPerProject,
+                requireEmailVerification: policy.requireEmailVerification,
+                maxRetryAttempts: policy.maxRetryAttempts,
+              })}
               disabled={isSavingPolicy}
               style={{ alignSelf: 'flex-start' }}
             >
