@@ -67,6 +67,8 @@ interface RulesVersionRecord {
   timestamp: string;
   code: string;
   isActive: boolean;
+  versionNumber?: number;
+  publishedAt?: string;
 }
 
 const INITIAL_RULES_VERSIONS: RulesVersionRecord[] = [
@@ -540,6 +542,87 @@ export default function FirebaseStudioReplicaPage() {
   const [activePublishedCode, setActivePublishedCode] = useState<string>(DEFAULT_PUBLISHED_RULES);
   const [currentRulesCode, setCurrentRulesCode] = useState<string>(DEFAULT_PUBLISHED_RULES);
   const [hasUnpublishedChanges, setHasUnpublishedChanges] = useState<boolean>(false);
+  const [isLoadingRules, setIsLoadingRules] = useState<boolean>(false);
+  const [isPublishingRules, setIsPublishingRules] = useState<boolean>(false);
+
+  // Fetch published security rules & complete version history from PostgreSQL backend
+  const fetchRules = React.useCallback(async () => {
+    if (!projectId) return;
+    setIsLoadingRules(true);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const [activeRes, versionsRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/rules/active`, { headers }),
+        fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/rules/versions`, { headers }),
+      ]);
+
+      let publishedCode = DEFAULT_PUBLISHED_RULES;
+      let activeVerId = 'v1';
+
+      if (activeRes.ok) {
+        const activeData = await activeRes.json();
+        if (activeData.sourceCode) {
+          publishedCode = activeData.sourceCode;
+          activeVerId = `v${activeData.versionNumber || 1}`;
+        }
+      }
+
+      if (versionsRes.ok) {
+        const versionsData = await versionsRes.json();
+        if (Array.isArray(versionsData.versions) && versionsData.versions.length > 0) {
+          const mapped: RulesVersionRecord[] = versionsData.versions.map((v: any) => ({
+            id: v.id || `v${v.versionNumber}`,
+            versionNumber: v.versionNumber,
+            timestamp: v.timestamp || (v.publishedAt ? new Date(v.publishedAt).toLocaleDateString(undefined, {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            }) : `Version ${v.versionNumber}`),
+            code: v.sourceCode || '',
+            isActive: !!v.isActive,
+            publishedAt: v.publishedAt,
+          }));
+
+          setRulesHistory(mapped);
+          const activeItem = mapped.find((item) => item.isActive) || mapped[0];
+          setSelectedVersionId(activeItem.id);
+          setActivePublishedCode(activeItem.code || publishedCode);
+          setCurrentRulesCode(activeItem.code || publishedCode);
+          setHasUnpublishedChanges(false);
+          return;
+        }
+      }
+
+      // Default fallback when no custom versions have been created yet
+      setActivePublishedCode(publishedCode);
+      setCurrentRulesCode(publishedCode);
+      setSelectedVersionId(activeVerId);
+      setRulesHistory([
+        {
+          id: activeVerId,
+          timestamp: 'Initial Version',
+          code: publishedCode,
+          isActive: true,
+        },
+      ]);
+      setHasUnpublishedChanges(false);
+    } catch {
+      // offline / network fallback
+    } finally {
+      setIsLoadingRules(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (activeTab === 'rules') {
+      fetchRules();
+    }
+  }, [activeTab, fetchRules]);
 
   // Simulator Modal State
   const [showSimulatorModal, setShowSimulatorModal] = useState<boolean>(false);
@@ -548,6 +631,7 @@ export default function FirebaseStudioReplicaPage() {
   const [simIsAuthenticated, setSimIsAuthenticated] = useState<boolean>(true);
   const [simAuthUid, setSimAuthUid] = useState<string>('usr_123');
   const [simResult, setSimResult] = useState<{ allowed: boolean; matchedLine: number; latencyMs: number } | null>(null);
+  const [isSimulating, setIsSimulating] = useState<boolean>(false);
 
   // Helper to find document at docPath
   const findDocAtPath = (docPath: string): FirestoreDocRecord | undefined => {
@@ -1212,6 +1296,12 @@ export default function FirebaseStudioReplicaPage() {
   };
 
   const handlePublishRules = async () => {
+    if (!currentRulesCode.trim()) {
+      addToast('Cannot publish empty security rules', 'error');
+      return;
+    }
+
+    setIsPublishingRules(true);
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -1224,35 +1314,19 @@ export default function FirebaseStudioReplicaPage() {
       });
 
       const data = await res.json().catch(() => ({}));
-      const verNum = data.versionNumber || (rulesHistory.length + 1);
-      const newVersionId = `v${verNum}`;
-      const nowStr = new Date().toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
 
-      const newRecord: RulesVersionRecord = {
-        id: newVersionId,
-        timestamp: nowStr,
-        code: currentRulesCode,
-        isActive: true,
-      };
+      if (!res.ok) {
+        addToast(data.details || data.error || data.message || 'Failed to publish security rules', 'error');
+        return;
+      }
 
-      const updatedHistory = [
-        newRecord,
-        ...rulesHistory.map((r) => ({ ...r, isActive: false })),
-      ];
-
-      setRulesHistory(updatedHistory);
-      setSelectedVersionId(newVersionId);
-      setActivePublishedCode(currentRulesCode);
+      addToast(`Security rules v${data.versionNumber || ''} published and active on Fastify Gateway`, 'success');
       setHasUnpublishedChanges(false);
-      addToast('Security rules published and active on Fastify Gateway', 'success');
-    } catch {
-      addToast('Network error publishing rules', 'error');
+      await fetchRules();
+    } catch (err: any) {
+      addToast(err.message || 'Network error publishing rules', 'error');
+    } finally {
+      setIsPublishingRules(false);
     }
   };
 
@@ -1272,13 +1346,42 @@ export default function FirebaseStudioReplicaPage() {
     }
   };
 
-  const handleRunSimulation = () => {
-    const isAllowed = simIsAuthenticated || simLocation.includes('/public/');
-    setSimResult({
-      allowed: isAllowed,
-      matchedLine: isAllowed ? 27 : 28,
-      latencyMs: 1.4,
-    });
+  const handleRunSimulation = async () => {
+    setIsSimulating(true);
+    const start = performance.now();
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/rules/simulate`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          sourceCode: currentRulesCode,
+          path: simLocation,
+          method: simOperation,
+          auth: simIsAuthenticated ? { uid: simAuthUid } : null,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      const latencyMs = Number((performance.now() - start).toFixed(1));
+
+      if (res.ok) {
+        setSimResult({
+          allowed: !!data.allowed,
+          matchedLine: data.matchedRule ? 27 : 28,
+          latencyMs,
+        });
+      } else {
+        addToast(data.details || data.error || data.message || 'Simulation failed', 'error');
+      }
+    } catch (err: any) {
+      addToast(err.message || 'Simulation network error', 'error');
+    } finally {
+      setIsSimulating(false);
+    }
   };
 
   // Helper for syntax coloring code lines
@@ -2143,11 +2246,16 @@ export default function FirebaseStudioReplicaPage() {
               backgroundColor: 'var(--bg-surface-subtle)',
             }}
           >
-            <div style={{ padding: '0 16px 12px', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Release History
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px 12px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Release History
+              </span>
+              {isLoadingRules && (
+                <RotateCcw size={12} className="animate-spin" color="var(--primary)" />
+              )}
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', maxHeight: 'calc(100vh - 200px)' }}>
               {/* Dynamic Unpublished Changes Item in Timeline */}
               {hasUnpublishedChanges && (
                 <div
@@ -2191,12 +2299,24 @@ export default function FirebaseStudioReplicaPage() {
                       transition: 'background-color 0.12s ease',
                     }}
                   >
-                    <span style={{ color: item.isActive ? 'var(--warning)' : 'var(--text-muted)', fontSize: '14px' }}>
+                    <span style={{ color: item.isActive ? 'var(--warning)' : 'var(--text-muted)', fontSize: '14px', flexShrink: 0 }}>
                       {item.isActive ? '★' : '○'}
                     </span>
-                    <span style={{ fontWeight: item.isActive ? 600 : 400 }}>
-                      {item.timestamp}
-                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: item.isActive ? 700 : 500, fontSize: '12px' }}>
+                          {item.id.toUpperCase()}
+                        </span>
+                        {item.isActive && (
+                          <span style={{ fontSize: '9px', background: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-emerald)', padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                        {item.timestamp}
+                      </span>
+                    </div>
                   </div>
                 );
               })}
@@ -2227,6 +2347,7 @@ export default function FirebaseStudioReplicaPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <button
                     onClick={handlePublishRules}
+                    disabled={isPublishingRules}
                     style={{
                       backgroundColor: '#ffffff',
                       color: '#1a73e8',
@@ -2235,11 +2356,12 @@ export default function FirebaseStudioReplicaPage() {
                       padding: '4px 16px',
                       border: 'none',
                       fontSize: '13px',
-                      cursor: 'pointer',
+                      cursor: isPublishingRules ? 'not-allowed' : 'pointer',
+                      opacity: isPublishingRules ? 0.7 : 1,
                       boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
                     }}
                   >
-                    Publish
+                    {isPublishingRules ? 'Publishing...' : 'Publish'}
                   </button>
 
                   <button
@@ -2540,8 +2662,8 @@ export default function FirebaseStudioReplicaPage() {
             <button className="fb-btn-text" onClick={() => setShowSimulatorModal(false)}>
               Close
             </button>
-            <button className="fb-btn-blue-pill" onClick={handleRunSimulation}>
-              Run Simulation
+            <button className="fb-btn-blue-pill" onClick={handleRunSimulation} disabled={isSimulating}>
+              {isSimulating ? 'Simulating...' : 'Run Simulation'}
             </button>
           </div>
         }

@@ -35,15 +35,15 @@ export const rulesRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
 
     // 2. Fetch latest version number
     const verRes = await query<{ version_number: number }>(
-      'SELECT version_number FROM security_rule_versions WHERE project_id = $1 OR project_id = $2 ORDER BY version_number DESC LIMIT 1',
+      'SELECT version_number FROM security_rule_versions WHERE project_id::text = $1 OR project_id::text = $2 ORDER BY version_number DESC LIMIT 1',
       [projectId, rawId]
     );
     const nextVer = (verRes.rows[0]?.version_number || 0) + 1;
 
     // 3. Mark old active version as archived
     await query(
-      "UPDATE security_rule_versions SET status = 'archived' WHERE project_id = $1 AND status = 'published'",
-      [projectId]
+      "UPDATE security_rule_versions SET status = 'archived' WHERE (project_id::text = $1 OR project_id::text = $2) AND status = 'published'",
+      [projectId, rawId]
     );
 
     // 4. Insert new published version
@@ -123,7 +123,7 @@ export const rulesRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
       source_code: string;
       published_at: string;
     }>(
-      "SELECT id, version_number, source_code, published_at FROM security_rule_versions WHERE (project_id = $1 OR project_id = $2) AND status = 'published' ORDER BY version_number DESC LIMIT 1",
+      "SELECT id, version_number, source_code, published_at FROM security_rule_versions WHERE (project_id::text = $1 OR project_id::text = $2) AND status = 'published' ORDER BY version_number DESC LIMIT 1",
       [projectId, rawId]
     );
 
@@ -137,6 +137,51 @@ export const rulesRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
       versionNumber: rule.version_number,
       sourceCode: rule.source_code,
       publishedAt: rule.published_at,
+    });
+  });
+
+  // Get all rule versions for a project
+  server.get('/api/v1/projects/:projectId/rules/versions', async (req, reply) => {
+    const { projectId: rawId } = req.params as { projectId: string };
+    const projectId = await ProjectService.resolveProjectId(rawId).catch(() => rawId);
+
+    // Enforce developer authentication & project authorization
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+
+    const res = await query<{
+      id: string;
+      version_number: number;
+      source_code: string;
+      status: string;
+      published_at: string;
+    }>(
+      `SELECT id, version_number, source_code, status, published_at
+       FROM security_rule_versions
+       WHERE project_id::text = $1 OR project_id::text = $2
+       ORDER BY version_number DESC`,
+      [projectId, rawId]
+    );
+
+    return reply.send({
+      versions: res.rows.map((r) => ({
+        id: `v${r.version_number}`,
+        versionNumber: r.version_number,
+        sourceCode: r.source_code,
+        status: r.status,
+        isActive: r.status === 'published',
+        publishedAt: r.published_at,
+        timestamp: r.published_at
+          ? new Date(r.published_at).toLocaleDateString(undefined, {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : `Version ${r.version_number}`,
+      })),
     });
   });
 };
