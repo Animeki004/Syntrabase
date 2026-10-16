@@ -71,7 +71,7 @@ export default function SocDefensePage() {
   // Fetch live security events from backend
   const fetchEvents = React.useCallback(async () => {
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('super_admin_token') || 'super_admin_token' : 'super_admin_token';
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('super_admin_token') || '') : '';
       const res = await fetch(`${API_BASE}/api/v1/admin/security/events`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
@@ -107,7 +107,7 @@ export default function SocDefensePage() {
   const triggerSimulation = async (simType: string, level: number, fallbackResponse: string) => {
     setIsSimulating(true);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('super_admin_token') || 'super_admin_token' : 'super_admin_token';
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('super_admin_token') || '') : '';
       const res = await fetch(`${API_BASE}/api/v1/admin/security/simulate`, {
         method: 'POST',
         headers: {
@@ -158,7 +158,7 @@ export default function SocDefensePage() {
   const handleVerifyLedger = async () => {
     setIsVerifyingLedger(true);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('super_admin_token') || 'super_admin_token' : 'super_admin_token';
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('super_admin_token') || '') : '';
       const res = await fetch(`${API_BASE}/api/v1/admin/audit/verify`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },

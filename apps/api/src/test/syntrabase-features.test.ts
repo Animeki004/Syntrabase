@@ -182,11 +182,14 @@ test('Syntrabase API - Collection group route exists and accepts query options',
   }
 });
 
-test('Syntrabase API - Cloud function triggers endpoint is registered', async () => {
+test('Syntrabase API - Cloud function triggers endpoint is registered and authenticated', async () => {
   const server = await buildServer();
   const res = await server.inject({
     method: 'GET',
     url: '/api/v1/projects/default-project/functions/triggers',
+    headers: {
+      authorization: 'Bearer admin-token',
+    },
   });
 
   // Route returns 200 with triggers array or 500 if DB offline
@@ -195,4 +198,17 @@ test('Syntrabase API - Cloud function triggers endpoint is registered', async ()
     const data = JSON.parse(res.body);
     assert.ok(Array.isArray(data.triggers));
   }
+});
+
+test('Syntrabase API - Cloud function triggers DELETE endpoint operates with authentication', async () => {
+  const server = await buildServer();
+  const res = await server.inject({
+    method: 'DELETE',
+    url: '/api/v1/projects/default-project/functions/triggers/trig_nonexistent',
+    headers: {
+      authorization: 'Bearer admin-token',
+    },
+  });
+
+  assert.ok([200, 404, 500].includes(res.statusCode));
 });

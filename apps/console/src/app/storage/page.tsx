@@ -58,7 +58,7 @@ function getFileIcon(type: string) {
 export default function StoragePage() {
   const { addToast } = useToast();
   const { activeProject } = useProject();
-  const projectId = activeProject?.id || '00000000-0000-0000-0000-000000000020';
+  const projectId = activeProject?.id || '';
   const [files, setFiles] = useState<StorageItem[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(true);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
@@ -74,6 +74,10 @@ export default function StoragePage() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const fetchFiles = React.useCallback(async () => {
+    if (!projectId) {
+      setIsLoadingFiles(false);
+      return;
+    }
     setIsLoadingFiles(true);
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;

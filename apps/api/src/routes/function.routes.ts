@@ -1,7 +1,6 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { CloudFunctionService } from '../services/cloud-function.service.js';
 import { AuthService } from '../services/auth.service.js';
-import { config } from '../config.js';
 import { CreateCloudTriggerSchema } from '@syntrabase/schemas';
 
 export const functionRoutes: FastifyPluginAsync = async (server: FastifyInstance) => {
@@ -10,9 +9,7 @@ export const functionRoutes: FastifyPluginAsync = async (server: FastifyInstance
     const { projectId } = req.params as { projectId: string };
 
     // Enforce project access authentication
-    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
-      await AuthService.requireProjectAccess(req, projectId);
-    }
+    await AuthService.requireProjectAccess(req, projectId);
 
     const environmentId = (req.headers['x-environment-id'] as string) || 'default';
     const body = CreateCloudTriggerSchema.parse(req.body);
@@ -35,11 +32,24 @@ export const functionRoutes: FastifyPluginAsync = async (server: FastifyInstance
     const { projectId } = req.params as { projectId: string };
 
     // Enforce project access authentication
-    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
-      await AuthService.requireProjectAccess(req, projectId);
-    }
+    await AuthService.requireProjectAccess(req, projectId);
 
     const triggers = await CloudFunctionService.listTriggers(projectId);
     return reply.send({ triggers });
+  });
+
+  // Delete Trigger for a project
+  server.delete('/api/v1/projects/:projectId/functions/triggers/:triggerId', async (req, reply) => {
+    const { projectId, triggerId } = req.params as { projectId: string; triggerId: string };
+
+    // Enforce project access authentication
+    await AuthService.requireProjectAccess(req, projectId);
+
+    const deleted = await CloudFunctionService.deleteTrigger(projectId, triggerId);
+    if (!deleted) {
+      return reply.status(404).send({ error: 'Trigger not found or already deleted' });
+    }
+
+    return reply.status(200).send({ success: true, message: `Trigger ${triggerId} deleted successfully` });
   });
 };

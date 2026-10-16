@@ -92,26 +92,10 @@ export default function SettingsPage() {
     createdAt: string;
   }
 
-  const [triggers, setTriggers] = useState<TriggerItem[]>([
-    {
-      id: 'trig_01',
-      name: 'User Onboarding Dispatcher',
-      collectionPath: 'users',
-      eventType: 'create',
-      endpointUrl: 'https://api.internal.app/webhooks/user-onboarding',
-      isActive: true,
-      createdAt: '2026-10-12 11:20:00',
-    },
-    {
-      id: 'trig_02',
-      name: 'Order Audit Sync',
-      collectionPath: 'orders',
-      eventType: 'write',
-      endpointUrl: 'https://audit.internal.app/events/order',
-      isActive: true,
-      createdAt: '2026-10-13 08:45:10',
-    },
-  ]);
+  const [triggers, setTriggers] = useState<TriggerItem[]>([]);
+  const [isLoadingTriggers, setIsLoadingTriggers] = useState(false);
+  const [isCreatingTrigger, setIsCreatingTrigger] = useState(false);
+  const [deletingTriggerId, setDeletingTriggerId] = useState<string | null>(null);
   const [showTriggerModal, setShowTriggerModal] = useState(false);
   const [newTriggerName, setNewTriggerName] = useState('');
   const [newTriggerCollection, setNewTriggerCollection] = useState('');
@@ -342,10 +326,54 @@ export default function SettingsPage() {
       }
     };
 
+    const fetchTriggers = async () => {
+      setIsLoadingTriggers(true);
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/functions/triggers`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.triggers)) {
+            setTriggers(data.triggers);
+          }
+        }
+      } catch {
+        // Safe fallback
+      } finally {
+        setIsLoadingTriggers(false);
+      }
+    };
+
     fetchPlan();
     fetchCredentials();
+    fetchTriggers();
     fetchDeveloperMfaStatus();
   }, [projectId]);
+
+  const reloadTriggers = async () => {
+    if (!projectId) return;
+    setIsLoadingTriggers(true);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/functions/triggers`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.triggers)) {
+          setTriggers(data.triggers);
+        }
+      }
+    } catch {
+      // Safe fallback
+    } finally {
+      setIsLoadingTriggers(false);
+    }
+  };
 
   const handleRotatePublishableKey = async () => {
     setIsRotatingPublishable(true);
@@ -490,45 +518,80 @@ export default function SettingsPage() {
   };
 
   const handleCreateTrigger = async () => {
-    if (!newTriggerName || !newTriggerCollection || !newTriggerEndpoint) {
+    if (!newTriggerName.trim() || !newTriggerCollection.trim() || !newTriggerEndpoint.trim()) {
       addToast('Please fill all required trigger fields', 'error');
       return;
     }
-    const item = {
-      id: `trig_${Date.now().toString(36)}`,
-      name: newTriggerName.trim(),
-      collectionPath: newTriggerCollection.trim(),
-      eventType: newTriggerEvent,
-      endpointUrl: newTriggerEndpoint.trim(),
-      isActive: true,
-      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-    };
+    setIsCreatingTrigger(true);
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-      await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/functions/triggers`, {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/functions/triggers`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers,
         body: JSON.stringify({
-          name: item.name,
-          collectionPath: item.collectionPath,
-          eventType: item.eventType,
-          endpointUrl: item.endpointUrl,
-          secretKey: newTriggerSecret || 'syntrabase_sec_live',
+          name: newTriggerName.trim(),
+          collectionPath: newTriggerCollection.trim(),
+          eventType: newTriggerEvent,
+          endpointUrl: newTriggerEndpoint.trim(),
+          ...(newTriggerSecret.trim() ? { secretKey: newTriggerSecret.trim() } : {}),
         }),
-      }).catch(() => null);
-    } catch {
-      // Local fallback
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || 'Failed to register webhook trigger');
+      }
+
+      const data = await res.json();
+      if (data.trigger) {
+        setTriggers((prev) => [data.trigger, ...prev.filter((t) => t.id !== data.trigger.id)]);
+      } else {
+        await reloadTriggers();
+      }
+
+      setShowTriggerModal(false);
+      setNewTriggerName('');
+      setNewTriggerCollection('');
+      setNewTriggerEndpoint('');
+      setNewTriggerSecret('');
+      addToast(`Webhook trigger '${newTriggerName.trim()}' successfully registered`, 'success');
+    } catch (err: any) {
+      addToast(err.message || 'Error registering webhook trigger', 'error');
+    } finally {
+      setIsCreatingTrigger(false);
     }
-    setTriggers([item, ...triggers]);
-    setShowTriggerModal(false);
-    setNewTriggerName('');
-    setNewTriggerCollection('');
-    setNewTriggerEndpoint('');
-    setNewTriggerSecret('');
-    addToast(`Webhook trigger '${item.name}' created`, 'success');
+  };
+
+  const handleDeleteTrigger = async (triggerId: string, triggerName: string) => {
+    if (!confirm(`Are you sure you want to delete trigger "${triggerName}"?`)) {
+      return;
+    }
+    setDeletingTriggerId(triggerId);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/functions/triggers/${triggerId}`, {
+        method: 'DELETE',
+        headers,
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || 'Failed to delete trigger');
+      }
+
+      setTriggers((prev) => prev.filter((t) => t.id !== triggerId));
+      addToast(`Webhook trigger '${triggerName}' deleted`, 'info');
+    } catch (err: any) {
+      addToast(err.message || 'Failed to delete trigger', 'error');
+    } finally {
+      setDeletingTriggerId(null);
+    }
   };
 
   const isStorageEnabled = planContext ? !!planContext.capabilities['storage.objects'] : false;
@@ -985,23 +1048,56 @@ export default function SettingsPage() {
                 <th>Endpoint URL</th>
                 <th style={{ width: '100px' }}>Status</th>
                 <th style={{ width: '160px' }}>Created</th>
+                <th style={{ width: '90px', textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {triggers.map((t) => (
-                <tr key={t.id}>
-                  <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{t.name}</td>
-                  <td><code style={{ fontSize: '0.8rem', color: 'var(--accent-blue)' }}>/{t.collectionPath}</code></td>
-                  <td>
-                    <Badge variant={t.eventType === 'write' ? 'info' : t.eventType === 'create' ? 'success' : 'warning'} size="sm">
-                      {t.eventType}
-                    </Badge>
+              {triggers.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--text-secondary)' }}>
+                    {isLoadingTriggers ? (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                        <RotateCcw size={16} className="animate-spin" /> Loading triggers from database...
+                      </div>
+                    ) : (
+                      <div>
+                        <Zap size={28} style={{ opacity: 0.35, margin: '0 auto 8px auto' }} />
+                        <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>No webhook triggers configured</div>
+                        <div style={{ fontSize: '0.8rem', marginTop: '4px', opacity: 0.7 }}>
+                          Register a database webhook trigger to securely dispatch events upon document mutations.
+                        </div>
+                      </div>
+                    )}
                   </td>
-                  <td><code style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{t.endpointUrl}</code></td>
-                  <td><Badge variant="success" size="sm">Active</Badge></td>
-                  <td style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{t.createdAt}</td>
                 </tr>
-              ))}
+              ) : (
+                triggers.map((t) => (
+                  <tr key={t.id}>
+                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{t.name}</td>
+                    <td><code style={{ fontSize: '0.8rem', color: 'var(--accent-blue)' }}>/{t.collectionPath}</code></td>
+                    <td>
+                      <Badge variant={t.eventType === 'write' ? 'info' : t.eventType === 'create' ? 'success' : 'warning'} size="sm">
+                        {t.eventType}
+                      </Badge>
+                    </td>
+                    <td><code style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{t.endpointUrl}</code></td>
+                    <td><Badge variant="success" size="sm">Active</Badge></td>
+                    <td style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{t.createdAt}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        disabled={deletingTriggerId === t.id}
+                        onClick={() => handleDeleteTrigger(t.id, t.name)}
+                        icon={<Trash2 size={13} />}
+                        style={{ fontSize: '0.72rem', padding: '4px 8px' }}
+                      >
+                        {deletingTriggerId === t.id ? 'Deleting...' : 'Delete'}
+                      </Button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -1470,8 +1566,8 @@ export default function SettingsPage() {
             <Button variant="secondary" onClick={() => setShowTriggerModal(false)}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleCreateTrigger}>
-              Create Trigger
+            <Button variant="primary" onClick={handleCreateTrigger} disabled={isCreatingTrigger}>
+              {isCreatingTrigger ? 'Registering...' : 'Create Trigger'}
             </Button>
           </div>
         </div>

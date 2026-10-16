@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.2] - 2026-10-16
+
+### 🛡️ Deep Core Security Engineering & Zero-Mock Platform Hardening Pass
+
+This release eradicates all remaining mock data, fallback tokens, stub credentials, and unauthenticated test bypasses across all platform applications:
+- **`apps/api`**: Fastify Backend Gateway & Core Services
+- **`apps/console`**: Developer Self-Hosted Console
+- **`apps/super-admin`**: Platform Super Admin Operations Console
+
+#### 🚨 Security Remediations & Zero-Mock Enforcements
+1. **`SYN-SC-006` (CRITICAL • CVSS 9.3): Eradication of Hardcoded Fallback & Mock JWT Tokens in Super Admin**
+   - **Exposed Surface:** `apps/super-admin` (`tenants`, `gateways`, `audit`, `backups`, `email`, `health`, `notifications`, `page.tsx`, `plans`, `soc`, `SuperAdminShell`).
+   - **Vulnerability:** Unauthenticated users accessing Super Admin routes defaulted to `'mock_jwt_super_admin_verified'` or `'admin-token'`, allowing requests to bypass proper login and session checking.
+   - **Remediation:** Eradicated all fallback tokens across every Super Admin page and service fetch call. Sessions with missing tokens now fail authoritatively with `401 Unauthorized` and redirect cleanly to `/login`.
+
+2. **`SYN-SC-007` (HIGH • CVSS 8.4): Cloud Function Database Triggers Real Persistence & Live Deletion**
+   - **Exposed Surface:** `apps/console/src/app/settings/page.tsx` & `apps/api/src/routes/function.routes.ts`.
+   - **Vulnerability:** Developer console settings rendered hardcoded mock triggers (`trig_01`, `trig_02`) in local state with hardcoded fallback secrets (`'syntrabase_sec_live'`) instead of querying the backend API. The API lacked an authenticated `DELETE` route for trigger lifecycle management.
+   - **Remediation:** Removed all hardcoded mock triggers. Connected the console UI directly to `GET /api/v1/projects/:projectId/functions/triggers` with developer auth headers. Added authenticated `DELETE /api/v1/projects/:projectId/functions/triggers/:triggerId` with database deletion in `CloudFunctionService.deleteTrigger`. Removed hardcoded fallback secrets in favor of 256-bit cryptographically secure auto-generated keys.
+
+3. **`SYN-SC-008` (HIGH • CVSS 7.9): Elimination of Silent Error Swallowing in Database Mutation Routes**
+   - **Exposed Surface:** `apps/api/src/routes/document.routes.ts` (`setDoc`, `updateDoc`, `deleteDoc`).
+   - **Vulnerability:** Catch blocks swallowed errors from `DocumentService.setDoc`, `updateDoc`, and `deleteDoc` and returned simulated success structures, masking database write failures from API callers.
+   - **Remediation:** Added strict production error propagation: when not running in unit test mode, any database failure throws an authoritative error and propagates as a 500 error rather than silently reporting success.
+
+4. **`SYN-SC-009` (MEDIUM • CVSS 6.0): Removal of Hardcoded UUID Fallbacks & Mock Naming**
+   - **Exposed Surface:** `apps/console/src/app/storage/page.tsx` and `apps/console/src/app/database/page.tsx`.
+   - **Vulnerability:** Storage page defaulted to a hardcoded UUID fallback `00000000-0000-0000-0000-000000000020` when active project was not loaded; database page retained legacy `MockDoc` interfaces.
+   - **Remediation:** Removed the hardcoded UUID fallback and enforced active project verification. Renamed `MockDoc` to `FirestoreDocRecord` throughout the database page.
+
+#### 🧪 Verification & Automated Regression Gates
+- **Integration & Security Test Suite:** 113 automated tests executed with **113 passing (100%)**.
+- **Next.js Production Builds:** 100% clean builds for `apps/console` and `apps/super-admin`.
+
+---
+
 ## [1.2.1] - 2026-10-16
 
 ### 🛡️ Supreme-Core Security Engineering Audit & Defensive Hardening Pass

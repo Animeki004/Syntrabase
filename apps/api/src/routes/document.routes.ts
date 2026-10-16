@@ -268,8 +268,10 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     let savedDoc: any = { id: documentId, path: docPath, data: body.data, version: 1 };
     try {
       savedDoc = await DocumentService.setDoc(projectId, environmentId, collectionPath, documentId, body.data, body.merge);
-    } catch {
-      // DB offline/mock fallback
+    } catch (err) {
+      if (config.env !== 'test') {
+        throw err;
+      }
     }
     return reply.status(existing ? 200 : 201).send(savedDoc);
   });
@@ -318,8 +320,10 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     let updatedDoc: any = { id: documentId, path: docPath, data: body.data, version: 2 };
     try {
       updatedDoc = await DocumentService.updateDoc(projectId, environmentId, collectionPath, documentId, body.data);
-    } catch {
-      // DB offline/mock fallback
+    } catch (err) {
+      if (config.env !== 'test') {
+        throw err;
+      }
     }
     return reply.send(updatedDoc);
   });
@@ -339,7 +343,7 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     try {
       existing = await DocumentService.getDoc(projectId, environmentId, collectionPath, documentId);
     } catch {
-      // DB offline/mock fallback
+      // In test mode without DB connection
     }
 
     try {
@@ -350,8 +354,10 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
 
     try {
       await DocumentService.deleteDoc(projectId, environmentId, collectionPath, documentId);
-    } catch {
-      // DB offline/mock fallback
+    } catch (err) {
+      if (config.env !== 'test') {
+        throw err;
+      }
     }
     return reply.status(204).send();
   });

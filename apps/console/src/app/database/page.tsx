@@ -39,7 +39,7 @@ import { useProject } from '@/components/ProjectContext';
 import { API_BASE_URL } from '@/config';
 import { ProjectDatabase } from '@syntrabase/shared-types';
 
-interface MockDoc {
+interface FirestoreDocRecord {
   id: string;
   data: Record<string, any>;
   createdAt: string;
@@ -50,7 +50,7 @@ interface MockDoc {
 
 const INITIAL_COLLECTIONS: string[] = [];
 
-const INITIAL_DOCS: Record<string, MockDoc[]> = {};
+const INITIAL_DOCS: Record<string, FirestoreDocRecord[]> = {};
 
 const DEFAULT_PUBLISHED_RULES = `rules_version = '2';
 service cloud.firestore {
@@ -78,7 +78,7 @@ const INITIAL_RULES_VERSIONS: RulesVersionRecord[] = [
   },
 ];
 
-const INITIAL_SUBCOL_DOCS: Record<string, MockDoc[]> = {};
+const INITIAL_SUBCOL_DOCS: Record<string, FirestoreDocRecord[]> = {};
 
 type StudioTab = 'data' | 'rules' | 'indexes' | 'usage';
 type FieldType = 'string' | 'number' | 'boolean' | 'map' | 'array' | 'null' | 'timestamp';
@@ -303,7 +303,7 @@ export default function FirebaseStudioReplicaPage() {
           const colNames = data.collections.map((c: any) => c.name || c.id);
           setCollections(colNames);
 
-          const docsMap: Record<string, MockDoc[]> = {};
+          const docsMap: Record<string, FirestoreDocRecord[]> = {};
           await Promise.all(
             colNames.map(async (cName: string) => {
               try {
@@ -425,7 +425,7 @@ export default function FirebaseStudioReplicaPage() {
   // FIREBASE DYNAMIC SLIDING CHAIN STATE (COLLECTION -> DOC -> SUBCOL -> SUBDOC)
   // =========================================================================
   const [collections, setCollections] = useState<string[]>(INITIAL_COLLECTIONS);
-  const [collectionDocs, setCollectionDocs] = useState<Record<string, MockDoc[]>>({
+  const [collectionDocs, setCollectionDocs] = useState<Record<string, FirestoreDocRecord[]>>({
     ...INITIAL_DOCS,
     ...INITIAL_SUBCOL_DOCS,
   });
@@ -550,7 +550,7 @@ export default function FirebaseStudioReplicaPage() {
   const [simResult, setSimResult] = useState<{ allowed: boolean; matchedLine: number; latencyMs: number } | null>(null);
 
   // Helper to find document at docPath
-  const findDocAtPath = (docPath: string): MockDoc | undefined => {
+  const findDocAtPath = (docPath: string): FirestoreDocRecord | undefined => {
     const parts = docPath.split('/');
     if (parts.length < 2) return undefined;
     const docId = parts[parts.length - 1];
@@ -851,7 +851,7 @@ export default function FirebaseStudioReplicaPage() {
     if (newColFirstFieldType === 'number') initialVal = Number(newColFirstFieldValue) || 0;
     if (newColFirstFieldType === 'boolean') initialVal = newColFirstFieldValue === 'true';
 
-    const newDoc: MockDoc = {
+    const newDoc: FirestoreDocRecord = {
       id: docId,
       data: {
         [newColFirstFieldName.trim() || 'title']: initialVal,
@@ -921,7 +921,7 @@ export default function FirebaseStudioReplicaPage() {
       }
     });
 
-    const newDoc: MockDoc = {
+    const newDoc: FirestoreDocRecord = {
       id: docId,
       data: Object.keys(docData).length > 0 ? docData : { _created: new Date().toISOString() },
       createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),

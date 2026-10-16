@@ -44,8 +44,7 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
       config.env === 'test' &&
       (rawToken === 'admin-token' ||
         rawToken === 'admin_sys_token' ||
-        rawToken === 'super_admin_token' ||
-        rawToken.startsWith('mock_jwt_super_admin'))
+        rawToken === 'super_admin_token')
     ) {
       payload = {
         uid: '00000000-0000-0000-0000-000000000001',

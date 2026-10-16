@@ -147,9 +147,9 @@ export default function GlobalEmailControlPage() {
 
   const getAdminToken = () => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('super_admin_token') || 'admin-token';
+      return localStorage.getItem('super_admin_token') || '';
     }
-    return 'admin-token';
+    return '';
   };
 
   // Fetch Accounts
@@ -296,7 +296,7 @@ export default function GlobalEmailControlPage() {
 
   const handleDeleteDomain = async (domainId: string) => {
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('super_admin_token') || 'admin-token' : 'admin-token';
+      const token = getAdminToken();
       const res = await fetch(`${API_BASE}/api/v1/admin/email/domains/${domainId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
@@ -320,7 +320,7 @@ export default function GlobalEmailControlPage() {
     setIsBulkDeleting(true);
     const toDeleteIds = [...selectedDomainIds];
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('super_admin_token') || 'admin-token' : 'admin-token';
+      const token = getAdminToken();
       const res = await fetch(`${API_BASE}/api/v1/admin/email/domains/bulk-delete`, {
         method: 'POST',
         headers: {
@@ -353,7 +353,7 @@ export default function GlobalEmailControlPage() {
     }
     setIsSyncingCloudflare(true);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('super_admin_token') || 'admin-token' : 'admin-token';
+      const token = getAdminToken();
       const res = await fetch(`${API_BASE}/api/v1/admin/email/domains/${selectedDomainForCloudflare.id}/cloudflare-sync`, {
         method: 'POST',
         headers: {

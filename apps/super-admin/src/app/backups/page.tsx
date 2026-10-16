@@ -40,9 +40,9 @@ export default function BackupsPage() {
 
   function getAdminToken(): string {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('super_admin_token') || 'admin-token';
+      return localStorage.getItem('super_admin_token') || '';
     }
-    return 'admin-token';
+    return '';
   }
 
   const fetchBackups = useCallback(async () => {

@@ -97,7 +97,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
   const fetchTelemetry = async () => {
     try {
-      const token = typeof window !== 'undefined' ? (localStorage.getItem('super_admin_token') || 'admin-token') : 'admin-token';
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('super_admin_token') || '') : '';
       const res = await fetch(`${API_BASE}/api/v1/admin/health`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -117,7 +117,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
   const fetchNotifications = async () => {
     try {
-      const token = typeof window !== 'undefined' ? (localStorage.getItem('super_admin_token') || 'admin-token') : 'admin-token';
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('super_admin_token') || '') : '';
       const res = await fetch(`${API_BASE}/api/v1/admin/notifications?limit=25`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -132,7 +132,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   const markNotificationRead = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     try {
-      const token = typeof window !== 'undefined' ? (localStorage.getItem('super_admin_token') || 'admin-token') : 'admin-token';
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('super_admin_token') || '') : '';
       await fetch(`${API_BASE}/api/v1/admin/notifications/${id}/read`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}` },
@@ -144,7 +144,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
   const markAllNotificationsRead = async () => {
     try {
-      const token = typeof window !== 'undefined' ? (localStorage.getItem('super_admin_token') || 'admin-token') : 'admin-token';
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('super_admin_token') || '') : '';
       await fetch(`${API_BASE}/api/v1/admin/notifications/mark-all-read`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },

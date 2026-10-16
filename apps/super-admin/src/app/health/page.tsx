@@ -82,8 +82,8 @@ export default function SystemHealthPage() {
     setIsRefreshing(true);
     try {
       const token = typeof window !== 'undefined'
-        ? (localStorage.getItem('super_admin_token') || 'admin-token')
-        : 'admin-token';
+        ? (localStorage.getItem('super_admin_token') || '')
+        : '';
       const res = await fetch(`${API_BASE}/api/v1/admin/health`, {
         headers: { Authorization: `Bearer ${token}` },
       });

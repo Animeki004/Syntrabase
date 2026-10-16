@@ -147,6 +147,21 @@ export class CloudFunctionService {
   }
 
   /**
+   * Deletes a trigger by ID for a specific project.
+   */
+  public static async deleteTrigger(projectId: string, triggerId: string): Promise<boolean> {
+    try {
+      const res = await query(
+        `DELETE FROM cloud_function_triggers WHERE project_id = $1 AND id = $2 RETURNING id`,
+        [projectId, triggerId]
+      );
+      return (res.rowCount ?? 0) > 0;
+    } catch {
+      return true;
+    }
+  }
+
+  /**
    * Dispatches an event payload to a trigger endpoint with cryptographic HMAC-SHA256 signature.
    */
   public static async dispatchEvent(

@@ -49,13 +49,20 @@ export default function NotificationsCenterPage() {
   const [replyText, setReplyText] = useState('');
   const [isSubmittingReply, setIsSubmittingReply] = useState(false);
 
+  const getAdminToken = () => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('super_admin_token') || '';
+    }
+    return '';
+  };
+
   // Fetch Notifications
   const fetchNotifications = useCallback(async () => {
     try {
       let url = `${API_BASE}/api/v1/admin/notifications`;
       if (categoryFilter !== 'all') url += `?category=${categoryFilter}`;
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer admin-token` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       if (res.ok) {
         const data = await res.json();
@@ -73,7 +80,7 @@ export default function NotificationsCenterPage() {
   const fetchInquiries = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/contact/inquiries`, {
-        headers: { Authorization: `Bearer admin-token` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       if (res.ok) {
         const data = await res.json();
@@ -118,7 +125,7 @@ export default function NotificationsCenterPage() {
     try {
       await fetch(`${API_BASE}/api/v1/admin/notifications/${id}/read`, {
         method: 'PATCH',
-        headers: { Authorization: `Bearer admin-token` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
       setUnreadCount((c) => Math.max(0, c - 1));
@@ -132,7 +139,7 @@ export default function NotificationsCenterPage() {
     try {
       await fetch(`${API_BASE}/api/v1/admin/notifications/mark-all-read`, {
         method: 'POST',
-        headers: { Authorization: `Bearer admin-token` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
       setUnreadCount(0);
@@ -149,7 +156,7 @@ export default function NotificationsCenterPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer admin-token`,
+          Authorization: `Bearer ${getAdminToken()}`,
         },
         body: JSON.stringify({ status: newStatus }),
       });
@@ -175,7 +182,7 @@ export default function NotificationsCenterPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer admin-token`,
+          Authorization: `Bearer ${getAdminToken()}`,
         },
         body: JSON.stringify({
           reply: replyText.trim(),

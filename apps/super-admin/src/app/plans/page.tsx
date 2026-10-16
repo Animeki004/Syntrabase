@@ -100,9 +100,9 @@ export default function PlansManagementPage() {
 
   const getAdminToken = () => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('super_admin_token') || 'admin-token';
+      return localStorage.getItem('super_admin_token') || '';
     }
-    return 'admin-token';
+    return '';
   };
 
   const loadData = useCallback(async (isManual = false) => {

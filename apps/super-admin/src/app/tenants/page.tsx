@@ -94,7 +94,7 @@ export default function TenantsAndDevelopersPage() {
 
   function getAdminToken(): string {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('super_admin_token') || 'mock_jwt_super_admin_verified';
+      return localStorage.getItem('super_admin_token') || '';
     }
     return '';
   }
