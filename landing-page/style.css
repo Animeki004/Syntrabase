@@ -549,6 +549,51 @@ body[data-theme="light"] .mobile-nav-link:hover {
   font-size: 12px;
   font-weight: 600;
   color: #34d399;
+  transition: all 0.25s ease;
+}
+
+.status-indicator.online {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.35);
+  color: #34d399;
+}
+.status-indicator.online .status-dot {
+  background: var(--success);
+  box-shadow: 0 0 10px var(--success);
+  animation: pulse-dot 2s infinite;
+}
+
+.status-indicator.offline {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #f87171;
+}
+.status-indicator.offline .status-dot {
+  background: var(--danger);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+  animation: none;
+}
+
+.status-indicator.checking {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+}
+.status-indicator.checking .status-dot {
+  background: var(--warning);
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+  animation: pulse-dot 1s infinite;
+}
+
+.status-indicator.simulated {
+  background: rgba(168, 85, 247, 0.12);
+  border-color: rgba(168, 85, 247, 0.35);
+  color: #c084fc;
+}
+.status-indicator.simulated .status-dot {
+  background: #a855f7;
+  box-shadow: 0 0 8px rgba(168, 85, 247, 0.6);
+  animation: none;
 }
 
 .status-dot {
@@ -1754,6 +1799,11 @@ body[data-theme="light"] .doc-callout.callout-security svg { color: #e11d48; }
   background: rgba(239, 68, 68, 0.08);
 }
 
+.test-step-card.simulated {
+  border-color: rgba(168, 85, 247, 0.4);
+  background: rgba(168, 85, 247, 0.08);
+}
+
 .test-status-badge {
   font-size: 10.5px;
   font-weight: 700;
@@ -1766,6 +1816,7 @@ body[data-theme="light"] .doc-callout.callout-security svg { color: #e11d48; }
 .test-status-badge.running { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
 .test-status-badge.passed { background: rgba(16, 185, 129, 0.2); color: #34d399; }
 .test-status-badge.failed { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+.test-status-badge.simulated { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
 
 /* Form Fields */
 .form-grid {
