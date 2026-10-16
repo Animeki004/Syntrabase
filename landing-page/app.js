@@ -23,6 +23,12 @@ function showSection(sectionId) {
   if (activeLink) {
     activeLink.classList.add('active');
   }
+
+  const mobileActiveLink = document.querySelector(`.mobile-nav-link[data-section="${sectionId}"]`);
+  document.querySelectorAll('.mobile-nav-link').forEach((l) => l.classList.remove('active'));
+  if (mobileActiveLink) {
+    mobileActiveLink.classList.add('active');
+  }
 }
 
 // Bind Top Nav Links
@@ -32,6 +38,59 @@ document.querySelectorAll('.nav-link').forEach((link) => {
     const sectionId = link.getAttribute('data-section');
     showSection(sectionId);
     window.location.hash = link.getAttribute('href');
+  });
+});
+
+// Mobile Drawer Controller
+const mobileDrawer = document.getElementById('mobile-nav-drawer');
+const mobileToggleBtn = document.getElementById('btn-mobile-nav');
+const mobileCloseBtn = document.getElementById('btn-mobile-close');
+const mobileBackdrop = document.getElementById('mobile-nav-backdrop');
+
+function openMobileDrawer() {
+  if (mobileDrawer) {
+    mobileDrawer.classList.add('active');
+    document.body.classList.add('mobile-nav-open');
+    mobileDrawer.setAttribute('aria-hidden', 'false');
+    mobileToggleBtn?.setAttribute('aria-expanded', 'true');
+  }
+}
+
+function closeMobileDrawer() {
+  if (mobileDrawer) {
+    mobileDrawer.classList.remove('active');
+    document.body.classList.remove('mobile-nav-open');
+    mobileDrawer.setAttribute('aria-hidden', 'true');
+    mobileToggleBtn?.setAttribute('aria-expanded', 'false');
+  }
+}
+
+mobileToggleBtn?.addEventListener('click', () => {
+  if (mobileDrawer?.classList.contains('active')) {
+    closeMobileDrawer();
+  } else {
+    openMobileDrawer();
+  }
+});
+
+mobileCloseBtn?.addEventListener('click', closeMobileDrawer);
+mobileBackdrop?.addEventListener('click', closeMobileDrawer);
+
+// Close on Escape key
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && mobileDrawer?.classList.contains('active')) {
+    closeMobileDrawer();
+  }
+});
+
+// Bind Mobile Nav Links
+document.querySelectorAll('.mobile-nav-link').forEach((link) => {
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    const sectionId = link.getAttribute('data-section');
+    showSection(sectionId);
+    window.location.hash = link.getAttribute('href');
+    closeMobileDrawer();
   });
 });
 
@@ -47,6 +106,122 @@ document.querySelectorAll('.jump-to-section').forEach((btn) => {
     const target = btn.getAttribute('data-target');
     showSection(target);
   });
+});
+
+// Mobile Docs Jump Dropdown
+const docsMobileSelect = document.getElementById('docs-mobile-select');
+docsMobileSelect?.addEventListener('change', (e) => {
+  const targetId = e.target.value;
+  if (targetId) {
+    const el = document.querySelector(targetId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+      document.querySelectorAll('.docs-nav-item').forEach((item) => {
+        item.classList.remove('active');
+        if (item.getAttribute('href') === targetId) {
+          item.classList.add('active');
+        }
+      });
+    }
+  }
+});
+
+// Documentation Live Search & Filter
+const docsSearchInput = document.getElementById('docs-search-input');
+docsSearchInput?.addEventListener('input', (e) => {
+  const query = e.target.value.toLowerCase().trim();
+  const navItems = document.querySelectorAll('.docs-nav-item');
+  const navGroups = document.querySelectorAll('.docs-nav-group');
+
+  if (!query) {
+    navItems.forEach((item) => (item.style.display = ''));
+    navGroups.forEach((group) => (group.style.display = ''));
+    return;
+  }
+
+  navGroups.forEach((group) => {
+    let groupHasMatch = false;
+    const itemsInGroup = group.querySelectorAll('.docs-nav-item');
+    itemsInGroup.forEach((item) => {
+      const text = item.textContent.toLowerCase();
+      const href = item.getAttribute('href')?.toLowerCase() || '';
+      const match = text.includes(query) || href.includes(query);
+      item.style.display = match ? '' : 'none';
+      if (match) groupHasMatch = true;
+    });
+    group.style.display = groupHasMatch ? '' : 'none';
+  });
+});
+
+// Floating Back to Top Button
+const backToTopBtn = document.getElementById('btn-back-to-top');
+window.addEventListener('scroll', () => {
+  if (window.scrollY > 350) {
+    backToTopBtn?.classList.add('visible');
+  } else {
+    backToTopBtn?.classList.remove('visible');
+  }
+});
+
+backToTopBtn?.addEventListener('click', () => {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+// Hero Install Box Copy Buttons with visual feedback
+document.querySelectorAll('.install-box .btn-copy-code').forEach((btn) => {
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const text = btn.getAttribute('data-copy');
+    if (text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.classList.add('copied');
+        btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`;
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+        }, 2000);
+      } catch (err) {
+        console.error('Install command copy failed:', err);
+      }
+    }
+  });
+});
+
+// Click entire install box to copy
+document.querySelectorAll('.install-box').forEach((box) => {
+  box.addEventListener('click', () => {
+    const btn = box.querySelector('.btn-copy-code');
+    btn?.click();
+  });
+});
+
+// Base32 MFA Secret Key Copy Button
+document.getElementById('btn-copy-mfa-secret')?.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  const secretText = document.getElementById('mfa-secret-text')?.innerText;
+  const btn = document.getElementById('btn-copy-mfa-secret');
+  if (secretText) {
+    try {
+      await navigator.clipboard.writeText(secretText);
+      if (btn) {
+        btn.classList.add('copied');
+        btn.innerHTML = `
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>Copied!</span>
+        `;
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          btn.innerHTML = `
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span>Copy</span>
+          `;
+        }, 2000);
+      }
+    } catch (err) {
+      console.error('MFA Secret copy failed:', err);
+    }
+  }
 });
 
 // Handle URL Hash Navigation on Load and Change
@@ -847,7 +1022,7 @@ document.getElementById('btn-auth-mfa-enroll')?.addEventListener('click', async 
 
   if (qrContainer && qrImg && secretText) {
     qrImg.src = mfa.qrCodeUrl;
-    secretText.textContent = `Secret: ${mfa.secret} | OTPAuth URI Generated`;
+    secretText.textContent = mfa.secret;
     qrContainer.style.display = 'block';
   }
   if (verifyRow) verifyRow.style.display = 'flex';

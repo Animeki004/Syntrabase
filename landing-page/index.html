@@ -58,9 +58,58 @@
           <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
           <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         </button>
+
+        <button id="btn-mobile-nav" class="btn-icon mobile-toggle-btn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="mobile-nav-drawer">
+          <svg class="icon-menu" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          <svg class="icon-close" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
     </div>
   </header>
+
+  <!-- Mobile Navigation Drawer -->
+  <div id="mobile-nav-drawer" class="mobile-nav-drawer" aria-hidden="true">
+    <div class="mobile-nav-backdrop" id="mobile-nav-backdrop"></div>
+    <div class="mobile-nav-content glass-card">
+      <div class="mobile-nav-header">
+        <div class="logo-area">
+          <div class="logo-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </div>
+          <span class="logo-title">Syntrabase</span>
+          <span class="version-tag">v1.2.0</span>
+        </div>
+        <button id="btn-mobile-close" class="btn-icon" aria-label="Close menu">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <nav class="mobile-nav-links">
+        <a href="#overview" class="mobile-nav-link active" data-section="section-overview">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <span>Overview</span>
+        </a>
+        <a href="#docs" class="mobile-nav-link" data-section="section-docs">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          <span>Documentation (21 Guides)</span>
+        </a>
+        <a href="#studio" class="mobile-nav-link" data-section="section-studio">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span>Interactive Test Studio</span>
+        </a>
+        <a href="#architecture" class="mobile-nav-link" data-section="section-architecture">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          <span>Architecture & Comparison</span>
+        </a>
+      </nav>
+      <div class="mobile-nav-footer">
+        <a href="https://github.com/Animeki004/Syntrabase" target="_blank" rel="noopener noreferrer" class="btn btn-github full-width">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          <span>GitHub Repository</span>
+          <span class="github-badge">★ Star</span>
+        </a>
+      </div>
+    </div>
+  </div>
 
   <!-- ========================================================================= -->
   <!-- SECTION 1: PRODUCT HERO & OVERVIEW                                        -->
@@ -172,7 +221,7 @@
 
 <span class="cmt">// 3. Enroll TOTP MFA (Returns Scannable Visual QR Code Data URI)</span>
 <span class="kw">const</span> { secret, qrCodeUrl, backupCodes } = <span class="kw">await</span> enrollTotpMfa(auth);
-<span class="cmt">// <img src={qrCodeUrl} alt="Scan in Authenticator App" /></span>
+<span class="cmt">// &lt;img src={qrCodeUrl} alt="Scan in Authenticator App" /&gt;</span>
 
 <span class="cmt">// 4. Register WebAuthn FIDO2 Biometric Passkey (TouchID, FaceID, YubiKey)</span>
 <span class="kw">const</span> passkey = <span class="kw">await</span> createPasskey(auth);
@@ -378,6 +427,12 @@ console.log(<span class="str">'Audit Chain Intact:'</span>, ledgerStatus.valid);
         
         <!-- Sticky Docs Navigation Sidebar -->
         <aside class="docs-sidebar glass-card">
+          <!-- Docs Search / Filter Bar -->
+          <div class="docs-search-bar">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="search" id="docs-search-input" placeholder="Search 21 SDK topics..." aria-label="Search documentation topics">
+          </div>
+
           <div class="docs-nav-group">
             <span class="docs-nav-header"><span class="docs-nav-header-dot dot-blue"></span>Getting Started</span>
             <a href="#doc-overview" class="docs-nav-item active"><span class="nav-dot"></span>Overview & Architecture</a>
@@ -416,8 +471,47 @@ console.log(<span class="str">'Audit Chain Intact:'</span>, ledgerStatus.valid);
           </div>
         </aside>
 
-      <!-- Main Docs Content -->
-      <article class="docs-article glass-card">
+        <!-- Main Docs Content Area (with Responsive Mobile Jump Header) -->
+        <div class="docs-content-wrapper">
+          <div class="docs-mobile-jump glass-card">
+            <label for="docs-mobile-select" class="mobile-jump-label">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
+              <span>Jump to Topic:</span>
+            </label>
+            <select id="docs-mobile-select" class="docs-mobile-select" aria-label="Jump to documentation guide">
+              <optgroup label="Getting Started">
+                <option value="#doc-overview">Overview & Architecture</option>
+                <option value="#doc-install">Installation & Packages</option>
+                <option value="#doc-config">Configuration & Keys</option>
+              </optgroup>
+              <optgroup label="Client SDK Modules">
+                <option value="#doc-client-init">App Initialization</option>
+                <option value="#doc-client-auth">Authentication & Sessions</option>
+                <option value="#doc-client-mfa">TOTP MFA & Visual QR Codes</option>
+                <option value="#doc-client-passkeys">WebAuthn FIDO2 Passkeys</option>
+                <option value="#doc-client-firestore">Firestore Documents (CRUD)</option>
+                <option value="#doc-client-queries">Queries & Filtering</option>
+                <option value="#doc-client-transforms">Atomic Field Transforms</option>
+                <option value="#doc-client-batch">Batch Writes & Transactions</option>
+                <option value="#doc-client-realtime">Realtime WebSockets (onSnapshot)</option>
+                <option value="#doc-client-storage">Storage & Signed URLs</option>
+              </optgroup>
+              <optgroup label="Admin SDK Modules">
+                <option value="#doc-admin-init">Privileged Initialization</option>
+                <option value="#doc-admin-users">User Management & Claims</option>
+                <option value="#doc-admin-actions">User Actions & Gating Policy</option>
+                <option value="#doc-admin-mfa">Project MFA & Factor Admin</option>
+                <option value="#doc-admin-audit">Cryptographic Audit Ledger</option>
+                <option value="#doc-admin-guardrail">Browser Runtime Guardrail</option>
+              </optgroup>
+              <optgroup label="Quality & Verification">
+                <option value="#doc-testing">Automated Test Bench & Gates</option>
+                <option value="#doc-release">Release & Staging Readiness</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <article class="docs-article glass-card">
         
         <!-- Doc 1: Overview -->
         <div class="doc-block" id="doc-overview">
@@ -997,6 +1091,7 @@ curl -f http://localhost:4000/api/v1/health">Copy</button>
         </div>
 
       </article>
+        </div>
       </div>
     </div>
   </section>
@@ -1148,16 +1243,37 @@ curl -f http://localhost:4000/api/v1/health">Copy</button>
               <button id="btn-auth-send-reset" class="btn btn-outline">Send Password Reset</button>
             </div>
 
-            <!-- Visual QR Code Container -->
-            <div id="mfa-qr-container" style="display: none; margin-top: 16px; padding: 16px; background: rgba(0,0,0,0.3); border-radius: 8px;">
-              <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">Scan this QR code in Google Authenticator, 1Password, or Authy:</p>
-              <img id="mfa-qr-image" src="" alt="TOTP QR Code" width="160" height="160" style="border-radius: 6px; background: white; padding: 6px;" />
-              <p id="mfa-secret-text" style="font-family: var(--font-mono); font-size: 12px; margin-top: 6px; color: #38bdf8;"></p>
+            <!-- Visual QR Code Card -->
+            <div id="mfa-qr-container" class="mfa-qr-card" style="display: none;">
+              <div class="mfa-qr-header">
+                <span class="mfa-badge">RFC 6238 TOTP Enrollment</span>
+                <span class="mfa-status-dot"></span>
+              </div>
+              <p class="mfa-instruction">Scan this scannable QR code using Google Authenticator, 1Password, Microsoft Authenticator, or Authy:</p>
+              <div class="mfa-qr-stage">
+                <div class="mfa-qr-frame">
+                  <img id="mfa-qr-image" src="" alt="TOTP Authenticator QR Code" width="160" height="160" />
+                </div>
+                <div class="mfa-secret-box">
+                  <span class="mfa-secret-label">Base32 Secret Key (Manual Entry):</span>
+                  <div class="mfa-secret-row">
+                    <code id="mfa-secret-text" class="mfa-secret-code"></code>
+                    <button type="button" id="btn-copy-mfa-secret" class="btn-copy-code" aria-label="Copy Base32 secret">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span>Copy</span>
+                    </button>
+                  </div>
+                  <p class="mfa-secret-hint">Keep this secret safe or store in your password manager.</p>
+                </div>
+              </div>
             </div>
 
-            <div class="inline-action-row" id="mfa-verify-row" style="display: none; margin-top: 12px;">
-              <input type="text" id="mfa-token-input" placeholder="Enter 6-digit TOTP code" maxlength="6">
-              <button id="btn-auth-mfa-verify" class="btn btn-primary">Verify TOTP Code</button>
+            <div class="inline-action-row mfa-verify-row" id="mfa-verify-row" style="display: none;">
+              <div class="input-field mfa-input-wrap">
+                <label for="mfa-token-input">Enter 6-Digit Authenticator Code</label>
+                <input type="text" id="mfa-token-input" placeholder="e.g. 123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+              </div>
+              <button id="btn-auth-mfa-verify" class="btn btn-primary mfa-verify-btn">Verify TOTP Code</button>
             </div>
           </section>
 
@@ -1424,6 +1540,11 @@ curl -f http://localhost:4000/api/v1/health">Copy</button>
       <p>&copy; 2026 Syntrabase Project. Built with PostgreSQL 16 JSONB, Fastify & TypeScript.</p>
     </div>
   </footer>
+
+  <!-- Floating Back to Top Button -->
+  <button id="btn-back-to-top" class="btn-back-to-top" aria-label="Scroll back to top" title="Back to top">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+  </button>
 
   <script src="qrcode.min.js"></script>
   <script type="module" src="app.js?v=1.2.0"></script>
