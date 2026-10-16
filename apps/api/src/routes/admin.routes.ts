@@ -1074,26 +1074,74 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
   // Add Provider Account
   server.post('/api/v1/admin/email/accounts', async (req, reply) => {
     const admin = await requireSuperAdmin(req);
-    const { providerType, accountName, apiKey } = (req.body as any) || {};
+    const body = (req.body as any) || {};
+    const {
+      providerType,
+      accountName,
+      apiKey,
+      smtpConfig,
+      smtpHost,
+      smtpPort,
+      smtpSecure,
+      smtpUser,
+      smtpPass,
+      dailyLimit,
+    } = body;
 
-    if (!accountName || !apiKey) {
-      return reply.status(400).send({ error: 'Account name and API key are required' });
+    if (!accountName) {
+      return reply.status(400).send({ error: 'Account name is required' });
     }
 
-    try {
-      const account = await EmailService.addProviderAccount({
-        providerType: providerType || 'brevo',
-        accountName,
-        apiKey,
-      });
+    const type = providerType || 'brevo';
 
-      await AuditService.log({
-        actorId: admin.uid,
-        actorType: 'developer',
-        action: 'admin.email_provider_account_created',
-        targetResource: `email_account:${account.id}`,
-        payload: { providerType: account.providerType, accountName: account.accountName },
-      });
+    try {
+      let account;
+      if (type === 'smtp') {
+        const config = smtpConfig || {
+          host: smtpHost,
+          port: smtpPort ? parseInt(smtpPort, 10) : 465,
+          secure: smtpSecure !== undefined ? Boolean(smtpSecure) : (parseInt(smtpPort, 10) === 465),
+          user: smtpUser,
+          pass: smtpPass,
+          dailyLimit: dailyLimit ? parseInt(dailyLimit, 10) : 500,
+        };
+
+        if (!config.host || !config.user || !config.pass) {
+          return reply.status(400).send({ error: 'SMTP Host, Username, and Password are required' });
+        }
+
+        account = await EmailService.addProviderAccount({
+          providerType: 'smtp',
+          accountName,
+          smtpConfig: config,
+        });
+
+        await AuditService.log({
+          actorId: admin.uid,
+          actorType: 'developer',
+          action: 'admin.email_provider_account_created',
+          targetResource: `email_account:${account.id}`,
+          payload: { providerType: 'smtp', accountName: account.accountName, host: config.host, user: config.user, dailyLimit: config.dailyLimit },
+        });
+      } else {
+        if (!apiKey) {
+          return reply.status(400).send({ error: 'API key is required for Brevo accounts' });
+        }
+
+        account = await EmailService.addProviderAccount({
+          providerType: 'brevo',
+          accountName,
+          apiKey,
+        });
+
+        await AuditService.log({
+          actorId: admin.uid,
+          actorType: 'developer',
+          action: 'admin.email_provider_account_created',
+          targetResource: `email_account:${account.id}`,
+          payload: { providerType: account.providerType, accountName: account.accountName },
+        });
+      }
 
       return reply.status(201).send({ account });
     } catch (err: any) {
@@ -1124,21 +1172,44 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
   server.put('/api/v1/admin/email/accounts/:id/credentials', async (req, reply) => {
     const admin = await requireSuperAdmin(req);
     const { id } = req.params as { id: string };
-    const { apiKey, accountName } = (req.body as any) || {};
-
-    if (!apiKey) {
-      return reply.status(400).send({ error: 'API key is required' });
-    }
+    const body = (req.body as any) || {};
+    const {
+      apiKey,
+      accountName,
+      smtpConfig,
+      smtpHost,
+      smtpPort,
+      smtpSecure,
+      smtpUser,
+      smtpPass,
+      dailyLimit,
+    } = body;
 
     try {
-      const account = await EmailService.updateProviderAccountCredentials(id, { apiKey, accountName });
+      let updatePayload: any = { accountName };
+      if (smtpConfig || smtpHost) {
+        updatePayload.smtpConfig = smtpConfig || {
+          host: smtpHost,
+          port: smtpPort ? parseInt(smtpPort, 10) : 465,
+          secure: smtpSecure !== undefined ? Boolean(smtpSecure) : (parseInt(smtpPort, 10) === 465),
+          user: smtpUser,
+          pass: smtpPass,
+          dailyLimit: dailyLimit ? parseInt(dailyLimit, 10) : 500,
+        };
+      } else if (apiKey) {
+        updatePayload.apiKey = apiKey;
+      } else {
+        return reply.status(400).send({ error: 'API key or SMTP credentials are required' });
+      }
+
+      const account = await EmailService.updateProviderAccountCredentials(id, updatePayload);
 
       await AuditService.log({
         actorId: admin.uid,
         actorType: 'developer',
         action: 'admin.email_provider_account_credentials_updated',
         targetResource: `email_account:${id}`,
-        payload: { accountName: account.accountName },
+        payload: { accountName: account.accountName, providerType: account.providerType },
       });
 
       return reply.send({ account });

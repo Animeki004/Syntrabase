@@ -209,29 +209,66 @@ export class EmailService {
   public static async addProviderAccount(params: {
     providerType: EmailProviderType;
     accountName: string;
-    apiKey: string;
+    apiKey?: string;
+    smtpConfig?: {
+      host: string;
+      port: number;
+      secure?: boolean;
+      user: string;
+      pass: string;
+      dailyLimit?: number;
+    };
     projectId?: string;
   }): Promise<EmailProviderAccount> {
-    const cleanKey = params.apiKey.trim();
-    if (!cleanKey) {
-      throw new Error('API key is required');
+    const isSmtp = params.providerType === 'smtp';
+    let credsToValidate: string;
+    let credsToStore: Record<string, any>;
+    let maskedKey: string;
+
+    if (isSmtp) {
+      const cfg = params.smtpConfig || (params.apiKey ? JSON.parse(params.apiKey) : null);
+      if (!cfg) {
+        throw new Error('SMTP configuration (host, port, user, pass) is required');
+      }
+      const host = (cfg.host || cfg.smtpHost || '').trim();
+      const port = parseInt(cfg.port || cfg.smtpPort || 465, 10);
+      const user = (cfg.user || cfg.smtpUser || '').trim();
+      const pass = (cfg.pass || cfg.smtpPass || '').toString().replace(/\s+/g, '');
+      const secure = cfg.secure !== undefined ? Boolean(cfg.secure) : port === 465;
+      const dailyLimit = cfg.dailyLimit ? parseInt(cfg.dailyLimit, 10) : (host.includes('gmail.com') ? 500 : 1000);
+
+      if (!host || !user || !pass) {
+        throw new Error('SMTP host, username, and password/app-password are required');
+      }
+
+      credsToStore = { host, port, secure, user, pass, dailyLimit };
+      credsToValidate = JSON.stringify(credsToStore);
+      maskedKey = `${user} (${host}:${port})`;
+    } else {
+      const cleanKey = (params.apiKey || '').trim();
+      if (!cleanKey) {
+        throw new Error('API key is required');
+      }
+      credsToStore = { apiKey: cleanKey };
+      credsToValidate = cleanKey;
+      maskedKey = this.maskApiKey(cleanKey);
     }
 
     const adapter = EmailProviderRegistry.getAdapter(params.providerType);
-    const validation = await adapter.validateCredentials(cleanKey);
+    const validation = await adapter.validateCredentials(credsToValidate);
 
     if (!validation.valid) {
-      throw new Error(`Credential validation failed: ${validation.error || 'Invalid API key'}`);
+      throw new Error(`Credential validation failed: ${validation.error || 'Invalid credentials'}`);
     }
 
     const accountEmail = validation.accountIdentity?.email;
     const companyName = validation.accountIdentity?.companyName;
 
-    // Reject duplicate API keys or keys belonging to the same underlying Brevo account
-    if (accountEmail) {
+    // Reject duplicate Brevo API keys or keys belonging to the same underlying Brevo account
+    if (params.providerType === 'brevo' && accountEmail) {
       try {
         const existingAcc = await query<any>(
-          `SELECT id, account_name, account_email FROM email_provider_accounts WHERE LOWER(account_email) = LOWER($1) LIMIT 1`,
+          `SELECT id, account_name, account_email FROM email_provider_accounts WHERE LOWER(account_email) = LOWER($1) AND provider_type = 'brevo' LIMIT 1`,
           [accountEmail]
         );
         if (existingAcc.rows.length > 0) {
@@ -244,7 +281,7 @@ export class EmailService {
           throw err;
         }
         for (const acc of inMemoryProviderAccounts.values()) {
-          if (acc.accountEmail?.toLowerCase() === accountEmail.toLowerCase()) {
+          if (acc.providerType === 'brevo' && acc.accountEmail?.toLowerCase() === accountEmail.toLowerCase()) {
             throw new Error(
               `Duplicate Brevo account detected: Underlying account identity "${accountEmail}" is already registered (account: "${acc.accountName}"). Multiple keys belonging to the same underlying Brevo account share one quota pool and cannot be counted as independent quota pools.`
             );
@@ -253,8 +290,7 @@ export class EmailService {
       }
     }
 
-    const encrypted = this.encryptCredentials({ apiKey: cleanKey });
-    const maskedKey = this.maskApiKey(cleanKey);
+    const encrypted = this.encryptCredentials(credsToStore);
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const planInfo = validation.accountIdentity?.planInfo || {};
@@ -306,7 +342,7 @@ export class EmailService {
         monthlySentCount: 0,
         createdAt: now,
         updatedAt: now,
-        rawApiKey: cleanKey,
+        rawApiKey: typeof credsToStore === 'string' ? credsToStore : JSON.stringify(credsToStore),
       };
       inMemoryProviderAccounts.set(id, acc);
       return acc;
@@ -315,13 +351,19 @@ export class EmailService {
 
   public static async updateProviderAccountCredentials(
     id: string,
-    params: { apiKey: string; accountName?: string }
-  ): Promise<EmailProviderAccount> {
-    const cleanKey = params.apiKey.trim();
-    if (!cleanKey) {
-      throw new Error('API key is required');
+    params: {
+      apiKey?: string;
+      accountName?: string;
+      smtpConfig?: {
+        host: string;
+        port: number;
+        secure?: boolean;
+        user: string;
+        pass: string;
+        dailyLimit?: number;
+      };
     }
-
+  ): Promise<EmailProviderAccount> {
     let providerType: EmailProviderType = 'brevo';
     try {
       const existing = await query<any>('SELECT provider_type FROM email_provider_accounts WHERE id = $1', [id]);
@@ -331,20 +373,54 @@ export class EmailService {
       if (inMem) providerType = inMem.providerType;
     }
 
+    const isSmtp = providerType === 'smtp';
+    let credsToValidate: string;
+    let credsToStore: Record<string, any>;
+    let maskedKey: string;
+
+    if (isSmtp) {
+      const cfg = params.smtpConfig || (params.apiKey ? JSON.parse(params.apiKey) : null);
+      if (!cfg) {
+        throw new Error('SMTP configuration (host, port, user, pass) is required');
+      }
+      const host = (cfg.host || cfg.smtpHost || '').trim();
+      const port = parseInt(cfg.port || cfg.smtpPort || 465, 10);
+      const user = (cfg.user || cfg.smtpUser || '').trim();
+      const pass = (cfg.pass || cfg.smtpPass || '').toString().replace(/\s+/g, '');
+      const secure = cfg.secure !== undefined ? Boolean(cfg.secure) : port === 465;
+      const dailyLimit = cfg.dailyLimit ? parseInt(cfg.dailyLimit, 10) : (host.includes('gmail.com') ? 500 : 1000);
+
+      if (!host || !user || !pass) {
+        throw new Error('SMTP host, username, and password/app-password are required');
+      }
+
+      credsToStore = { host, port, secure, user, pass, dailyLimit };
+      credsToValidate = JSON.stringify(credsToStore);
+      maskedKey = `${user} (${host}:${port})`;
+    } else {
+      const cleanKey = (params.apiKey || '').trim();
+      if (!cleanKey) {
+        throw new Error('API key is required');
+      }
+      credsToStore = { apiKey: cleanKey };
+      credsToValidate = cleanKey;
+      maskedKey = this.maskApiKey(cleanKey);
+    }
+
     const adapter = EmailProviderRegistry.getAdapter(providerType);
-    const validation = await adapter.validateCredentials(cleanKey);
+    const validation = await adapter.validateCredentials(credsToValidate);
     if (!validation.valid) {
-      throw new Error(`Credential validation failed: ${validation.error || 'Invalid API key'}`);
+      throw new Error(`Credential validation failed: ${validation.error || 'Invalid credentials'}`);
     }
 
     const accountEmail = validation.accountIdentity?.email;
     const companyName = validation.accountIdentity?.companyName;
     const planInfo = validation.accountIdentity?.planInfo || {};
 
-    if (accountEmail) {
+    if (providerType === 'brevo' && accountEmail) {
       try {
         const dupCheck = await query<any>(
-          `SELECT id, account_name FROM email_provider_accounts WHERE LOWER(account_email) = LOWER($1) AND id != $2 LIMIT 1`,
+          `SELECT id, account_name FROM email_provider_accounts WHERE LOWER(account_email) = LOWER($1) AND id != $2 AND provider_type = 'brevo' LIMIT 1`,
           [accountEmail, id]
         );
         if (dupCheck.rows.length > 0) {
@@ -355,7 +431,7 @@ export class EmailService {
       } catch (err: any) {
         if (err.message?.includes('Duplicate Brevo account detected')) throw err;
         for (const [memId, acc] of inMemoryProviderAccounts.entries()) {
-          if (memId !== id && acc.accountEmail?.toLowerCase() === accountEmail.toLowerCase()) {
+          if (memId !== id && acc.providerType === 'brevo' && acc.accountEmail?.toLowerCase() === accountEmail.toLowerCase()) {
             throw new Error(
               `Duplicate Brevo account detected: Underlying account identity "${accountEmail}" is already registered by another account ("${acc.accountName}").`
             );
@@ -364,8 +440,7 @@ export class EmailService {
       }
     }
 
-    const encrypted = this.encryptCredentials({ apiKey: cleanKey });
-    const maskedKey = this.maskApiKey(cleanKey);
+    const encrypted = this.encryptCredentials(credsToStore);
     const now = new Date().toISOString();
 
     try {
@@ -409,7 +484,7 @@ export class EmailService {
       if (!acc) throw new Error('Account not found');
       if (params.accountName) acc.accountName = params.accountName.trim();
       acc.maskedApiKey = maskedKey;
-      acc.rawApiKey = cleanKey;
+      acc.rawApiKey = typeof credsToStore === 'string' ? credsToStore : JSON.stringify(credsToStore);
       acc.accountEmail = accountEmail;
       acc.companyName = companyName;
       acc.providerPlanInfo = planInfo;
@@ -593,7 +668,7 @@ export class EmailService {
       const row = res.rows[0];
       providerType = row.provider_type;
       const decrypted = this.decryptCredentials(row.encrypted_credentials);
-      apiKey = decrypted.apiKey;
+      apiKey = providerType === 'smtp' ? JSON.stringify(decrypted) : (decrypted.apiKey || JSON.stringify(decrypted));
     } catch (err: any) {
       const acc = inMemoryProviderAccounts.get(id);
       if (!acc) throw new Error('Account not found');
@@ -657,7 +732,7 @@ export class EmailService {
       currentAcc = res.rows[0];
       providerType = currentAcc.provider_type;
       const decrypted = this.decryptCredentials(currentAcc.encrypted_credentials);
-      apiKey = decrypted.apiKey;
+      apiKey = providerType === 'smtp' ? JSON.stringify(decrypted) : (decrypted.apiKey || JSON.stringify(decrypted));
     } catch (err: any) {
       if (err.message === 'Account not found') throw err;
       const acc = inMemoryProviderAccounts.get(id);
@@ -1661,6 +1736,10 @@ export class EmailService {
       if (a.status === 'invalid_credentials' || a.status === 'disabled') return false;
       if (a.status === 'quota_exhausted') return false;
       if (a.pausedUntil && new Date(a.pausedUntil).getTime() > nowMs) return false;
+      const dailyCap = (a.providerPlanInfo as any)?.totalDailyQuota || (a.providerType === 'smtp' ? 500 : 300);
+      if (typeof a.dailySentCount === 'number' && a.dailySentCount >= dailyCap) {
+        return false;
+      }
       return true;
     });
 
@@ -1743,7 +1822,8 @@ export class EmailService {
             [account.id]
           );
           if (fullAcc.rows.length > 0) {
-            apiKey = this.decryptCredentials(fullAcc.rows[0].encrypted_credentials).apiKey;
+            const creds = this.decryptCredentials(fullAcc.rows[0].encrypted_credentials);
+            apiKey = account.providerType === 'smtp' ? JSON.stringify(creds) : (creds.apiKey || JSON.stringify(creds));
           }
         } catch {
           apiKey = inMemoryProviderAccounts.get(account.id)?.rawApiKey || 'mock-key';

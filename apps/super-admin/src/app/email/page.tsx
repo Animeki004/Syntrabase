@@ -65,14 +65,28 @@ export default function GlobalEmailControlPage() {
 
   // Add Account Modal State
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
+  const [newProviderType, setNewProviderType] = useState<'brevo' | 'smtp'>('brevo');
   const [newAccountName, setNewAccountName] = useState('');
   const [newApiKey, setNewApiKey] = useState('');
+  const [newSmtpHost, setNewSmtpHost] = useState('smtp.gmail.com');
+  const [newSmtpPort, setNewSmtpPort] = useState(465);
+  const [newSmtpSecure, setNewSmtpSecure] = useState(true);
+  const [newSmtpUser, setNewSmtpUser] = useState('');
+  const [newSmtpPass, setNewSmtpPass] = useState('');
+  const [newSmtpDailyLimit, setNewSmtpDailyLimit] = useState(500);
   const [isSubmittingAccount, setIsSubmittingAccount] = useState(false);
 
   // Edit Account Modal State
   const [editAccount, setEditAccount] = useState<EmailProviderAccount | null>(null);
+  const [editProviderType, setEditProviderType] = useState<'brevo' | 'smtp'>('brevo');
   const [editAccountName, setEditAccountName] = useState('');
   const [editApiKey, setEditApiKey] = useState('');
+  const [editSmtpHost, setEditSmtpHost] = useState('smtp.gmail.com');
+  const [editSmtpPort, setEditSmtpPort] = useState(465);
+  const [editSmtpSecure, setEditSmtpSecure] = useState(true);
+  const [editSmtpUser, setEditSmtpUser] = useState('');
+  const [editSmtpPass, setEditSmtpPass] = useState('');
+  const [editSmtpDailyLimit, setEditSmtpDailyLimit] = useState(500);
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
 
   // Policy & Global Controls State
@@ -472,34 +486,58 @@ export default function GlobalEmailControlPage() {
   // Handle Add Account
   const handleAddAccount = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newApiKey.trim() || !newAccountName.trim()) {
-      addToast('Account name and API key are required', 'error');
+    if (!newAccountName.trim()) {
+      addToast('Account name is required', 'error');
+      return;
+    }
+
+    if (newProviderType === 'brevo' && !newApiKey.trim()) {
+      addToast('Brevo API key is required', 'error');
+      return;
+    }
+
+    if (newProviderType === 'smtp' && (!newSmtpHost.trim() || !newSmtpUser.trim() || !newSmtpPass.trim())) {
+      addToast('SMTP Host, Username, and App Password are required', 'error');
       return;
     }
 
     setIsSubmittingAccount(true);
     try {
+      const payload: any = {
+        providerType: newProviderType,
+        accountName: newAccountName.trim(),
+      };
+      if (newProviderType === 'smtp') {
+        payload.smtpHost = newSmtpHost.trim();
+        payload.smtpPort = newSmtpPort;
+        payload.smtpSecure = newSmtpSecure;
+        payload.smtpUser = newSmtpUser.trim();
+        payload.smtpPass = newSmtpPass.trim();
+        payload.dailyLimit = newSmtpDailyLimit;
+      } else {
+        payload.apiKey = newApiKey.trim();
+      }
+
       const res = await fetch(`${API_BASE}/api/v1/admin/email/accounts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${getAdminToken()}`,
         },
-        body: JSON.stringify({
-          providerType: 'brevo',
-          accountName: newAccountName.trim(),
-          apiKey: newApiKey.trim(),
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to add Brevo account');
+        throw new Error(data.error || 'Failed to add provider account');
       }
 
-      addToast(`Brevo account "${data.account.accountName}" validated and added!`, 'success');
+      addToast(`${newProviderType === 'smtp' ? 'SMTP' : 'Brevo'} account "${data.account.accountName}" validated and added!`, 'success');
       setShowAddAccountModal(false);
+      setNewAccountName('');
       setNewApiKey('');
+      setNewSmtpUser('');
+      setNewSmtpPass('');
       await fetchAccounts();
     } catch (err: any) {
       addToast(err.message, 'error');
@@ -512,23 +550,39 @@ export default function GlobalEmailControlPage() {
   const handleEditAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editAccount) return;
-    if (!editApiKey.trim()) {
-      addToast('API key is required', 'error');
-      return;
-    }
 
     setIsSubmittingEdit(true);
     try {
+      const payload: any = {
+        accountName: editAccountName.trim() || undefined,
+      };
+
+      if (editProviderType === 'smtp') {
+        if (!editSmtpPass.trim() && !editSmtpUser.trim()) {
+          addToast('SMTP credentials are required', 'error');
+          return;
+        }
+        payload.smtpHost = editSmtpHost.trim();
+        payload.smtpPort = editSmtpPort;
+        payload.smtpSecure = editSmtpSecure;
+        payload.smtpUser = editSmtpUser.trim();
+        payload.smtpPass = editSmtpPass.trim();
+        payload.dailyLimit = editSmtpDailyLimit;
+      } else {
+        if (!editApiKey.trim()) {
+          addToast('API key is required', 'error');
+          return;
+        }
+        payload.apiKey = editApiKey.trim();
+      }
+
       const res = await fetch(`${API_BASE}/api/v1/admin/email/accounts/${editAccount.id}/credentials`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${getAdminToken()}`,
         },
-        body: JSON.stringify({
-          accountName: editAccountName.trim() || undefined,
-          apiKey: editApiKey.trim(),
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -536,9 +590,10 @@ export default function GlobalEmailControlPage() {
         throw new Error(data.error || 'Failed to update credentials');
       }
 
-      addToast(`Brevo account "${data.account.accountName}" credentials updated and verified!`, 'success');
+      addToast(`Account "${data.account.accountName}" credentials updated and verified!`, 'success');
       setEditAccount(null);
       setEditApiKey('');
+      setEditSmtpPass('');
       await fetchAccounts();
     } catch (err: any) {
       addToast(err.message, 'error');
@@ -1155,7 +1210,22 @@ export default function GlobalEmailControlPage() {
                   {accounts.map((acc: any) => (
                     <TableRow key={acc.id}>
                       <TableCell>
-                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{acc.accountName}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{acc.accountName}</span>
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              fontWeight: 600,
+                              backgroundColor: acc.providerType === 'smtp' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                              color: acc.providerType === 'smtp' ? '#a855f7' : '#3b82f6',
+                              border: `1px solid ${acc.providerType === 'smtp' ? 'rgba(168, 85, 247, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
+                            }}
+                          >
+                            {acc.providerType === 'smtp' ? 'SMTP Relay' : 'Brevo API'}
+                          </span>
+                        </div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                           {acc.accountEmail || 'No verified email'}
                           {acc.companyName ? ` (${acc.companyName})` : ''}
@@ -1305,7 +1375,10 @@ export default function GlobalEmailControlPage() {
                             onClick={() => {
                               setEditAccount(acc);
                               setEditAccountName(acc.accountName);
+                              setEditProviderType(acc.providerType || 'brevo');
                               setEditApiKey('');
+                              setEditSmtpPass('');
+                              if (acc.accountEmail) setEditSmtpUser(acc.accountEmail);
                             }}
                             title="Edit Credentials"
                           >
@@ -2417,47 +2490,175 @@ export default function GlobalEmailControlPage() {
       <Modal
         isOpen={showAddAccountModal}
         onClose={() => setShowAddAccountModal(false)}
-        title="Add Brevo Provider Account"
+        title="Add Email Provider Account"
       >
         <form onSubmit={handleAddAccount} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-            Enter your Brevo API key. Syntrabase will perform an immediate, harmless validation call to <code>https://api.brevo.com/v3/account</code> to verify identity and credit status.
-          </p>
+          {/* Provider Selection Tabs */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '8px' }}>
+              Provider Engine
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setNewProviderType('brevo')}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  border: `1px solid ${newProviderType === 'brevo' ? '#3b82f6' : 'var(--border-color)'}`,
+                  background: newProviderType === 'brevo' ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-card)',
+                  color: newProviderType === 'brevo' ? '#3b82f6' : 'var(--text-secondary)',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                }}
+              >
+                Brevo API (REST v3)
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewProviderType('smtp')}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  border: `1px solid ${newProviderType === 'smtp' ? '#a855f7' : 'var(--border-color)'}`,
+                  background: newProviderType === 'smtp' ? 'rgba(168, 85, 247, 0.12)' : 'var(--bg-card)',
+                  color: newProviderType === 'smtp' ? '#a855f7' : 'var(--text-secondary)',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                }}
+              >
+                SMTP Relay (Gmail / Custom)
+              </button>
+            </div>
+          </div>
 
           <div>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
-              Account Name / Identifier
+              Account Identifier Name
             </label>
             <Input
               value={newAccountName}
               onChange={(e) => setNewAccountName(e.target.value)}
-              placeholder="e.g. Production Brevo Account"
+              placeholder={newProviderType === 'smtp' ? 'e.g. Gmail Support Relay' : 'e.g. Production Brevo Account'}
               required
             />
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
-              Brevo API Key (v3)
-            </label>
-            <Input
-              type="password"
-              value={newApiKey}
-              onChange={(e) => setNewApiKey(e.target.value)}
-              placeholder="xkeysib-..."
-              required
-            />
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Found in Brevo Console &gt; SMTP &amp; API &gt; API Keys.
-            </span>
-          </div>
+          {newProviderType === 'brevo' ? (
+            <>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                  Brevo API Key (v3)
+                </label>
+                <Input
+                  type="password"
+                  value={newApiKey}
+                  onChange={(e) => setNewApiKey(e.target.value)}
+                  placeholder="xkeysib-..."
+                  required
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Found in Brevo Console &gt; SMTP &amp; API &gt; API Keys.
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                    SMTP Host
+                  </label>
+                  <Input
+                    value={newSmtpHost}
+                    onChange={(e) => setNewSmtpHost(e.target.value)}
+                    placeholder="smtp.gmail.com"
+                    required
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                    Port
+                  </label>
+                  <Input
+                    type="number"
+                    value={newSmtpPort}
+                    onChange={(e) => setNewSmtpPort(parseInt(e.target.value, 10) || 465)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                  SMTP Username / Email
+                </label>
+                <Input
+                  type="email"
+                  value={newSmtpUser}
+                  onChange={(e) => setNewSmtpUser(e.target.value)}
+                  placeholder="your-account@gmail.com"
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                  SMTP Password / App Password
+                </label>
+                <Input
+                  type="password"
+                  value={newSmtpPass}
+                  onChange={(e) => setNewSmtpPass(e.target.value)}
+                  placeholder="16-character Google App Password"
+                  required
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  For Gmail, generate via: Google Account &gt; Security &gt; 2-Step Verification &gt; App Passwords.
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                    Daily Quota Limit
+                  </label>
+                  <Input
+                    type="number"
+                    value={newSmtpDailyLimit}
+                    onChange={(e) => setNewSmtpDailyLimit(parseInt(e.target.value, 10) || 500)}
+                    placeholder="500"
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', marginTop: '18px' }}>
+                    <input
+                      type="checkbox"
+                      checked={newSmtpSecure}
+                      onChange={(e) => setNewSmtpSecure(e.target.checked)}
+                      style={{ width: '16px', height: '16px', accentColor: '#a855f7' }}
+                    />
+                    Use SSL / TLS (Port 465)
+                  </label>
+                </div>
+              </div>
+
+              <div style={{ padding: '10px 14px', borderRadius: '8px', background: 'rgba(168, 85, 247, 0.08)', border: '1px solid rgba(168, 85, 247, 0.25)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                💡 <strong>Custom Sender Domain Note:</strong> To send emails from a custom domain (e.g. <code>support@yourcustomdomain.com</code>) through Gmail SMTP without exposing your personal Gmail, configure the domain under Gmail Settings &gt; <em>Accounts and Import</em> &gt; <em>"Send mail as"</em>.
+              </div>
+            </>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
             <Button type="button" variant="ghost" onClick={() => setShowAddAccountModal(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmittingAccount}>
-              {isSubmittingAccount ? 'Validating...' : 'Validate & Save Account'}
+              {isSubmittingAccount ? 'Validating Connection...' : 'Validate & Save Account'}
             </Button>
           </div>
         </form>
@@ -2471,7 +2672,7 @@ export default function GlobalEmailControlPage() {
       >
         <form onSubmit={handleEditAccount} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-            Update the API key for this provider account. Syntrabase will validate the credentials with Brevo and ensure it does not duplicate another account's quota pool.
+            Update credentials for this provider account ({editAccount?.providerType === 'smtp' ? 'SMTP Relay' : 'Brevo REST API'}).
           </p>
 
           <div>
@@ -2481,32 +2682,94 @@ export default function GlobalEmailControlPage() {
             <Input
               value={editAccountName}
               onChange={(e) => setEditAccountName(e.target.value)}
-              placeholder="e.g. Primary Brevo Account"
+              placeholder="e.g. Primary Account"
             />
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
-              New Brevo API Key (v3)
-            </label>
-            <Input
-              type="password"
-              value={editApiKey}
-              onChange={(e) => setEditApiKey(e.target.value)}
-              placeholder="xkeysib-..."
-              required
-            />
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Current: <code>{editAccount?.maskedApiKey}</code>. Enter new key to replace.
-            </span>
-          </div>
+          {editProviderType === 'smtp' ? (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                    SMTP Host
+                  </label>
+                  <Input
+                    value={editSmtpHost}
+                    onChange={(e) => setEditSmtpHost(e.target.value)}
+                    placeholder="smtp.gmail.com"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                    Port
+                  </label>
+                  <Input
+                    type="number"
+                    value={editSmtpPort}
+                    onChange={(e) => setEditSmtpPort(parseInt(e.target.value, 10) || 465)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                  SMTP Username / Email
+                </label>
+                <Input
+                  type="email"
+                  value={editSmtpUser}
+                  onChange={(e) => setEditSmtpUser(e.target.value)}
+                  placeholder="your-account@gmail.com"
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                  New SMTP Password / App Password
+                </label>
+                <Input
+                  type="password"
+                  value={editSmtpPass}
+                  onChange={(e) => setEditSmtpPass(e.target.value)}
+                  placeholder="Enter new 16-character App Password"
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                  Daily Quota Limit
+                </label>
+                <Input
+                  type="number"
+                  value={editSmtpDailyLimit}
+                  onChange={(e) => setEditSmtpDailyLimit(parseInt(e.target.value, 10) || 500)}
+                />
+              </div>
+            </>
+          ) : (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                New Brevo API Key (v3)
+              </label>
+              <Input
+                type="password"
+                value={editApiKey}
+                onChange={(e) => setEditApiKey(e.target.value)}
+                placeholder="xkeysib-..."
+                required
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Current: <code>{editAccount?.maskedApiKey}</code>. Enter new key to replace.
+              </span>
+            </div>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
             <Button type="button" variant="ghost" onClick={() => setEditAccount(null)}>
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmittingEdit}>
-              {isSubmittingEdit ? 'Validating...' : 'Update & Revalidate Key'}
+              {isSubmittingEdit ? 'Validating Connection...' : 'Update & Revalidate'}
             </Button>
           </div>
         </form>

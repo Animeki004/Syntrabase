@@ -2,9 +2,11 @@ import { EmailProviderType } from '@syntrabase/shared-types';
 import { IEmailProviderAdapter } from './email-provider.interface.js';
 import { BrevoEmailProvider } from './brevo.provider.js';
 import { MockEmailProvider } from './mock.provider.js';
+import { SmtpEmailProvider } from './smtp.provider.js';
 
 const brevoInstance = new BrevoEmailProvider();
 const mockInstance = new MockEmailProvider();
+const smtpInstance = new SmtpEmailProvider();
 
 export class EmailProviderRegistry {
   private static customProviders = new Map<string, IEmailProviderAdapter>();
@@ -21,6 +23,8 @@ export class EmailProviderRegistry {
     switch (type) {
       case 'brevo':
         return brevoInstance;
+      case 'smtp':
+        return smtpInstance;
       case 'mock':
         return mockInstance;
       default:

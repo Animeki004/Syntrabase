@@ -551,7 +551,7 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     return reply.send({ accounts });
   });
 
-  // Add Dedicated Brevo Account for Project
+  // Add Dedicated Email Provider Account for Project (Brevo or SMTP)
   server.post('/api/v1/projects/:projectId/email/dedicated-accounts', async (req, reply) => {
     const devId = await requireDeveloperId(req);
     const { projectId } = req.params as { projectId: string };
@@ -559,28 +559,77 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     await assertDedicatedBrevoEnabled(projectId);
 
     const body = (req.body as any) || {};
-    const { accountName, apiKey, accountEmail, companyName } = body;
+    const {
+      providerType,
+      accountName,
+      apiKey,
+      smtpConfig,
+      smtpHost,
+      smtpPort,
+      smtpSecure,
+      smtpUser,
+      smtpPass,
+      dailyLimit,
+    } = body;
 
-    if (!accountName || !apiKey) {
-      return reply.status(400).send({ error: 'Account Name and Brevo API Key are required' });
+    if (!accountName) {
+      return reply.status(400).send({ error: 'Account Name is required' });
     }
 
-    try {
-      const account = await EmailService.addProviderAccount({
-        accountName,
-        apiKey,
-        projectId,
-        providerType: 'brevo',
-      });
+    const type = providerType || 'brevo';
 
-      await AuditService.log({
-        actorId: devId,
-        actorType: 'developer',
-        action: 'email.dedicated_provider_account_created',
-        targetResource: `email_account:${account.id}`,
-        projectId,
-        payload: { accountName, maskedApiKey: account.maskedApiKey },
-      });
+    try {
+      let account;
+      if (type === 'smtp') {
+        const config = smtpConfig || {
+          host: smtpHost,
+          port: smtpPort ? parseInt(smtpPort, 10) : 465,
+          secure: smtpSecure !== undefined ? Boolean(smtpSecure) : (parseInt(smtpPort, 10) === 465),
+          user: smtpUser,
+          pass: smtpPass,
+          dailyLimit: dailyLimit ? parseInt(dailyLimit, 10) : 500,
+        };
+
+        if (!config.host || !config.user || !config.pass) {
+          return reply.status(400).send({ error: 'SMTP Host, Username, and Password are required' });
+        }
+
+        account = await EmailService.addProviderAccount({
+          providerType: 'smtp',
+          accountName,
+          smtpConfig: config,
+          projectId,
+        });
+
+        await AuditService.log({
+          actorId: devId,
+          actorType: 'developer',
+          action: 'email.dedicated_provider_account_created',
+          targetResource: `email_account:${account.id}`,
+          projectId,
+          payload: { providerType: 'smtp', accountName, host: config.host, user: config.user },
+        });
+      } else {
+        if (!apiKey) {
+          return reply.status(400).send({ error: 'Brevo API Key is required' });
+        }
+
+        account = await EmailService.addProviderAccount({
+          providerType: 'brevo',
+          accountName,
+          apiKey,
+          projectId,
+        });
+
+        await AuditService.log({
+          actorId: devId,
+          actorType: 'developer',
+          action: 'email.dedicated_provider_account_created',
+          targetResource: `email_account:${account.id}`,
+          projectId,
+          payload: { providerType: 'brevo', accountName, maskedApiKey: account.maskedApiKey },
+        });
+      }
 
       return reply.status(201).send({ account });
     } catch (err: any) {
