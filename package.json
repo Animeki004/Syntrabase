@@ -1,6 +1,6 @@
 {
   "name": "syntrabase-monorepo",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "type": "module",
   "private": true,
   "description": "Syntrabase: Self-hosted, multi-tenant Firebase-compatible platform on PostgreSQL JSONB, Fastify, Next.js, and Caddy",
