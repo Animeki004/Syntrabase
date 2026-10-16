@@ -3,6 +3,9 @@ export class FirebaseApp {
     options;
     static instances = new Map();
     constructor(name, options) {
+        if (options?.apiKey?.startsWith('sk_live_')) {
+            throw new Error('SECURITY VIOLATION: A server-only privileged secret key (sk_live_...) was passed to the client SDK. Client applications must strictly use publishable keys (pk_live_...).');
+        }
         this.name = name;
         this.options = options;
     }

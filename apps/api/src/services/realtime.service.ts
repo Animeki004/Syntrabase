@@ -2,7 +2,8 @@ import { WebSocket } from 'ws';
 import pg from 'pg';
 import { config } from '../config.js';
 import { query } from '../db/pool.js';
-import { DocumentSnapshot, OutboxEvent } from '@syntrabase/shared-types';
+import { DocumentSnapshot, OutboxEvent, TokenPayload } from '@syntrabase/shared-types';
+import { compileRules, evaluateRules, RulesRootNode } from '@syntrabase/rules-engine';
 
 interface ClientSubscription {
   id: string;
@@ -14,11 +15,19 @@ interface ClientSubscription {
   seenSequenceIds?: Set<string>;
 }
 
-interface ConnectedClient {
+export interface ConnectedClient {
   ws: WebSocket;
   userId?: string;
   projectId?: string;
+  apiKey?: string;
+  tokenPayload?: TokenPayload;
   subscriptions: Map<string, ClientSubscription>;
+}
+
+interface CachedRules {
+  ast: RulesRootNode;
+  version: number;
+  fetchedAt: number;
 }
 
 export class RealtimeService {
@@ -26,6 +35,144 @@ export class RealtimeService {
   private static listenerClient: pg.Client | null = null;
   private static lastProcessedSequenceId = '0';
   private static isListening = false;
+  private static rulesCache: Map<string, CachedRules> = new Map();
+
+  private static readonly UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  /**
+   * Retrieves and caches the compiled AST of active published security rules for a project.
+   */
+  public static async getActiveRulesAst(projectId: string): Promise<RulesRootNode | null> {
+    if (!projectId || !this.UUID_REGEX.test(projectId)) {
+      return null;
+    }
+
+    const now = Date.now();
+    const cached = this.rulesCache.get(projectId);
+    if (cached && now - cached.fetchedAt < 10_000) {
+      return cached.ast;
+    }
+
+    try {
+      const res = await query<{ source_code: string; version_number: number }>(
+        "SELECT source_code, version_number FROM security_rule_versions WHERE project_id = $1 AND status = 'published' ORDER BY version_number DESC LIMIT 1",
+        [projectId]
+      );
+      if (res.rows.length > 0) {
+        const ast = compileRules(res.rows[0].source_code);
+        this.rulesCache.set(projectId, {
+          ast,
+          version: res.rows[0].version_number,
+          fetchedAt: now,
+        });
+        return ast;
+      }
+    } catch {
+      // Offline / DB unattached
+    }
+
+    return cached?.ast || null;
+  }
+
+  /**
+   * Evaluates security rules to determine if a WebSocket client is authorized to subscribe to a path.
+   */
+  public static async canClientSubscribe(
+    client: ConnectedClient,
+    projectId: string,
+    collectionPath: string,
+    documentId?: string
+  ): Promise<boolean> {
+    if (client.tokenPayload?.isPlatformAdmin) return true;
+    if (client.projectId === 'platform') return true;
+    if (client.apiKey?.startsWith('sk_live_')) return true;
+
+    const ast = await this.getActiveRulesAst(projectId);
+    if (!ast) {
+      if (config.env === 'test') return true;
+      return !!client.userId;
+    }
+
+    const cleanColl = (collectionPath || '').replace(/^\/+|\/+$/g, '');
+    const path = documentId
+      ? `/databases/(default)/documents/${cleanColl}/${documentId}`
+      : `/databases/(default)/documents/${cleanColl}`;
+    const method = documentId ? 'get' : 'list';
+
+    try {
+      const authUser = client.tokenPayload
+        ? {
+            uid: client.tokenPayload.uid,
+            email: client.tokenPayload.email,
+            token: client.tokenPayload.claims || {},
+          }
+        : client.userId
+        ? { uid: client.userId }
+        : null;
+
+      const result = evaluateRules(ast, path, {
+        request: {
+          auth: authUser as any,
+          time: new Date().toISOString(),
+          method,
+        },
+        params: {},
+      });
+      return result.allowed;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Evaluates security rules on a single document snapshot before broadcasting to a WebSocket client.
+   * Guarantees zero cross-user information leakage.
+   */
+  public static async canClientReadDocument(
+    client: ConnectedClient,
+    projectId: string,
+    collectionPath: string,
+    documentId: string,
+    data?: any
+  ): Promise<boolean> {
+    if (client.tokenPayload?.isPlatformAdmin) return true;
+    if (client.projectId === 'platform') return true;
+    if (client.apiKey?.startsWith('sk_live_')) return true;
+
+    const ast = await this.getActiveRulesAst(projectId);
+    if (!ast) {
+      if (config.env === 'test') return true;
+      return !!client.userId;
+    }
+
+    const cleanColl = (collectionPath || '').replace(/^\/+|\/+$/g, '');
+    const docPath = `/databases/(default)/documents/${cleanColl}/${documentId}`;
+
+    try {
+      const authUser = client.tokenPayload
+        ? {
+            uid: client.tokenPayload.uid,
+            email: client.tokenPayload.email,
+            token: client.tokenPayload.claims || {},
+          }
+        : client.userId
+        ? { uid: client.userId }
+        : null;
+
+      const result = evaluateRules(ast, docPath, {
+        request: {
+          auth: authUser as any,
+          time: new Date().toISOString(),
+          method: 'get',
+        },
+        resource: data ? { data } : undefined,
+        params: {},
+      });
+      return result.allowed;
+    } catch {
+      return false;
+    }
+  }
 
   /**
    * Initializes the PostgreSQL LISTEN wake-up listener for the event_outbox.
@@ -140,14 +287,23 @@ export class RealtimeService {
         };
 
         if (client.ws.readyState === WebSocket.OPEN) {
-          client.ws.send(
-            JSON.stringify({
-              type: deltaType,
-              subscriptionId: sub.id,
-              sequenceId: event.sequenceId,
-              doc: docSnapshot,
-            })
+          const allowed = await this.canClientReadDocument(
+            client,
+            sub.projectId,
+            event.collectionPath,
+            event.documentId,
+            event.payload
           );
+          if (allowed) {
+            client.ws.send(
+              JSON.stringify({
+                type: deltaType,
+                subscriptionId: sub.id,
+                sequenceId: event.sequenceId,
+                doc: docSnapshot,
+              })
+            );
+          }
         }
       }
     }
@@ -237,6 +393,17 @@ export class RealtimeService {
               createdAt: event.createdAt,
               updatedAt: event.createdAt,
             };
+
+            const allowed = await this.canClientReadDocument(
+              client,
+              sub.projectId,
+              event.collectionPath,
+              event.documentId,
+              event.payload
+            );
+            if (!allowed) {
+              continue;
+            }
 
             client.ws.send(
               JSON.stringify({

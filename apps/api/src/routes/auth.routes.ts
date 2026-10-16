@@ -906,8 +906,40 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
     return reply.status(204).send();
   });
 
+  // Rate limiting map for legacy MFA challenge verification attempts
+  const mfaChallengeRateLimit = new Map<string, number[]>();
   server.post('/api/v1/projects/:projectId/auth/mfa/challenge', async (req, reply) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Bearer token required for MFA challenge validation' });
+    }
+    const token = authHeader.split(' ')[1];
+    let decoded: any;
+    try {
+      decoded = AuthService.verifyAccessToken(token);
+    } catch {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid or expired token' });
+    }
+
     const { userId, code } = req.body as { userId: string; code: string };
+    if (!userId || !code) {
+      return reply.status(400).send({ error: 'MISSING_PARAMS', message: 'userId and code are required' });
+    }
+
+    // User can only test their own challenge unless administrative platform developer
+    if (decoded.uid !== userId && !decoded.isPlatformAdmin && decoded.projectId !== 'platform') {
+      return reply.status(403).send({ error: 'FORBIDDEN', message: 'Cannot test MFA challenge for another user' });
+    }
+
+    // Rate limiting: max 5 attempts per 60s per user
+    const now = Date.now();
+    const timestamps = (mfaChallengeRateLimit.get(userId) || []).filter((t) => now - t < 60_000);
+    if (timestamps.length >= 5) {
+      return reply.status(429).send({ error: 'TOO_MANY_REQUESTS', message: 'Rate limit exceeded for MFA verification' });
+    }
+    timestamps.push(now);
+    mfaChallengeRateLimit.set(userId, timestamps);
+
     const valid = await MfaService.validateTotpChallenge(userId, code);
     return reply.send({ valid });
   });

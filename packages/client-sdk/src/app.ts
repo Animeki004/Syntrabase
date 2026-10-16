@@ -11,7 +11,14 @@ export class FirebaseApp {
   constructor(
     public readonly name: string,
     public readonly options: FirebaseOptions
-  ) {}
+  ) {
+    if (options.apiKey?.startsWith('sk_live_')) {
+      throw new Error(
+        'SECURITY VIOLATION: A server-only privileged secret key (sk_live_...) was passed to the client SDK. ' +
+        'Client applications must strictly use publishable keys (pk_live_...).'
+      );
+    }
+  }
 
   public static initialize(options: FirebaseOptions, name = '[DEFAULT]'): FirebaseApp {
     const app = new FirebaseApp(name, options);

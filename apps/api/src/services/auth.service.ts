@@ -1214,15 +1214,41 @@ export class AuthService {
         const payload = this.verifyAccessToken(authHeader.slice(7));
         const { ProjectService } = await import('./project.service.js');
         const resolvedId = await ProjectService.resolveProjectId(projectId).catch(() => projectId);
-        if (
-          payload.projectId === resolvedId ||
-          payload.projectId === projectId ||
-          payload.isPlatformAdmin ||
-          payload.projectId === 'platform'
-        ) {
-          return { callerId: payload.uid, type: payload.isPlatformAdmin ? 'developer' : 'apikey' };
+
+        // 1. Authoritative Super Admin: Global platform access
+        if (payload.isPlatformAdmin) {
+          return { callerId: payload.uid, type: 'developer' };
         }
-      } catch {
+
+        // 2. Developer Console Session: Strictly verify active session and assert project ownership
+        if (payload.projectId === 'platform') {
+          const devId = await this.requireDeveloper(req);
+          await ProjectService.assertProjectAccess(devId, resolvedId);
+          return { callerId: devId, type: 'developer' };
+        }
+
+        // 3. Application End-User Token: Disallow administrative project access unless explicit admin custom claim
+        if (payload.projectId === resolvedId || payload.projectId === projectId) {
+          if (payload.claims && (payload.claims.admin === true || payload.claims.role === 'admin')) {
+            return { callerId: payload.uid, type: 'developer' };
+          }
+          const err: any = new Error('FORBIDDEN: Administrative project access denied for application end-users');
+          err.statusCode = 403;
+          throw err;
+        }
+
+        const err: any = new Error('FORBIDDEN: Cross-project access denied — token belongs to another project');
+        err.statusCode = 403;
+        throw err;
+      } catch (err: any) {
+        if (
+          err.message?.includes('FORBIDDEN') ||
+          err.message?.includes('UNAUTHORIZED') ||
+          err.message?.includes('ACCOUNT_SUSPENDED') ||
+          err.message?.includes('SESSION_REVOKED')
+        ) {
+          throw err;
+        }
         // Fallback to developer check
       }
     }

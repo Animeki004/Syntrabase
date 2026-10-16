@@ -196,3 +196,49 @@ test('Security Adversarial - Explicit refresh token revocation endpoint works', 
   assert.notEqual(res.statusCode, 404);
   assert.notEqual(res.statusCode, 400);
 });
+
+test('Security Adversarial - App end-users cannot access administrative project management APIs', async () => {
+  const server = await buildServer();
+
+  // App user token scoped to project_A (no admin claim)
+  const appUserToken = jwt.sign(
+    {
+      uid: 'app_user_regular',
+      email: 'user@tenant-a.com',
+      projectId: '00000000-0000-0000-0000-000000000020',
+      environmentId: 'default',
+    },
+    config.jwt.secret,
+    { expiresIn: 900 }
+  );
+
+  // Attempt to list all users in the project
+  const res = await server.inject({
+    method: 'GET',
+    url: '/api/v1/projects/00000000-0000-0000-0000-000000000020/auth/users',
+    headers: {
+      authorization: `Bearer ${appUserToken}`,
+    },
+  });
+
+  assert.equal(res.statusCode, 403);
+  const data = JSON.parse(res.body);
+  assert.ok(data.message.includes('Administrative project access denied for application end-users'));
+});
+
+test('Security Adversarial - Client SDK rejects sk_live_ privileged secret key in browser/client setup', async () => {
+  const { FirebaseApp } = await import('@syntrabase/client-sdk');
+
+  assert.throws(
+    () => {
+      new FirebaseApp('testApp', {
+        apiKey: 'sk_live_maliciously_passed_in_client_bundle_123',
+        projectId: 'project_A',
+        apiUrl: 'http://localhost:4000',
+      });
+    },
+    (err: Error) => {
+      return err.message.includes('SECURITY VIOLATION') && err.message.includes('server-only privileged secret key');
+    }
+  );
+});

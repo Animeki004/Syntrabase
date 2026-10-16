@@ -48,9 +48,11 @@ export function onSnapshot(
     ws = new WS(wsUrl);
 
     ws.onopen = () => {
-      // Authenticate socket if token available
+      // Authenticate socket with access token or publishable API key
       if (auth.accessToken) {
         ws.send(JSON.stringify({ type: 'auth', token: auth.accessToken }));
+      } else if (db.app.options.apiKey) {
+        ws.send(JSON.stringify({ type: 'auth', apiKey: db.app.options.apiKey }));
       }
 
       // Register listener
@@ -70,6 +72,11 @@ export function onSnapshot(
     ws.onmessage = (event: any) => {
       try {
         const msg = JSON.parse(event.data);
+        if (msg.type === 'error' && msg.subscriptionId === subscriptionId) {
+          if (onError) onError(new Error(msg.message || 'Permission denied by security rules'));
+          return;
+        }
+
         if (msg.subscriptionId === subscriptionId && msg.doc) {
           onNext({
             exists: () => msg.type !== 'removed',

@@ -62,8 +62,13 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
         }
         if (payload.projectId === projectId || payload.isPlatformAdmin || payload.projectId === 'platform') {
           authUser = { uid: payload.uid, email: payload.email, token: payload.claims };
-          // Console developer / Super Admin has administrative permission to manage project documents
-          if (payload.isPlatformAdmin || payload.projectId === 'platform') {
+          // Super Admin has global bypass
+          if (payload.isPlatformAdmin) {
+            return;
+          }
+          // Console developer must have verified project access to manage documents administratively
+          if (payload.projectId === 'platform') {
+            await ProjectService.assertProjectAccess(payload.uid, projectId);
             return;
           }
         }
