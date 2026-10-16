@@ -111,9 +111,10 @@ async function main() {
     console.error(`   ${verifyErr.message}\n`);
     if (verifyErr.message.includes('535') || verifyErr.message.includes('Username and Password not accepted')) {
       console.log('   [TROUBLESHOOTING]:');
-      console.log('   1. Ensure 2-Step Verification is turned ON for your Google account.');
-      console.log('   2. Create a dedicated App Password at: https://myaccount.google.com/apppasswords');
-      console.log('   3. Do NOT use your regular Google login password; use the 16-character App Password.');
+      console.log('   1. Gmail Username MUST be your actual personal @gmail.com address (do NOT enter your custom Namecheap domain here).');
+      console.log('   2. Ensure 2-Step Verification is turned ON for your Google account.');
+      console.log('   3. Create a dedicated App Password at: https://myaccount.google.com/apppasswords');
+      console.log('   4. Do NOT use your regular Google login password; use the 16-character App Password without spaces.');
     }
     process.exit(1);
   }

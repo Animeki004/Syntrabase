@@ -296,6 +296,16 @@ const HTML_DASHBOARD = `<!DOCTYPE html>
         <div class="card">
           <div class="card-title">1. SMTP Server &amp; Credentials</div>
           
+          <div style="margin-bottom: 12px;">
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px;">Provider Presets:</div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <button type="button" class="btn-secondary" style="font-size: 0.72rem; padding: 4px 10px; flex: initial;" onclick="applyPreset('gmail')">Gmail SMTP</button>
+              <button type="button" class="btn-secondary" style="font-size: 0.72rem; padding: 4px 10px; flex: initial;" onclick="applyPreset('brevo')">Brevo Relay (Free)</button>
+              <button type="button" class="btn-secondary" style="font-size: 0.72rem; padding: 4px 10px; flex: initial;" onclick="applyPreset('resend')">Resend (Free)</button>
+              <button type="button" class="btn-secondary" style="font-size: 0.72rem; padding: 4px 10px; flex: initial;" onclick="applyPreset('namecheap')">Namecheap Private Email</button>
+            </div>
+          </div>
+
           <div class="row-2">
             <div class="form-group">
               <label>SMTP Host</label>
@@ -311,16 +321,16 @@ const HTML_DASHBOARD = `<!DOCTYPE html>
           </div>
 
           <div class="form-group">
-            <label>Gmail Username / Login</label>
+            <label id="userLabel">Gmail Username / Auth Login</label>
             <input type="email" id="smtpUser" placeholder="your-account@gmail.com" />
-            <div class="input-hint">The authenticated Google account email used to connect to Google's server.</div>
+            <div class="input-hint" id="userHint">Must be your actual authenticated account email (e.g. your @gmail.com address, NOT your custom domain!).</div>
           </div>
 
           <div class="form-group">
-            <label>Gmail 16-Character App Password</label>
+            <label id="passLabel">Gmail 16-Character App Password / API Key</label>
             <input type="password" id="smtpPass" placeholder="abcd efgh ijkl mnop" />
-            <div class="input-hint">
-              Generate in Google Account -> Security -> 2-Step Verification -> <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color: var(--primary);">App Passwords</a>
+            <div class="input-hint" id="passHint">
+              For Gmail: Google Account -> Security -> 2-Step Verification -> <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color: var(--primary);">App Passwords</a> (16 characters, spaces stripped automatically).
             </div>
           </div>
         </div>
@@ -335,17 +345,17 @@ const HTML_DASHBOARD = `<!DOCTYPE html>
             </div>
             <div class="form-group">
               <label>Custom Sender Email (Domain)</label>
-              <input type="email" id="senderEmail" placeholder="support@yourcompany.com" />
+              <input type="email" id="senderEmail" placeholder="support@yourcustomdomain.com" />
             </div>
           </div>
           <div class="input-hint" style="margin-top: -6px; margin-bottom: 12px;">
-            This is the address recipients see. To prevent Gmail from replacing it with your @gmail.com, configure it as an alias in Gmail.
+            This is what recipients see. To prevent Gmail from displaying "via your@gmail.com", configure this address as an alias in Gmail settings.
           </div>
 
           <div class="row-2">
             <div class="form-group">
               <label>Reply-To Address</label>
-              <input type="email" id="replyTo" placeholder="support@yourcompany.com" />
+              <input type="email" id="replyTo" placeholder="support@yourcustomdomain.com" />
             </div>
             <div class="form-group">
               <label>Recipient Email</label>
@@ -360,7 +370,7 @@ const HTML_DASHBOARD = `<!DOCTYPE html>
 
           <div class="form-group">
             <label>Message Content (HTML Supported)</label>
-            <textarea id="messageContent" rows="3">Hello from Syntrabase! This is a test email sent via Gmail SMTP with a custom sender domain.</textarea>
+            <textarea id="messageContent" rows="3">Hello from Syntrabase! This is a test email sent via SMTP with a custom sender domain.</textarea>
           </div>
 
           <div class="btn-group">
@@ -381,11 +391,26 @@ const HTML_DASHBOARD = `<!DOCTYPE html>
             <span>Live Diagnostic Terminal</span>
             <button class="btn-secondary" style="padding: 2px 8px; font-size: 0.7rem; height: auto;" onclick="clearLogs()">Clear</button>
           </div>
-          <div class="terminal-box" id="terminalLog">[Ready] Enter your Gmail SMTP credentials and click "Verify Connection" or "Send Live Test Email".</div>
+          <div class="terminal-box" id="terminalLog">[Ready] Enter your SMTP credentials and click "Verify Connection" or "Send Live Test Email".</div>
+        </div>
+
+        <div class="card info-card" style="background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.3);">
+          <h4 style="color: #fbbf24;">⚠️ Namecheap Domain "Receive-Only"?</h4>
+          <p style="margin-bottom: 6px; font-size: 0.78rem;">
+            Namecheap's <strong>Free Email Forwarding</strong> is receive-only. It has NO outbound SMTP server (there is no <code>mail.yourdomain.com</code>).
+          </p>
+          <div style="font-size: 0.76rem; color: #cbd5e1; line-height: 1.5;">
+            <strong>Solution 1 (100% Free with Gmail):</strong><br/>
+            1. Forward <code>support@yourdomain.com</code> &rarr; your personal <code>@gmail.com</code>.<br/>
+            2. In Gmail &rarr; Accounts &rarr; <em>Send mail as</em> &rarr; Add email: use <strong>Host: smtp.gmail.com</strong>, <strong>User: your actual @gmail.com</strong>, and your 16-char App Password.<br/>
+            3. Gmail sends verification to your domain, which forwards to your Gmail! Verify it.<br/>
+            <strong>Solution 2 (Professional Free Relay):</strong><br/>
+            Use Brevo (300 emails/day free) or Resend (3,000/mo free) by adding free TXT records in Namecheap DNS.
+          </div>
         </div>
 
         <div class="card info-card">
-          <h4>How to 100% Hide Your Gmail Address:</h4>
+          <h4>How to 100% Hide Your Personal Gmail:</h4>
           <p style="margin-bottom: 8px;">
             Google's SMTP servers protect against unauthorized spoofing. If you send with <em>From: support@yourdomain.com</em>, Google checks whether that address is linked to your Google Account.
           </p>
@@ -420,6 +445,69 @@ const HTML_DASHBOARD = `<!DOCTYPE html>
       document.getElementById('terminalLog').textContent = '[Cleared] Ready for next test.';
     }
 
+    function applyPreset(type) {
+      if (type === 'gmail') {
+        document.getElementById('smtpHost').value = 'smtp.gmail.com';
+        document.getElementById('smtpPort').value = '465';
+        document.getElementById('userLabel').textContent = 'Gmail Username / Auth Login';
+        document.getElementById('smtpUser').placeholder = 'your-account@gmail.com';
+        document.getElementById('userHint').textContent = 'Must be your actual Google account email (e.g. user@gmail.com, NOT your custom domain!).';
+        document.getElementById('passLabel').textContent = 'Gmail 16-Character App Password';
+        document.getElementById('passHint').innerHTML = 'Generate in Google Account -> Security -> 2-Step Verification -> <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color: var(--primary);">App Passwords</a>';
+        log('Loaded preset: Google Gmail SMTP (smtp.gmail.com:465 SSL Direct)', 'info');
+      } else if (type === 'brevo') {
+        document.getElementById('smtpHost').value = 'smtp-relay.brevo.com';
+        document.getElementById('smtpPort').value = '587';
+        document.getElementById('userLabel').textContent = 'Brevo Login / Account Email';
+        document.getElementById('smtpUser').placeholder = 'you@company.com';
+        document.getElementById('userHint').textContent = 'Your registered Brevo account email or SMTP login.';
+        document.getElementById('passLabel').textContent = 'Brevo SMTP Key (Master Password)';
+        document.getElementById('passHint').textContent = 'Found in Brevo -> SMTP & API -> Generate a new SMTP key (starts with xsmtpsib-).';
+        log('Loaded preset: Brevo Transactional SMTP (smtp-relay.brevo.com:587 TLS - Free 300 emails/day)', 'info');
+      } else if (type === 'resend') {
+        document.getElementById('smtpHost').value = 'smtp.resend.com';
+        document.getElementById('smtpPort').value = '465';
+        document.getElementById('userLabel').textContent = 'Resend Auth Username';
+        document.getElementById('smtpUser').value = 'resend';
+        document.getElementById('userHint').textContent = 'Resend always uses the fixed literal username "resend".';
+        document.getElementById('passLabel').textContent = 'Resend API Key';
+        document.getElementById('smtpPass').placeholder = 're_123456789...';
+        document.getElementById('passHint').textContent = 'Generate in Resend.com -> API Keys (starts with re_). Free tier includes 3,000 emails/month.';
+        log('Loaded preset: Resend SMTP (smtp.resend.com:465 SSL)', 'info');
+      } else if (type === 'namecheap') {
+        document.getElementById('smtpHost').value = 'mail.privateemail.com';
+        document.getElementById('smtpPort').value = '465';
+        document.getElementById('userLabel').textContent = 'Namecheap Private Email Address';
+        document.getElementById('smtpUser').placeholder = 'support@yourdomain.com';
+        document.getElementById('userHint').textContent = 'Requires a paid Namecheap Private Email subscription (~$1.20/mo). Free forwarding does NOT support this.';
+        document.getElementById('passLabel').textContent = 'Namecheap Mailbox Password';
+        document.getElementById('passHint').textContent = 'The password created when setting up the mailbox in Namecheap Private Email.';
+        log('Loaded preset: Namecheap Private Email (mail.privateemail.com:465 SSL)', 'info');
+      }
+    }
+
+    function analyzeError(err) {
+      if (err.includes('535') || err.includes('Username and Password not accepted') || err.includes('BadCredentials')) {
+        return err + '\\n' +
+          '\\n  ==> DIAGNOSIS: Authentication Failed (535)\\n' +
+          '  1. If using Gmail: Username MUST be your actual @gmail.com address (do NOT enter your custom Namecheap domain as the auth user!).\\n' +
+          '  2. Password MUST be a 16-character Google App Password (not your personal Google account password).\\n' +
+          '  3. Ensure 2-Step Verification is active on your Google account at https://myaccount.google.com/apppasswords';
+      }
+      if (err.includes('ENOTFOUND') || err.includes('getaddrinfo') || err.includes('EAI_AGAIN')) {
+        return err + '\\n' +
+          '\\n  ==> DIAGNOSIS: SMTP Host Not Found (DNS Error)\\n' +
+          '  Namecheap Free Email Forwarding DOES NOT provide an outgoing SMTP host (like mail.yourdomain.com).\\n' +
+          '  To send for free, keep SMTP Host as "smtp.gmail.com" or use Brevo "smtp-relay.brevo.com".';
+      }
+      if (err.includes('ETIMEDOUT') || err.includes('ECONNREFUSED')) {
+        return err + '\\n' +
+          '\\n  ==> DIAGNOSIS: Connection Blocked or Timed Out\\n' +
+          '  Network or ISP blocked outbound connection on this port. Try switching between Port 465 (SSL) and Port 587 (TLS).';
+      }
+      return err;
+    }
+
     function getFormData() {
       return {
         host: document.getElementById('smtpHost').value.trim(),
@@ -438,7 +526,7 @@ const HTML_DASHBOARD = `<!DOCTYPE html>
     async function testConnection() {
       const data = getFormData();
       if (!data.user || !data.pass) {
-        log('Gmail username and App Password are required.', 'error');
+        log('Username and Password / App Key are required.', 'error');
         return;
       }
 
@@ -455,9 +543,9 @@ const HTML_DASHBOARD = `<!DOCTYPE html>
         });
         const result = await res.json();
         if (result.success) {
-          log('Handshake successful! Google SMTP credentials accepted.', 'success');
+          log('Handshake successful! SMTP credentials accepted.', 'success');
         } else {
-          log('Handshake failed: ' + result.error, 'error');
+          log('Handshake failed: ' + analyzeError(result.error), 'error');
         }
       } catch (err) {
         log('Network error connecting to test server: ' + err.message, 'error');
@@ -470,7 +558,7 @@ const HTML_DASHBOARD = `<!DOCTYPE html>
     async function sendTestEmail() {
       const data = getFormData();
       if (!data.user || !data.pass || !data.recipient) {
-        log('Please provide Gmail credentials and recipient email.', 'error');
+        log('Please provide SMTP credentials and recipient email.', 'error');
         return;
       }
 
@@ -494,7 +582,7 @@ const HTML_DASHBOARD = `<!DOCTYPE html>
           log('----------------------------------------------------', 'info');
           log('INSPECT INCOMING MESSAGE: Check your inbox headers. If you see From: ' + (data.senderEmail || data.user) + ', custom domain relay is working!', 'success');
         } else {
-          log('Dispatch failed: ' + result.error, 'error');
+          log('Dispatch failed: ' + analyzeError(result.error), 'error');
         }
       } catch (err) {
         log('Error contacting test server: ' + err.message, 'error');
@@ -537,7 +625,7 @@ const server = http.createServer(async (req, res) => {
         secure: body.port === 465,
         auth: {
           user: body.user,
-          pass: (body.pass || '').replace(/\\s+/g, ''),
+          pass: (body.pass || '').replace(/\s+/g, ''),
         },
         tls: { rejectUnauthorized: true },
       });
@@ -562,7 +650,7 @@ const server = http.createServer(async (req, res) => {
         secure,
         auth: {
           user: body.user,
-          pass: (body.pass || '').replace(/\\s+/g, ''),
+          pass: (body.pass || '').replace(/\s+/g, ''),
         },
         tls: { rejectUnauthorized: true },
       });
