@@ -673,12 +673,14 @@ export class EmailService {
   public static async revalidateProviderAccount(id: string): Promise<EmailProviderAccount> {
     let apiKey: string | null = null;
     let providerType: EmailProviderType = 'brevo';
+    let currentDailySent = 0;
 
     try {
       const res = await query<any>(`SELECT * FROM email_provider_accounts WHERE id = $1`, [id]);
       if (res.rows.length === 0) throw new Error('Account not found');
       const row = res.rows[0];
       providerType = row.provider_type;
+      currentDailySent = Number(row.daily_sent_count || 0);
       const decrypted = this.decryptCredentials(row.encrypted_credentials);
       apiKey = providerType === 'smtp' ? JSON.stringify(decrypted) : (decrypted.apiKey || JSON.stringify(decrypted));
     } catch (err: any) {
@@ -686,6 +688,7 @@ export class EmailService {
       if (!acc) throw new Error('Account not found');
       apiKey = acc.rawApiKey || 'mock-key';
       providerType = acc.providerType;
+      currentDailySent = Number(acc.dailySentCount || 0);
     }
 
     const adapter = EmailProviderRegistry.getAdapter(providerType);
@@ -694,9 +697,25 @@ export class EmailService {
 
     const newStatus = validation.valid ? 'healthy' : 'invalid_credentials';
     const lastError = validation.valid ? null : validation.error;
-    const planInfo = validation.accountIdentity?.planInfo || {};
+    const rawPlanInfo = validation.accountIdentity?.planInfo || {};
     const companyName = validation.accountIdentity?.companyName || null;
     const accountEmail = validation.accountIdentity?.email || null;
+
+    const isSmtp = providerType === 'smtp';
+    const totalDailyQuota = rawPlanInfo.totalDailyQuota !== undefined
+      ? Number(rawPlanInfo.totalDailyQuota)
+      : (isSmtp ? 500 : (rawPlanInfo.credits !== undefined ? Number(rawPlanInfo.credits) : 300));
+
+    const remainingCredits = (isSmtp || !rawPlanInfo.liveFromBrevo)
+      ? Math.max(0, totalDailyQuota - currentDailySent)
+      : (rawPlanInfo.remainingCredits !== undefined ? Number(rawPlanInfo.remainingCredits) : Math.max(0, totalDailyQuota - currentDailySent));
+
+    const finalPlanInfo = {
+      ...rawPlanInfo,
+      totalDailyQuota,
+      dailySentCount: currentDailySent,
+      remainingCredits,
+    };
 
     try {
       const res = await query<any>(
@@ -713,15 +732,24 @@ export class EmailService {
                    daily_reset_at as "dailyResetAt", monthly_reset_at as "monthlyResetAt",
                    paused_until as "pausedUntil", provider_plan_info as "providerPlanInfo",
                    created_at as "createdAt", updated_at as "updatedAt"`,
-        [newStatus, now, lastError, JSON.stringify(planInfo), companyName, accountEmail, id]
+        [newStatus, now, lastError, JSON.stringify(finalPlanInfo), companyName, accountEmail, id]
       );
-      return res.rows[0];
+      const updatedRow = res.rows[0];
+      return {
+        ...updatedRow,
+        totalDailyQuota,
+        dailySentCount: currentDailySent,
+        remainingCredits,
+      };
     } catch {
       const acc = inMemoryProviderAccounts.get(id)!;
       acc.status = newStatus;
       acc.lastHealthCheckAt = now;
       acc.lastError = lastError || undefined;
-      acc.providerPlanInfo = planInfo;
+      acc.providerPlanInfo = finalPlanInfo;
+      acc.totalDailyQuota = totalDailyQuota;
+      acc.dailySentCount = currentDailySent;
+      acc.remainingCredits = remainingCredits;
       if (companyName) acc.companyName = companyName;
       if (accountEmail) acc.accountEmail = accountEmail;
       acc.updatedAt = now;

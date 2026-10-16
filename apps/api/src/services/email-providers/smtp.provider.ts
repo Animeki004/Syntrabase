@@ -105,7 +105,6 @@ export class SmtpEmailProvider implements IEmailProviderAdapter {
             port: config.port,
             secure: config.secure,
             totalDailyQuota: config.dailyLimit,
-            remainingCredits: config.dailyLimit,
             planType: 'smtp',
             creditsType: 'daily_quota',
             liveFromSmtp: true,
