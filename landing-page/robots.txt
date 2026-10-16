@@ -1,4 +1,4 @@
 User-agent: *
-Allow: /
+Disallow:
 
 Sitemap: https://animeki004.github.io/Syntrabase/sitemap.xml
