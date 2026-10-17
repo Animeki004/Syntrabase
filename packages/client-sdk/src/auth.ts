@@ -1,6 +1,8 @@
 import { FirebaseApp } from './app.js';
 import { AppUser, TotpEnrollmentResult, TotpVerifyResult, PasskeyRecord } from '@syntrabase/shared-types';
 
+export type { User, UserCredential, UserProfile, IdTokenResult, Unsubscribe, AppUser } from '@syntrabase/shared-types';
+
 export const browserLocalPersistence = 'LOCAL';
 export const browserSessionPersistence = 'SESSION';
 export const indexedDBLocalPersistence = 'INDEXEDDB';

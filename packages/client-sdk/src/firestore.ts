@@ -3,7 +3,7 @@ import { getAuth } from './auth.js';
 import {
   BatchWriteOperation,
   DocumentData,
-  DocumentSnapshot,
+  DocumentSnapshot as DocumentRecord,
   QueryFilter,
   QueryFilterOperator,
   QueryOrderBy,
@@ -16,7 +16,7 @@ import {
 export class Firestore {
   public _persistenceEnabled = false;
   public _persistenceType: 'memory' | 'indexeddb' = 'memory';
-  public _cache = new Map<string, DocumentSnapshot>();
+  public _cache = new Map<string, DocumentRecord>();
 
   constructor(public readonly app: FirebaseApp) {}
 }
@@ -253,11 +253,30 @@ export const deleteField = () => FieldValue.delete();
 // Document CRUD
 // -----------------------------------------------------------------------------
 
-export interface DocumentSnapshotResult {
+export interface DocumentSnapshotResult<T = DocumentData> {
   exists(): boolean;
-  data(): DocumentData | undefined;
+  data(): T | undefined;
   id: string;
   version?: number;
+}
+
+export type DocumentSnapshot<T = DocumentData> = DocumentSnapshotResult<T>;
+
+export interface QueryDocumentSnapshot<T = DocumentData> extends DocumentSnapshotResult<T> {
+  id: string;
+  data(): T;
+}
+
+export interface QuerySnapshot<T = DocumentData> {
+  docs: Array<QueryDocumentSnapshot<T>>;
+  empty: boolean;
+  size: number;
+  forEach(callback: (result: QueryDocumentSnapshot<T>) => void): void;
+}
+
+export interface SetOptions {
+  merge?: boolean;
+  mergeFields?: string[];
 }
 
 export async function getDoc(docRef: DocumentReference): Promise<DocumentSnapshotResult> {
@@ -282,7 +301,7 @@ export async function getDoc(docRef: DocumentReference): Promise<DocumentSnapsho
       throw new Error(err.error || `Failed to fetch document: ${res.statusText}`);
     }
 
-    const snapshot = (await res.json()) as DocumentSnapshot;
+    const snapshot = (await res.json()) as DocumentRecord;
     if (docRef.firestore._persistenceEnabled) {
       docRef.firestore._cache.set(docRef.path, snapshot);
     }
@@ -310,7 +329,7 @@ export async function getDoc(docRef: DocumentReference): Promise<DocumentSnapsho
 export async function setDoc(
   docRef: DocumentReference,
   data: DocumentData,
-  options: { merge?: boolean } = {}
+  options: SetOptions = {}
 ): Promise<void> {
   const parts = docRef.path.replace(/^\/+|\/+$/g, '').split('/');
   const docId = parts.pop()!;
@@ -328,7 +347,7 @@ export async function setDoc(
     throw new Error(err.error || `Failed to set document: ${res.statusText}`);
   }
 
-  const snapshot = (await res.json().catch(() => null)) as DocumentSnapshot | null;
+  const snapshot = (await res.json().catch(() => null)) as DocumentRecord | null;
   if (snapshot && docRef.firestore._persistenceEnabled) {
     docRef.firestore._cache.set(docRef.path, snapshot);
   }
@@ -351,7 +370,7 @@ export async function updateDoc(docRef: DocumentReference, data: DocumentData): 
     throw new Error(err.error || `Failed to update document: ${res.statusText}`);
   }
 
-  const snapshot = (await res.json().catch(() => null)) as DocumentSnapshot | null;
+  const snapshot = (await res.json().catch(() => null)) as DocumentRecord | null;
   if (snapshot && docRef.firestore._persistenceEnabled) {
     docRef.firestore._cache.set(docRef.path, snapshot);
   }
@@ -520,11 +539,7 @@ export function collectionGroup(db: Firestore, collectionId: string): Collection
   return new CollectionGroupQuery(db, collectionId);
 }
 
-export async function getDocs(queryObj: Query | CollectionReference | CollectionGroupQuery): Promise<{
-  docs: Array<{ id: string; data(): DocumentData }>;
-  empty: boolean;
-  size: number;
-}> {
+export async function getDocs(queryObj: Query | CollectionReference | CollectionGroupQuery): Promise<QuerySnapshot> {
   if (queryObj instanceof CollectionGroupQuery) {
     let limitCount = 50;
     for (const c of queryObj.constraints) {
@@ -542,16 +557,21 @@ export async function getDocs(queryObj: Query | CollectionReference | Collection
       throw new Error(err.error || `CollectionGroup query failed: ${res.statusText}`);
     }
 
-    const result = (await res.json()) as { documents?: DocumentSnapshot[] };
-    const docs = (result.documents || []).map((d: DocumentSnapshot) => ({
+    const result = (await res.json()) as { documents?: DocumentRecord[] };
+    const docs: QueryDocumentSnapshot[] = (result.documents || []).map((d: any) => ({
       id: d.id,
+      exists: () => true,
       data: () => d.data,
+      version: d.version,
     }));
 
     return {
       docs,
       empty: docs.length === 0,
       size: docs.length,
+      forEach(callback: (result: QueryDocumentSnapshot) => void): void {
+        docs.forEach(callback);
+      },
     };
   }
 
@@ -588,16 +608,21 @@ export async function getDocs(queryObj: Query | CollectionReference | Collection
     throw new Error(err.error || `Query failed: ${res.statusText}`);
   }
 
-  const result = (await res.json()) as { documents?: DocumentSnapshot[] };
-  const docs = (result.documents || []).map((d: DocumentSnapshot) => ({
+  const result = (await res.json()) as { documents?: DocumentRecord[] };
+  const docs: QueryDocumentSnapshot[] = (result.documents || []).map((d: any) => ({
     id: d.id,
+    exists: () => true,
     data: () => d.data,
+    version: d.version,
   }));
 
   return {
     docs,
     empty: docs.length === 0,
     size: docs.length,
+    forEach(callback: (result: QueryDocumentSnapshot) => void): void {
+      docs.forEach(callback);
+    },
   };
 }
 

@@ -1,4 +1,7 @@
 import { AdminApp } from './app.js';
+import type { AdminStorageObject } from '@syntrabase/shared-types';
+
+export type { AdminStorageObject };
 
 export class AdminStorage {
   constructor(public readonly app: AdminApp) {}
@@ -29,14 +32,7 @@ export class AdminStorage {
     return `${this.app.options.apiUrl}${data.signedUrl}`;
   }
 
-  public async listObjects(): Promise<Array<{
-    id: string;
-    name: string;
-    path: string;
-    sizeBytes: number;
-    contentType: string;
-    createdAt: string;
-  }>> {
+  public async listObjects(): Promise<AdminStorageObject[]> {
     const url = `${this.app.options.apiUrl}/api/v1/storage/${this.app.options.projectId}/objects`;
     const res = await fetch(url, { method: 'GET', headers: this.getHeaders() });
     if (!res.ok) {

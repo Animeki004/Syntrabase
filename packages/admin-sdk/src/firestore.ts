@@ -515,4 +515,5 @@ export type Firestore = AdminFirestore;
 export type DocumentReference = AdminDocumentReference;
 export type CollectionReference = AdminCollectionReference;
 export type Query = AdminQuery;
+export type { DocumentData, DocumentSnapshot, SetOptions } from '@syntrabase/shared-types';
 

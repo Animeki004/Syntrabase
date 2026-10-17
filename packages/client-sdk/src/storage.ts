@@ -1,5 +1,8 @@
 import { FirebaseApp } from './app.js';
 import { getAuth } from './auth.js';
+import type { UploadMetadata, UploadResult, ListOptions, ListResult } from '@syntrabase/shared-types';
+
+export type { UploadMetadata, UploadResult, ListOptions, ListResult };
 
 export class FirebaseStorage {
   constructor(public readonly app: FirebaseApp) {}
@@ -73,8 +76,8 @@ export async function toBase64(data: Buffer | Uint8Array | Blob): Promise<string
 export async function uploadBytes(
   storageRef: StorageReference,
   data: Buffer | Uint8Array | Blob,
-  metadata?: { contentType?: string; customMetadata?: Record<string, string> }
-): Promise<{ ref: StorageReference; metadata: Record<string, unknown> }> {
+  metadata?: UploadMetadata
+): Promise<UploadResult> {
   const base64Data = await toBase64(data);
   const headers = getStorageHeaders(storageRef.storage);
 
@@ -107,8 +110,8 @@ export async function uploadString(
   storageRef: StorageReference,
   value: string,
   format: StringFormat = 'raw',
-  metadata?: { contentType?: string; customMetadata?: Record<string, string> }
-): Promise<{ ref: StorageReference; metadata: Record<string, unknown> }> {
+  metadata?: UploadMetadata
+): Promise<UploadResult> {
   let base64Data: string;
   let detectedContentType = metadata?.contentType;
 

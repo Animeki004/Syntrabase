@@ -50,3 +50,9 @@ export function initializeApp(options: FirebaseOptions, name?: string): Firebase
 export function getApp(name?: string): FirebaseApp {
   return FirebaseApp.getInstance(name);
 }
+
+export function getApps(): FirebaseApp[] {
+  return Array.from((FirebaseApp as any).instances.values());
+}
+
+export type App = FirebaseApp;

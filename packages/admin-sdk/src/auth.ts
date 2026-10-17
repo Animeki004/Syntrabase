@@ -1,5 +1,8 @@
 import { AdminApp } from './app.js';
 import { AppUser, ProjectAuthConfig, UserActionsConfig, MfaPolicy, PasskeyRecord } from '@syntrabase/shared-types';
+import type { UserRecord, DecodedIdToken, ListUsersResult } from '@syntrabase/shared-types';
+
+export type { UserRecord, DecodedIdToken, ListUsersResult, AppUser };
 
 export class AdminAuth {
   constructor(public readonly app: AdminApp) {}

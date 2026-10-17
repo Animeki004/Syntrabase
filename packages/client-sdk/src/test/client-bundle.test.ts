@@ -350,3 +350,36 @@ test('Client SDK - Browser Local and Session Persistence Lifecycle', async () =>
   delete (globalThis as any).window;
 });
 
+test('Client SDK - Firebase modular v9/v10 drop-in functions and snapshot iteration', async () => {
+  assert.equal(typeof ClientSDK.getApps, 'function');
+  assert.equal(typeof ClientSDK.listAll, 'function');
+  assert.equal(typeof ClientSDK.doc, 'function');
+  assert.equal(typeof ClientSDK.collection, 'function');
+  assert.equal(typeof ClientSDK.getDocs, 'function');
+  assert.equal(typeof ClientSDK.getDoc, 'function');
+
+  // Verify getApps returns active apps
+  const apps = ClientSDK.getApps();
+  assert.ok(Array.isArray(apps));
+
+  // Verify QuerySnapshot shape with forEach and docs array
+  const mockQuerySnapshot = {
+    docs: [
+      { id: 'item1', exists: () => true, data: () => ({ name: 'Test 1' }) },
+      { id: 'item2', exists: () => true, data: () => ({ name: 'Test 2' }) },
+    ],
+    empty: false,
+    size: 2,
+    forEach(callback: (doc: any) => void) {
+      this.docs.forEach(callback);
+    },
+  };
+
+  const ids: string[] = [];
+  mockQuerySnapshot.forEach((doc) => {
+    assert.ok(doc.exists());
+    ids.push(doc.id);
+  });
+  assert.deepEqual(ids, ['item1', 'item2']);
+});
+

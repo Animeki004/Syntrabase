@@ -37,3 +37,14 @@ export class AdminApp {
 export function initializeAdminApp(options: AdminOptions): AdminApp {
   return AdminApp.initialize(options);
 }
+
+export const initializeApp = initializeAdminApp;
+export const getApp = () => AdminApp.getInstance();
+export const getApps = (): AdminApp[] => {
+  try {
+    return [AdminApp.getInstance()];
+  } catch {
+    return [];
+  }
+};
+export type App = AdminApp;

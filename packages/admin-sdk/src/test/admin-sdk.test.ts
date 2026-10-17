@@ -167,3 +167,32 @@ test('Admin SDK - Supports collection and document reference chaining for subcol
   const subcolRef = db.collection('artifacts/default-app-id/public/data/movies');
   assert.equal(subcolRef.path, 'artifacts/default-app-id/public/data/movies');
 });
+
+test('Admin SDK - Drop-in modular compatibility (initializeApp, getApp, getApps, getAuth, getFirestore)', async () => {
+  const { initializeApp, getApp, getApps, getAuth, getFirestore, getStorage } = await import('../index.js');
+  
+  assert.equal(typeof initializeApp, 'function');
+  assert.equal(typeof getApp, 'function');
+  assert.equal(typeof getApps, 'function');
+  assert.equal(typeof getAuth, 'function');
+  assert.equal(typeof getFirestore, 'function');
+  assert.equal(typeof getStorage, 'function');
+
+  const app = initializeApp({
+    apiUrl: 'http://localhost:4000',
+    secretKey: 'sk_live_valid_test_secret_key_1234567890',
+    projectId: 'test-project',
+  });
+
+  assert.equal(getApp(), app);
+  const apps = getApps();
+  assert.equal(apps.length, 1);
+  assert.equal(apps[0], app);
+
+  const auth = getAuth(app);
+  assert.ok(auth);
+  const db = getFirestore(app);
+  assert.ok(db);
+  const storage = getStorage(app);
+  assert.ok(storage);
+});

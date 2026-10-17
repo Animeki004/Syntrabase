@@ -1016,8 +1016,44 @@ export interface ContactRetentionPolicy {
 }
 
 // -----------------------------------------------------------------------------
-// 15. SDK Persistence, Custom Tokens, Aggregations & Datatypes (v1.2.3.1)
+// 20. Comprehensive SDK Parity & Firebase Modular Types (v1.2.3.1)
 // -----------------------------------------------------------------------------
+
+export type User = AppUser;
+export type UserRecord = AppUser;
+
+export interface UserCredential {
+  user: AppUser;
+  providerId?: string;
+  operationType?: string;
+}
+
+export type Unsubscribe = () => void;
+
+export interface UserProfile {
+  displayName?: string | null;
+  photoURL?: string | null;
+}
+
+export interface IdTokenResult {
+  token: string;
+  claims: Record<string, unknown>;
+  authTime?: string;
+  issuedAtTime?: string;
+  expirationTime?: string;
+  signInProvider?: string | null;
+}
+
+export interface DecodedIdToken extends TokenPayload {
+  [key: string]: unknown;
+}
+
+export interface ListUsersResult {
+  users: AppUser[];
+  total: number;
+  page: number;
+  limit: number;
+}
 
 export type PersistenceType = 'LOCAL' | 'SESSION' | 'INDEXED_DB' | 'NONE';
 
@@ -1053,6 +1089,79 @@ export interface BytesLike {
   toUint8Array(): Uint8Array;
   isEqual(other: BytesLike): boolean;
 }
+
+export interface DocumentSnapshotResult<T = DocumentData> {
+  exists(): boolean;
+  data(): T | undefined;
+  id: string;
+  version?: number;
+}
+
+export interface QueryDocumentSnapshot<T = DocumentData> extends DocumentSnapshotResult<T> {
+  data(): T;
+}
+
+export interface QuerySnapshot<T = DocumentData> {
+  docs: Array<QueryDocumentSnapshot<T>>;
+  empty: boolean;
+  size: number;
+  forEach(callback: (result: QueryDocumentSnapshot<T>) => void): void;
+}
+
+export interface SetOptions {
+  merge?: boolean;
+  mergeFields?: string[];
+}
+
+export interface UploadMetadata {
+  contentType?: string;
+  customMetadata?: Record<string, string>;
+  cacheControl?: string;
+  contentDisposition?: string;
+  contentEncoding?: string;
+  contentLanguage?: string;
+}
+
+export interface UploadResult {
+  ref: unknown;
+  metadata: Record<string, unknown>;
+}
+
+export interface ListOptions {
+  maxResults?: number;
+  pageToken?: string;
+}
+
+export interface ListResult {
+  items: unknown[];
+  prefixes: unknown[];
+  nextPageToken?: string;
+}
+
+export interface AdminStorageObject {
+  id: string;
+  name: string;
+  path: string;
+  sizeBytes: number;
+  contentType: string;
+  createdAt: string;
+}
+
+export interface FirebaseOptions {
+  apiKey: string;
+  projectId: string;
+  apiUrl?: string;
+  apiEndpoint?: string;
+  environmentId?: string;
+  realtimeEndpoint?: string;
+}
+
+export interface AdminOptions {
+  apiUrl: string;
+  secretKey: string;
+  projectId: string;
+}
+
 
 
 
