@@ -1140,21 +1140,23 @@ npm run test:unit --workspace=@syntrabase/admin-sdk">Copy</button>
         <!-- Doc 21: Release Readiness & Platform Changelog -->
         <div class="doc-block" id="doc-release">
           <div class="doc-badge badge-emerald">Release Verification & Changelog</div>
-          <h2 class="doc-title">Release & Platform Changelog (v1.2.3 & SDK v1.2.5)</h2>
+          <h2 class="doc-title">Release & Platform Changelog (v1.2.3 & SDK v1.2.6)</h2>
           <p>
-            Syntrabase v1.2.3 platform and SDK v1.2.5 are fully verified for production deployments with 43/43 security audits passing and zero open vulnerabilities.
+            Syntrabase v1.2.3 platform and SDK v1.2.6 are fully verified for production deployments with 43/43 security audits passing, 100% Firebase Admin/Client drop-in parity, and zero open vulnerabilities.
           </p>
           
           <div class="callout callout-info" style="margin: 18px 0; padding: 16px 20px; background: rgba(37, 99, 235, 0.08); border-left: 4px solid #2563eb; border-radius: 8px;">
-            <strong style="color: #60a5fa; font-size: 14px;">SDK v1.2.5 Highlights & Changelog:</strong>
+            <strong style="color: #60a5fa; font-size: 14px;">SDK v1.2.6 Highlights & Drop-In Parity:</strong>
             <ul style="margin: 8px 0 0 16px; font-size: 13px; color: var(--text-muted); line-height: 1.6;">
+              <li><strong>Firebase Admin Drop-in Namespace:</strong> <code>import admin from '@syntrabase/admin-sdk'</code> with <code>admin.initializeApp({ credential: admin.credential.cert(...) })</code>, <code>admin.firestore()</code>, and <code>admin.auth()</code>.</li>
+              <li><strong>Document & Query Snapshot Parity:</strong> <code>DocumentSnapshot</code> with boolean <code>.exists</code>, method <code>.data()</code>, <code>.id</code>, and <code>QuerySnapshot</code> with <code>.docs</code>, <code>.forEach()</code>, and <code>for..of</code> iteration.</li>
+              <li><strong>Auth Server Management:</strong> <code>admin.auth().listUsers(1000)</code> with automatic user record decoration (<code>.uid</code> and <code>.metadata.creationTime</code>).</li>
               <li><strong>Persistence Engines:</strong> <code>browserLocalPersistence</code>, <code>browserSessionPersistence</code>, <code>indexedDBLocalPersistence</code>, <code>inMemoryPersistence</code>, and dynamic <code>setPersistence()</code>.</li>
               <li><strong>Multi-Tab Firestore Cache:</strong> <code>enableIndexedDbPersistence</code>, <code>enableMultiTabIndexedDbPersistence</code>, and <code>initializeFirestore</code> with offline cache support.</li>
               <li><strong>Custom Token Authentication:</strong> <code>createCustomToken</code> in Admin SDK and <code>signInWithCustomToken</code> in Client SDK.</li>
               <li><strong>Firestore Datatypes & Query Operators:</strong> <code>Timestamp</code>, <code>GeoPoint</code>, <code>Bytes</code>, <code>FieldPath</code>, <code>documentId()</code>, <code>limitToLast</code>, cursor pagination, <code>and()</code>/<code>or()</code> queries.</li>
               <li><strong>Server Aggregations:</strong> <code>count()</code>, <code>getCountFromServer()</code>, and <code>getAggregateFromServer()</code>.</li>
               <li><strong>Storage Extensions:</strong> <code>uploadString()</code> (raw, base64, base64url, data_url), <code>getBytes()</code>, <code>getBlob()</code>, and <code>list()</code>.</li>
-              <li><strong>Profile Management & Action Links:</strong> <code>updateProfile</code>, <code>updatePassword</code>, <code>updateEmail</code>, <code>getIdToken</code>, and Admin action link generators.</li>
               <li><strong>Security Hardening:</strong> 43/43 audit vectors remediated and verified across all services.</li>
             </ul>
           </div>
