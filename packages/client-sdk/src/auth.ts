@@ -79,6 +79,12 @@ export class Auth {
         refreshToken: this.refreshToken,
       });
 
+      if (this.currentUser?.environmentId) {
+        try {
+          globalObj.localStorage?.setItem(`syntrabase_env_${this.app.options.projectId}`, this.currentUser.environmentId);
+        } catch {}
+      }
+
       if (this.persistence === browserLocalPersistence || this.persistence === indexedDBLocalPersistence) {
         globalObj.localStorage?.setItem(key, payload);
         globalObj.sessionStorage?.removeItem(key);

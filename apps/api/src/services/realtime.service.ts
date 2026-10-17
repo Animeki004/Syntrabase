@@ -245,7 +245,7 @@ export class RealtimeService {
                 collection_path as "collectionPath", document_id as "documentId", event_type as "eventType",
                 payload, version, created_at as "createdAt"
          FROM event_outbox
-         WHERE project_id = $1 AND environment_id = $2 AND collection_path = $3 AND sequence_id > $4
+         WHERE project_id = $1 AND (environment_id = $2 OR environment_id = 'default' OR $2 = 'default') AND collection_path = $3 AND sequence_id > $4
          ORDER BY sequence_id ASC
          LIMIT 100`,
         [sub.projectId, sub.environmentId, sub.collectionPath, sub.lastCheckpointId]
@@ -353,9 +353,14 @@ export class RealtimeService {
         if (client.ws.readyState !== WebSocket.OPEN) continue;
 
         for (const sub of client.subscriptions.values()) {
+          const envMatches =
+            sub.environmentId === event.environmentId ||
+            sub.environmentId === 'default' ||
+            event.environmentId === 'default';
+
           if (
             sub.projectId === event.projectId &&
-            sub.environmentId === event.environmentId &&
+            envMatches &&
             sub.collectionPath === event.collectionPath
           ) {
             if (sub.documentId && sub.documentId !== event.documentId) {

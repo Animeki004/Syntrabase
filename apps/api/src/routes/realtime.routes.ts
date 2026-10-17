@@ -111,10 +111,18 @@ export const realtimeRoutes: FastifyPluginAsync = async (server: FastifyInstance
             return;
           }
 
+          const rawEnvId = environmentId || client.tokenPayload?.environmentId || 'default';
+          let resolvedEnvId = rawEnvId;
+          try {
+            resolvedEnvId = await AuthService.resolveEnvironmentId(targetProjectId, rawEnvId);
+          } catch {
+            resolvedEnvId = rawEnvId;
+          }
+
           await RealtimeService.subscribe(client, {
             id: subscriptionId,
             projectId: targetProjectId,
-            environmentId: environmentId || 'default',
+            environmentId: resolvedEnvId,
             collectionPath,
             documentId,
             lastCheckpointId: lastCheckpointId || '0',

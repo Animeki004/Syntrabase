@@ -267,12 +267,20 @@ export interface QueryDocumentSnapshot<T = DocumentData> extends DocumentSnapsho
   data(): T;
 }
 
+export interface DocumentChange<T = DocumentData> {
+  type: 'added' | 'modified' | 'removed';
+  doc: QueryDocumentSnapshot<T>;
+  oldIndex?: number;
+  newIndex?: number;
+}
+
 export interface QuerySnapshot<T = DocumentData> {
   docs: Array<QueryDocumentSnapshot<T>>;
   empty: boolean;
   size: number;
   forEach(callback: (result: QueryDocumentSnapshot<T>) => void): void;
   [Symbol.iterator](): Iterator<QueryDocumentSnapshot<T>>;
+  docChanges?(): Array<DocumentChange<T>>;
 }
 
 export interface SetOptions {
@@ -570,6 +578,7 @@ export async function getDocs(queryObj: Query | CollectionReference | Collection
       docs,
       empty: docs.length === 0,
       size: docs.length,
+      docChanges: () => docs.map((d, i) => ({ type: 'added' as const, doc: d, oldIndex: -1, newIndex: i })),
       forEach(callback: (result: QueryDocumentSnapshot) => void): void {
         docs.forEach(callback);
       },
@@ -624,6 +633,7 @@ export async function getDocs(queryObj: Query | CollectionReference | Collection
     docs,
     empty: docs.length === 0,
     size: docs.length,
+    docChanges: () => docs.map((d, i) => ({ type: 'added' as const, doc: d, oldIndex: -1, newIndex: i })),
     forEach(callback: (result: QueryDocumentSnapshot) => void): void {
       docs.forEach(callback);
     },
