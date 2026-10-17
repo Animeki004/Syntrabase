@@ -46,6 +46,7 @@ interface FirestoreDocRecord {
   updatedAt: string;
   version: number;
   subcollections?: string[];
+  isMissing?: boolean;
 }
 
 const INITIAL_COLLECTIONS: string[] = [];
@@ -372,7 +373,53 @@ export default function FirebaseStudioReplicaPage() {
     }
   }, [activeProject?.maxDatabases]);
 
-  // Fetch real collections and documents from PostgreSQL
+  // =========================================================================
+  // FIREBASE DYNAMIC SLIDING CHAIN STATE (COLLECTION -> DOC -> SUBCOL -> SUBDOC)
+  // =========================================================================
+  const [collections, setCollections] = useState<string[]>(INITIAL_COLLECTIONS);
+  const [collectionDocs, setCollectionDocs] = useState<Record<string, FirestoreDocRecord[]>>({
+    ...INITIAL_DOCS,
+    ...INITIAL_SUBCOL_DOCS,
+  });
+
+  // Current navigation chain: starts empty if no collections exist
+  const [navPath, setNavPath] = useState<string[]>([]);
+
+  // Fetch documents for any collection path (root collection or nested subcollection)
+  const fetchDocsForCollectionPath = React.useCallback(async (colPath: string): Promise<FirestoreDocRecord[]> => {
+    if (!projectId || !colPath) return [];
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(
+        `${API_BASE_URL}/api/v1/projects/${projectId}/databases/${selectedDatabaseId}/col-documents?collectionPath=${encodeURIComponent(colPath)}`,
+        { headers }
+      );
+      if (res.ok) {
+        const dData = await res.json();
+        if (Array.isArray(dData.documents)) {
+          const mapped: FirestoreDocRecord[] = dData.documents.map((d: any) => ({
+            id: d.id,
+            data: d.data || {},
+            createdAt: d.createdAt,
+            updatedAt: d.updatedAt,
+            version: d.version || 1,
+            subcollections: d.subcollections || [],
+            isMissing: !!d.isMissing,
+          }));
+          setCollectionDocs((prev) => ({ ...prev, [colPath]: mapped }));
+          return mapped;
+        }
+      }
+    } catch {
+      // offline fallback
+    }
+    return [];
+  }, [projectId, selectedDatabaseId]);
+
+  // Fetch real root collections and their documents from PostgreSQL
   const fetchLiveCollectionsAndDocs = React.useCallback(async () => {
     if (!projectId) return;
     try {
@@ -392,7 +439,7 @@ export default function FirebaseStudioReplicaPage() {
             colNames.map(async (cName: string) => {
               try {
                 const docRes = await fetch(
-                  `${API_BASE_URL}/api/v1/projects/${projectId}/databases/${selectedDatabaseId}/collections/${encodeURIComponent(cName)}/documents`,
+                  `${API_BASE_URL}/api/v1/projects/${projectId}/databases/${selectedDatabaseId}/col-documents?collectionPath=${encodeURIComponent(cName)}`,
                   { headers }
                 );
                 if (docRes.ok) {
@@ -404,7 +451,8 @@ export default function FirebaseStudioReplicaPage() {
                       createdAt: d.createdAt,
                       updatedAt: d.updatedAt,
                       version: d.version || 1,
-                      subcollections: [],
+                      subcollections: d.subcollections || [],
+                      isMissing: !!d.isMissing,
                     }));
                   }
                 }
@@ -438,6 +486,17 @@ export default function FirebaseStudioReplicaPage() {
   useEffect(() => {
     fetchLiveCollectionsAndDocs();
   }, [fetchLiveCollectionsAndDocs]);
+
+  // Dynamically load documents for nested collections in the active navigation path
+  useEffect(() => {
+    if (!projectId || navPath.length === 0) return;
+    for (let i = 0; i < navPath.length; i += 2) {
+      const colPath = navPath.slice(0, i + 1).join('/');
+      if (!collectionDocs[colPath]) {
+        fetchDocsForCollectionPath(colPath);
+      }
+    }
+  }, [navPath, projectId, selectedDatabaseId, collectionDocs, fetchDocsForCollectionPath]);
 
   const handleCreateDatabase = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -504,18 +563,6 @@ export default function FirebaseStudioReplicaPage() {
       fetchUsageStats();
     }
   }, [activeTab, fetchIndexes, fetchUsageStats]);
-
-  // =========================================================================
-  // FIREBASE DYNAMIC SLIDING CHAIN STATE (COLLECTION -> DOC -> SUBCOL -> SUBDOC)
-  // =========================================================================
-  const [collections, setCollections] = useState<string[]>(INITIAL_COLLECTIONS);
-  const [collectionDocs, setCollectionDocs] = useState<Record<string, FirestoreDocRecord[]>>({
-    ...INITIAL_DOCS,
-    ...INITIAL_SUBCOL_DOCS,
-  });
-
-  // Current navigation chain: starts empty if no collections exist
-  const [navPath, setNavPath] = useState<string[]>([]);
 
   // Ref to the horizontal columns container for smooth drawer sliding
   const gridRef = useRef<HTMLDivElement>(null);
@@ -802,12 +849,17 @@ export default function FirebaseStudioReplicaPage() {
   };
 
   // Chain Navigation: Click Subcollection in any document details column
-  const handleSelectSubcol = (docLevel: number, scName: string, docPath: string) => {
+  const handleSelectSubcol = async (docLevel: number, scName: string, docPath: string) => {
     setActiveMenu(null);
     const fullSubcolPath = `${docPath}/${scName}`;
-    const subDocs = collectionDocs[fullSubcolPath] || [];
     const base = navPath.slice(0, docLevel);
-    if (subDocs.length > 0) {
+    
+    let subDocs = collectionDocs[fullSubcolPath];
+    if (!subDocs || subDocs.length === 0) {
+      subDocs = await fetchDocsForCollectionPath(fullSubcolPath);
+    }
+
+    if (subDocs && subDocs.length > 0) {
       setNavPath([...base, scName, subDocs[0].id]);
     } else {
       setNavPath([...base, scName]);
@@ -2052,7 +2104,17 @@ export default function FirebaseStudioReplicaPage() {
                               onClick={() => handleSelectDoc(col.level, doc.id)}
                               className={`fb-item ${isSelected ? 'selected' : ''}`}
                             >
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <span
+                                style={{
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  fontStyle: doc.isMissing ? 'italic' : 'normal',
+                                  color: doc.isMissing ? 'var(--text-secondary)' : 'inherit',
+                                  fontWeight: isSelected ? 600 : 400,
+                                }}
+                                title={doc.isMissing ? `${doc.id} (Document contains subcollections)` : doc.id}
+                              >
                                 {doc.id}
                               </span>
                               <ChevronRight size={14} color={isSelected ? 'var(--primary)' : 'var(--text-muted)'} />
@@ -2200,7 +2262,21 @@ export default function FirebaseStudioReplicaPage() {
 
                       {/* Scrollable Fields Container */}
                       <div className="fb-fields-section" style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-                        {filteredEntries.length === 0 ? (
+                        {doc.isMissing && rawEntries.length === 0 ? (
+                          <div style={{ padding: '60px 16px', textAlign: 'center' }}>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '13px', fontStyle: 'italic', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <span>This document does not exist. It will not appear in queries or snapshots.</span>
+                              <a
+                                href="https://firebase.google.com/docs/firestore/data-model#hierarchical-data"
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ color: '#58a6ff', textDecoration: 'underline', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                              >
+                                Learn more <ExternalLink size={11} />
+                              </a>
+                            </div>
+                          </div>
+                        ) : filteredEntries.length === 0 ? (
                           <div style={{ padding: '40px 16px', color: 'var(--text-muted)', fontSize: '12px', fontStyle: 'italic', textAlign: 'center' }}>
                             {filterQ ? 'No fields match filter' : 'This document has no fields'}
                           </div>

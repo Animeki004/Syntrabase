@@ -130,23 +130,47 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
   // List distinct collections and document counts for project (requires developer project access)
   server.get('/api/v1/projects/:projectId/databases/:databaseId/collections', async (req, reply) => {
     const { projectId: rawId } = req.params as { projectId: string; databaseId: string };
+    const { parentDocPath } = (req.query as { parentDocPath?: string }) || {};
     const { ProjectService } = await import('../services/project.service.js');
     const projectId = await ProjectService.resolveProjectId(rawId);
     await AuthService.requireProjectAccess(req, projectId);
 
     try {
-      const res = await query<{ collection_path: string; doc_count: string }>(
-        `SELECT collection_path, COUNT(*) as doc_count
+      if (parentDocPath && parentDocPath.trim()) {
+        const cleanParent = parentDocPath.trim().replace(/^\/+|\/+$/g, '');
+        // Query immediate subcollections under this parent document
+        const res = await query<{ subcol: string; doc_count: string }>(
+          `SELECT split_part(substring(collection_path from length($2) + 2), '/', 1) AS subcol, COUNT(*) AS doc_count
+           FROM documents
+           WHERE project_id = $1 AND collection_path LIKE $2 || '/%'
+           GROUP BY subcol
+           HAVING split_part(substring(collection_path from length($2) + 2), '/', 1) != ''
+           ORDER BY subcol ASC`,
+          [projectId, cleanParent]
+        );
+
+        const collections = res.rows.map((r) => ({
+          id: r.subcol,
+          name: r.subcol,
+          documentCount: parseInt(r.doc_count, 10),
+        }));
+        return reply.send({ collections });
+      }
+
+      // Root collections: only the first segment of collection_path
+      const res = await query<{ root_col: string; doc_count: string }>(
+        `SELECT split_part(collection_path, '/', 1) AS root_col, COUNT(*) AS doc_count
          FROM documents
          WHERE project_id = $1
-         GROUP BY collection_path
-         ORDER BY collection_path ASC`,
+         GROUP BY root_col
+         HAVING split_part(collection_path, '/', 1) != ''
+         ORDER BY root_col ASC`,
         [projectId]
       );
 
       const collections = res.rows.map((r) => ({
-        id: r.collection_path,
-        name: r.collection_path,
+        id: r.root_col,
+        name: r.root_col,
         documentCount: parseInt(r.doc_count, 10),
       }));
 
@@ -156,19 +180,28 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     }
   });
 
-  // List documents within a specific collection for project (requires developer project access)
-  server.get('/api/v1/projects/:projectId/databases/:databaseId/collections/:collectionPath/documents', async (req, reply) => {
-    const { projectId: rawId, collectionPath } = req.params as {
+  // Handler to list documents within a specific collection (root or nested subcollection)
+  const getCollectionDocumentsHandler = async (req: any, reply: any) => {
+    const { projectId: rawId } = req.params as {
       projectId: string;
       databaseId: string;
-      collectionPath: string;
     };
+    const rawCol = req.params?.collectionPath
+      ? decodeURIComponent(req.params.collectionPath)
+      : (req.query?.collectionPath as string) || '';
+    const cleanColPath = rawCol.trim().replace(/^\/+|\/+$/g, '');
+
+    if (!cleanColPath) {
+      return reply.send({ documents: [] });
+    }
+
     const { ProjectService } = await import('../services/project.service.js');
     const projectId = await ProjectService.resolveProjectId(rawId);
     await AuthService.requireProjectAccess(req, projectId);
 
     try {
-      const res = await query<{
+      // 1. Direct documents stored in this exact collection path
+      const directRes = await query<{
         document_id: string;
         collection_path: string;
         data: any;
@@ -180,33 +213,107 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
          FROM documents
          WHERE project_id = $1 AND collection_path = $2
          ORDER BY updated_at DESC
-         LIMIT 100`,
-        [projectId, collectionPath]
+         LIMIT 250`,
+        [projectId, cleanColPath]
       );
 
-      const documents = res.rows.map((r) => ({
-        id: r.document_id,
-        path: `/${r.collection_path}/${r.document_id}`,
-        data: r.data,
-        version: parseInt(r.version, 10),
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
+      // 2. Discover subcollections and intermediate/phantom parent documents under this collection
+      const nestedRes = await query<{ collection_path: string }>(
+        `SELECT DISTINCT collection_path
+         FROM documents
+         WHERE project_id = $1 AND collection_path LIKE $2 || '/%'`,
+        [projectId, cleanColPath]
+      );
+
+      // Map to hold merged documents
+      const docsMap = new Map<string, {
+        id: string;
+        path: string;
+        data: any;
+        version: number;
+        createdAt: string;
+        updatedAt: string;
+        isMissing: boolean;
+        subcollections: Set<string>;
+      }>();
+
+      // Populate direct documents
+      for (const r of directRes.rows) {
+        docsMap.set(r.document_id, {
+          id: r.document_id,
+          path: `/${r.collection_path}/${r.document_id}`,
+          data: r.data || {},
+          version: parseInt(r.version, 10) || 1,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+          isMissing: false,
+          subcollections: new Set<string>(),
+        });
+      }
+
+      // Process nested paths (e.g. cleanColPath = 'artifacts', collection_path = 'artifacts/default-app-id/admin')
+      const prefixLen = cleanColPath.length + 1; // skip "${cleanColPath}/"
+      for (const r of nestedRes.rows) {
+        const remaining = r.collection_path.slice(prefixLen);
+        if (!remaining) continue;
+        const parts = remaining.split('/');
+        const docId = parts[0];
+        const subCol = parts[1]; // immediate subcollection name
+
+        let doc = docsMap.get(docId);
+        if (!doc) {
+          // Phantom/intermediate parent document (e.g. default-app-id)
+          doc = {
+            id: docId,
+            path: `/${cleanColPath}/${docId}`,
+            data: {},
+            version: 1,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            isMissing: true,
+            subcollections: new Set<string>(),
+          };
+          docsMap.set(docId, doc);
+        }
+
+        if (subCol) {
+          doc.subcollections.add(subCol);
+        }
+      }
+
+      const documents = Array.from(docsMap.values()).map((d) => ({
+        id: d.id,
+        path: d.path,
+        data: d.data,
+        version: d.version,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+        isMissing: d.isMissing,
+        subcollections: Array.from(d.subcollections).sort(),
       }));
+
+      // Sort documents alphabetically by id
+      documents.sort((a, b) => a.id.localeCompare(b.id));
 
       return reply.send({ documents });
     } catch {
       return reply.send({ documents: [] });
     }
-  });
+  };
+
+  server.get('/api/v1/projects/:projectId/databases/:databaseId/collections/:collectionPath/documents', getCollectionDocumentsHandler);
+  server.get('/api/v1/projects/:projectId/databases/:databaseId/col-documents', getCollectionDocumentsHandler);
 
   // Get single document
   server.get('/api/v1/projects/:projectId/databases/:databaseId/documents/:collectionPath/:documentId', async (req, reply) => {
-    const { projectId, collectionPath, documentId } = req.params as {
+    const { projectId, collectionPath: rawCol, documentId: rawDoc } = req.params as {
       projectId: string;
       databaseId: string;
       collectionPath: string;
       documentId: string;
     };
+    const collectionPath = decodeURIComponent(rawCol).trim().replace(/^\/+|\/+$/g, '');
+    const documentId = decodeURIComponent(rawDoc).trim().replace(/^\/+|\/+$/g, '');
     const environmentId = (req.headers['x-environment-id'] as string) || 'default';
     const docPath = `/${collectionPath}/${documentId}`;
 
@@ -238,12 +345,14 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
 
   // Set document (create or overwrite)
   server.post('/api/v1/projects/:projectId/databases/:databaseId/documents/:collectionPath/:documentId', async (req, reply) => {
-    const { projectId, collectionPath, documentId } = req.params as {
+    const { projectId, collectionPath: rawCol, documentId: rawDoc } = req.params as {
       projectId: string;
       databaseId: string;
       collectionPath: string;
       documentId: string;
     };
+    const collectionPath = decodeURIComponent(rawCol).trim().replace(/^\/+|\/+$/g, '');
+    const documentId = decodeURIComponent(rawDoc).trim().replace(/^\/+|\/+$/g, '');
     const environmentId = (req.headers['x-environment-id'] as string) || 'default';
     const body = SetDocumentSchema.parse(req.body);
     const docPath = `/${collectionPath}/${documentId}`;
@@ -295,12 +404,14 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
 
   // Update document (partial update)
   server.patch('/api/v1/projects/:projectId/databases/:databaseId/documents/:collectionPath/:documentId', async (req, reply) => {
-    const { projectId, collectionPath, documentId } = req.params as {
+    const { projectId, collectionPath: rawCol, documentId: rawDoc } = req.params as {
       projectId: string;
       databaseId: string;
       collectionPath: string;
       documentId: string;
     };
+    const collectionPath = decodeURIComponent(rawCol).trim().replace(/^\/+|\/+$/g, '');
+    const documentId = decodeURIComponent(rawDoc).trim().replace(/^\/+|\/+$/g, '');
     const environmentId = (req.headers['x-environment-id'] as string) || 'default';
     const body = UpdateDocumentSchema.parse(req.body);
     const docPath = `/${collectionPath}/${documentId}`;
@@ -352,12 +463,14 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
 
   // Delete document
   server.delete('/api/v1/projects/:projectId/databases/:databaseId/documents/:collectionPath/:documentId', async (req, reply) => {
-    const { projectId, collectionPath, documentId } = req.params as {
+    const { projectId, collectionPath: rawCol, documentId: rawDoc } = req.params as {
       projectId: string;
       databaseId: string;
       collectionPath: string;
       documentId: string;
     };
+    const collectionPath = decodeURIComponent(rawCol).trim().replace(/^\/+|\/+$/g, '');
+    const documentId = decodeURIComponent(rawDoc).trim().replace(/^\/+|\/+$/g, '');
     const environmentId = (req.headers['x-environment-id'] as string) || 'default';
     const docPath = `/${collectionPath}/${documentId}`;
 
