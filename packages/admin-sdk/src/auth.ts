@@ -345,6 +345,7 @@ export class AdminAuth {
       if (!payload.uid && !payload.sub) {
         throw new Error('Token payload missing user identifier (uid or sub)');
       }
+      payload.uid = payload.uid || payload.sub;
 
       // Enforce token expiration
       if (payload.exp && typeof payload.exp === 'number') {
@@ -354,8 +355,13 @@ export class AdminAuth {
         }
       }
 
-      // Tenant isolation: if payload specifies a projectId, ensure it matches the Admin SDK's project
-      if (payload.projectId && payload.projectId !== this.app.options.projectId) {
+      // Tenant isolation: if payload specifies a projectId, ensure it matches the Admin SDK's project (or is a platform administrator)
+      if (
+        payload.projectId &&
+        payload.projectId !== this.app.options.projectId &&
+        payload.projectId !== 'platform' &&
+        !payload.isPlatformAdmin
+      ) {
         throw new Error(
           `Token projectId mismatch: token issued for '${payload.projectId}' but Admin SDK configured for '${this.app.options.projectId}'`
         );
