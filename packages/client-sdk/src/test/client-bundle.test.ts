@@ -258,3 +258,79 @@ test('Client SDK - User exact import signature validation', () => {
   const testDoc = doc(db, 'artifacts', 'default-app-id');
   assert.equal(testDoc.path, 'artifacts/default-app-id');
 });
+
+test('Client SDK - Browser Local and Session Persistence Lifecycle', async () => {
+  // Setup mock localStorage and sessionStorage on globalThis
+  const mockLocalStorage = new Map<string, string>();
+  const mockSessionStorage = new Map<string, string>();
+
+  (globalThis as any).window = {
+    localStorage: {
+      getItem: (k: string) => mockLocalStorage.get(k) ?? null,
+      setItem: (k: string, v: string) => mockLocalStorage.set(k, v),
+      removeItem: (k: string) => mockLocalStorage.delete(k),
+    },
+    sessionStorage: {
+      getItem: (k: string) => mockSessionStorage.get(k) ?? null,
+      setItem: (k: string, v: string) => mockSessionStorage.set(k, v),
+      removeItem: (k: string) => mockSessionStorage.delete(k),
+    },
+  };
+
+  const app = ClientSDK.initializeApp({
+    apiKey: 'pk_test',
+    projectId: 'persist-test',
+    apiUrl: 'https://api.originhub.me',
+  });
+
+  const auth = new ClientSDK.Auth(app);
+  const sampleUser = { id: 'user_123', email: 'test@example.com' } as any;
+
+  // 1. Default LOCAL persistence
+  assert.equal(auth.persistence, ClientSDK.browserLocalPersistence);
+  auth.setSession(sampleUser, 'sample_access_token', 'sample_refresh_token');
+
+  const storageKey = 'syntrabase_auth_persist-test_default';
+  assert.ok(mockLocalStorage.has(storageKey));
+  assert.equal(mockSessionStorage.has(storageKey), false);
+
+  const savedData = JSON.parse(mockLocalStorage.get(storageKey)!);
+  assert.equal(savedData.user.id, 'user_123');
+  assert.equal(savedData.accessToken, 'sample_access_token');
+
+  // 2. Fresh Auth instance automatically restores from localStorage (page reload simulation)
+  const reloadedAuth = new ClientSDK.Auth(app);
+  assert.ok(reloadedAuth.currentUser);
+  assert.equal(reloadedAuth.currentUser?.id, 'user_123');
+  assert.equal(reloadedAuth.accessToken, 'sample_access_token');
+  assert.equal(typeof (reloadedAuth.currentUser as any).getIdToken, 'function');
+
+  // 3. Switch to SESSION persistence
+  await ClientSDK.setPersistence(reloadedAuth, ClientSDK.browserSessionPersistence);
+  assert.equal(mockLocalStorage.has(storageKey), false);
+  assert.ok(mockSessionStorage.has(storageKey));
+
+  // 4. Switch to in-memory persistence (NONE)
+  await ClientSDK.setPersistence(reloadedAuth, ClientSDK.inMemoryPersistence);
+  assert.equal(mockLocalStorage.has(storageKey), false);
+  assert.equal(mockSessionStorage.has(storageKey), false);
+
+  // 5. Sign out clears everything
+  await ClientSDK.signOut(reloadedAuth);
+  assert.equal(reloadedAuth.currentUser, null);
+  assert.equal(reloadedAuth.accessToken, null);
+
+  // 6. Firestore cache & multi-tab persistence helpers
+  assert.equal(ClientSDK.CACHE_SIZE_UNLIMITED, -1);
+  assert.equal(typeof ClientSDK.enableMultiTabIndexedDbPersistence, 'function');
+  assert.equal(typeof ClientSDK.initializeFirestore, 'function');
+  assert.equal(typeof ClientSDK.persistentLocalCache, 'function');
+  assert.equal(typeof ClientSDK.memoryLocalCache, 'function');
+
+  const cache = ClientSDK.persistentLocalCache({ cacheSizeBytes: 10485760 });
+  assert.equal(cache.kind, 'persistent');
+  assert.equal(cache.cacheSizeBytes, 10485760);
+
+  delete (globalThis as any).window;
+});
+

@@ -1,21 +1,153 @@
 import { FirebaseApp } from './app.js';
 import { AppUser, TotpEnrollmentResult, TotpVerifyResult, PasskeyRecord } from '@syntrabase/shared-types';
 
+export const browserLocalPersistence = 'LOCAL';
+export const browserSessionPersistence = 'SESSION';
+export const indexedDBLocalPersistence = 'INDEXEDDB';
+export const inMemoryPersistence = 'NONE';
+
 export class Auth {
   public currentUser: AppUser | null = null;
   public accessToken: string | null = null;
   public refreshToken: string | null = null;
+  public persistence: string = browserLocalPersistence;
   private listeners: Set<(user: AppUser | null) => void> = new Set();
 
-  constructor(public readonly app: FirebaseApp) {}
+  constructor(public readonly app: FirebaseApp) {
+    this.loadPersistedSession();
+  }
+
+  private getStorageKey(): string {
+    return `syntrabase_auth_${this.app.options.projectId}_${this.app.options.environmentId || 'default'}`;
+  }
+
+  public loadPersistedSession(): void {
+    const globalObj = typeof window !== 'undefined' ? window : typeof globalThis !== 'undefined' ? (globalThis as any) : null;
+    if (!globalObj) return;
+
+    try {
+      const key = this.getStorageKey();
+      let rawData: string | null = null;
+
+      if (this.persistence === browserLocalPersistence || this.persistence === indexedDBLocalPersistence) {
+        rawData = globalObj.localStorage?.getItem(key) ?? null;
+      }
+      if (!rawData && (this.persistence === browserSessionPersistence || !this.persistence)) {
+        rawData = globalObj.sessionStorage?.getItem(key) ?? null;
+      }
+      if (!rawData && globalObj.localStorage) {
+        rawData = globalObj.localStorage.getItem(key) ?? null;
+      }
+
+      if (rawData) {
+        const parsed = JSON.parse(rawData);
+        if (parsed && parsed.user) {
+          this.currentUser = parsed.user;
+          this.accessToken = parsed.accessToken || null;
+          this.refreshToken = parsed.refreshToken || null;
+
+          if (this.currentUser && this.accessToken) {
+            (this.currentUser as any).getIdToken = async (forceRefresh = false) => {
+              return this.getIdToken(forceRefresh);
+            };
+          }
+        }
+      }
+    } catch {
+      // Storage access blocked or invalid JSON
+    }
+  }
+
+  public savePersistedSession(): void {
+    const globalObj = typeof window !== 'undefined' ? window : typeof globalThis !== 'undefined' ? (globalThis as any) : null;
+    if (!globalObj) return;
+
+    try {
+      const key = this.getStorageKey();
+
+      if (!this.currentUser) {
+        globalObj.localStorage?.removeItem(key);
+        globalObj.sessionStorage?.removeItem(key);
+        return;
+      }
+
+      const payload = JSON.stringify({
+        user: this.currentUser,
+        accessToken: this.accessToken,
+        refreshToken: this.refreshToken,
+      });
+
+      if (this.persistence === browserLocalPersistence || this.persistence === indexedDBLocalPersistence) {
+        globalObj.localStorage?.setItem(key, payload);
+        globalObj.sessionStorage?.removeItem(key);
+      } else if (this.persistence === browserSessionPersistence) {
+        globalObj.sessionStorage?.setItem(key, payload);
+        globalObj.localStorage?.removeItem(key);
+      } else {
+        // inMemoryPersistence ('NONE')
+        globalObj.localStorage?.removeItem(key);
+        globalObj.sessionStorage?.removeItem(key);
+      }
+    } catch {
+      // Storage quota exceeded or disabled
+    }
+  }
+
+  public async getIdToken(forceRefresh = false): Promise<string> {
+    if (!this.accessToken) {
+      throw new Error('No user currently signed in');
+    }
+
+    let isExpired = false;
+    try {
+      const parts = this.accessToken.split('.');
+      if (parts.length === 3) {
+        const payloadStr = typeof Buffer !== 'undefined'
+          ? Buffer.from(parts[1], 'base64').toString('utf8')
+          : atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'));
+        const payload = JSON.parse(payloadStr);
+        if (payload.exp && Date.now() >= (payload.exp - 60) * 1000) {
+          isExpired = true;
+        }
+      }
+    } catch {
+      // Ignore payload decode errors
+    }
+
+    if ((forceRefresh || isExpired) && this.refreshToken) {
+      try {
+        const res = await fetch(`${this.app.options.apiUrl}/api/v1/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: this.refreshToken }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { accessToken: string; refreshToken?: string; user?: AppUser };
+          this.accessToken = data.accessToken;
+          if (data.refreshToken) this.refreshToken = data.refreshToken;
+          if (data.user) this.currentUser = data.user;
+          this.savePersistedSession();
+        }
+      } catch {
+        // Fallback to current access token
+      }
+    }
+
+    return this.accessToken;
+  }
 
   public setSession(user: AppUser | null, accessToken: string | null, refreshToken: string | null) {
     if (user && accessToken) {
-      (user as any).getIdToken = async (_forceRefresh = false) => accessToken;
+      (user as any).getIdToken = async (forceRefresh = false) => {
+        return this.getIdToken(forceRefresh);
+      };
     }
     this.currentUser = user;
     this.accessToken = accessToken;
     this.refreshToken = refreshToken;
+
+    this.savePersistedSession();
+
     for (const listener of this.listeners) {
       listener(user);
     }
@@ -119,13 +251,9 @@ export async function signOut(auth: Auth): Promise<void> {
   auth.setSession(null, null, null);
 }
 
-export const browserLocalPersistence = 'LOCAL';
-export const browserSessionPersistence = 'SESSION';
-export const inMemoryPersistence = 'NONE';
-
-export async function setPersistence(_auth: Auth, _persistence: string): Promise<void> {
-  // Syntrabase handles session persistence automatically in browser localStorage
-  return Promise.resolve();
+export async function setPersistence(auth: Auth, persistence: string): Promise<void> {
+  auth.persistence = persistence;
+  auth.savePersistedSession();
 }
 
 export async function signInWithCustomToken(auth: Auth, customToken: string): Promise<{ user: AppUser }> {

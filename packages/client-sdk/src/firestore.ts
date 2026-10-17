@@ -676,6 +676,8 @@ export interface PersistenceSettings {
   forceOwnership?: boolean;
 }
 
+export const CACHE_SIZE_UNLIMITED = -1;
+
 export async function enableIndexedDbPersistence(db: Firestore, _options?: PersistenceSettings): Promise<void> {
   db._persistenceEnabled = true;
   const idb = typeof globalThis !== 'undefined' ? (globalThis as any).indexedDB : null;
@@ -698,4 +700,44 @@ export async function enableIndexedDbPersistence(db: Firestore, _options?: Persi
     req.onsuccess = () => resolve();
     req.onerror = () => reject(new Error(`Failed to initialize IndexedDB: ${req.error?.message}`));
   });
+}
+
+export async function enableMultiTabIndexedDbPersistence(db: Firestore): Promise<void> {
+  return enableIndexedDbPersistence(db, { forceOwnership: false });
+}
+
+export function persistentLocalCache(settings?: { cacheSizeBytes?: number; tabManager?: any }): any {
+  return { kind: 'persistent', ...settings };
+}
+
+export function memoryLocalCache(settings?: { garbageCollector?: any }): any {
+  return { kind: 'memory', ...settings };
+}
+
+export function memoryEagerGarbageCollector(): any {
+  return { kind: 'memoryEager' };
+}
+
+export function memoryLruGarbageCollector(settings?: { cacheSizeBytes?: number }): any {
+  return { kind: 'memoryLru', ...settings };
+}
+
+export function persistentSingleTabManager(settings?: any): any {
+  return { kind: 'persistentSingleTab', ...settings };
+}
+
+export function persistentMultipleTabManager(): any {
+  return { kind: 'persistentMultipleTab' };
+}
+
+export function initializeFirestore(
+  app: FirebaseApp,
+  settings?: { localCache?: any; persistence?: boolean },
+  _databaseId = '(default)'
+): Firestore {
+  const db = getFirestore(app);
+  if (settings?.persistence || settings?.localCache?.kind === 'persistent') {
+    enableIndexedDbPersistence(db).catch(() => {});
+  }
+  return db;
 }
