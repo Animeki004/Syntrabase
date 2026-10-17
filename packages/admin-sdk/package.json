@@ -1,6 +1,6 @@
 {
   "name": "@syntrabase/admin-sdk",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "type": "module",
   "description": "Privileged server-side Admin SDK for trusted Syntrabase backend integrations",
   "main": "dist/admin-sdk/src/index.js",
@@ -41,7 +41,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@syntrabase/shared-types": "^1.2.5"
+    "@syntrabase/shared-types": "^1.2.6"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
