@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
@@ -17,6 +17,8 @@ import { functionRoutes } from './routes/function.routes.js';
 import { projectRoutes } from './routes/project.routes.js';
 import { ProjectService } from './services/project.service.js';
 import { AuthService } from './services/auth.service.js';
+import { AuthConfigService } from './services/auth-config.service.js';
+import { CredentialService } from './services/credential.service.js';
 import { EmailService } from './services/email.service.js';
 import { ContactService } from './services/contact.service.js';
 import { runMigrations } from './db/migrate.js';
@@ -50,33 +52,96 @@ export async function buildServer() {
   });
 
   await server.register(cors, {
-    origin: (origin, cb) => {
-      // Allow non-browser requests (e.g. mobile app, curl, server-to-server, SDK CLI)
-      if (!origin) return cb(null, true);
+    delegator: async (req: FastifyRequest) => {
+      const origin = req.headers.origin;
 
-      // In development/test, allow localhost and 127.0.0.1
-      if (config.env !== 'production' && config.env !== 'staging') {
-        if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-          return cb(null, true);
-        }
+      // 1. Non-browser requests (e.g. mobile app, curl, server-to-server, SDK CLI)
+      if (!origin) {
+        return {
+          origin: true,
+          credentials: true,
+          methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+        };
       }
 
+      let host = '';
       try {
         const parsed = new URL(origin);
-        const host = parsed.hostname;
-        const platformDomain = config.platformDomain;
-
-        if (host === platformDomain || host.endsWith('.' + platformDomain)) {
-          return cb(null, true);
-        }
+        host = parsed.hostname.toLowerCase();
       } catch {
-        // Fall through
+        throw new Error(`CORS policy violation: Malformed origin header '${origin}'.`);
       }
 
-      cb(new Error(`CORS policy violation: Origin '${origin}' is not permitted.`), false);
+      // 2. ALWAYS permit localhost and loopback interfaces for developer frontends (Vite, React, Next.js, etc.)
+      if (
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host === '0.0.0.0' ||
+        host === '[::1]' ||
+        host === '::1'
+      ) {
+        return {
+          origin: true,
+          credentials: true,
+          methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+        };
+      }
+
+      // 3. Platform domain and its subdomains (console.originhub.me, admin.originhub.me, etc.)
+      const platformDomain = (config.platformDomain || '').toLowerCase();
+      if (platformDomain && (host === platformDomain || host.endsWith('.' + platformDomain))) {
+        return {
+          origin: true,
+          credentials: true,
+          methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+        };
+      }
+
+      // 4. Project-specific Authorized Domains configured in Console
+      const projectMatch = req.url.match(/\/api\/v1\/projects\/([^\/?#]+)/);
+      if (projectMatch) {
+        const rawProjectId = projectMatch[1];
+        try {
+          const canonicalId = await ProjectService.resolveProjectId(rawProjectId);
+          const authConfig = await AuthConfigService.getProjectAuthConfig(canonicalId);
+          if (authConfig?.authorizedDomains && Array.isArray(authConfig.authorizedDomains)) {
+            const isAuthorized = authConfig.authorizedDomains.some((d) => {
+              if (!d) return false;
+              const clean = d.trim().toLowerCase().replace(/^https?:\/\//, '').split(':')[0].split('/')[0];
+              return host === clean || host.endsWith('.' + clean);
+            });
+            if (isAuthorized) {
+              return {
+                origin: true,
+                credentials: true,
+                methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+              };
+            }
+          }
+        } catch {
+          // If project lookup fails, continue
+        }
+      }
+
+      // 5. Publishable Key origin restrictions
+      const apiKey = (req.headers['x-api-key'] as string) || (typeof req.headers['authorization'] === 'string' ? req.headers['authorization'].replace(/^Bearer\s+/i, '') : '');
+      if (apiKey && apiKey.startsWith('pk_live_')) {
+        try {
+          const cred = await CredentialService.validateCredential(apiKey, origin);
+          if (cred.valid) {
+            return {
+              origin: true,
+              credentials: true,
+              methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+            };
+          }
+        } catch {
+          // Continue
+        }
+      }
+
+      throw new Error(`CORS policy violation: Origin '${origin}' is not permitted.`);
     },
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    credentials: true,
   });
 
   // 2. Application-Level Token-Bucket Rate Limiter

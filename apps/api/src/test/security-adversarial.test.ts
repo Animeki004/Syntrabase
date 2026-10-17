@@ -214,6 +214,23 @@ test('Security Adversarial - Unauthorized CORS origin is blocked', async () => {
   assert.notEqual(res.headers['access-control-allow-origin'], 'https://evil-unauthorized-domain.com');
 });
 
+test('Security Adversarial - Localhost origins (Vite 5173, Next 3000) are permitted by CORS', async () => {
+  const server = await buildServer();
+
+  const res = await server.inject({
+    method: 'OPTIONS',
+    url: '/api/v1/projects/08121278-7bd1-4a7d-8081-f7e2f6c3e2d7/auth/login',
+    headers: {
+      origin: 'http://localhost:5173',
+      'access-control-request-method': 'POST',
+      'access-control-request-headers': 'content-type,x-api-key',
+    },
+  });
+
+  assert.equal(res.headers['access-control-allow-origin'], 'http://localhost:5173');
+  assert.equal(res.headers['access-control-allow-credentials'], 'true');
+});
+
 test('Security Adversarial - Explicit refresh token revocation endpoint works', async () => {
   const server = await buildServer();
 
