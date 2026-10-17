@@ -47,21 +47,56 @@ export class CollectionReference {
   ) {}
 }
 
-export function doc(db: Firestore, pathOrColl: string | CollectionReference, id?: string): DocumentReference {
+export function doc(
+  dbOrColl: Firestore | CollectionReference,
+  pathOrColl?: string | CollectionReference,
+  ...morePaths: string[]
+): DocumentReference {
   const generateAutoId = () => `auto_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-  if (typeof pathOrColl === 'string') {
-    const fullPath = id ? `${pathOrColl}/${id}` : pathOrColl;
-    const parts = fullPath.replace(/^\/+|\/+$/g, '').split('/');
-    const docId = parts[parts.length - 1];
-    return new DocumentReference(db, fullPath, docId);
+
+  // Case 1: doc(collectionRef, ...morePaths)
+  if (dbOrColl instanceof CollectionReference) {
+    const rawSegments = pathOrColl
+      ? (typeof pathOrColl === 'string' ? [pathOrColl, ...morePaths] : [pathOrColl.path, ...morePaths])
+      : [];
+    const segments = rawSegments.filter(Boolean);
+    const docId = segments.length > 0 ? segments[segments.length - 1] : generateAutoId();
+    const fullPath = segments.length > 0
+      ? `${dbOrColl.path}/${segments.join('/')}`.replace(/^\/+|\/+$/g, '')
+      : `${dbOrColl.path}/${docId}`;
+    return new DocumentReference(dbOrColl.firestore, fullPath, docId);
   }
-  const docId = id || generateAutoId();
-  const fullPath = `${pathOrColl.path}/${docId}`;
-  return new DocumentReference(db, fullPath, docId);
+
+  // Case 2: doc(firestore, collectionRef, ...morePaths)
+  if (pathOrColl instanceof CollectionReference) {
+    const segments = morePaths.filter(Boolean);
+    const docId = segments.length > 0 ? segments[segments.length - 1] : generateAutoId();
+    const fullPath = segments.length > 0
+      ? `${pathOrColl.path}/${segments.join('/')}`.replace(/^\/+|\/+$/g, '')
+      : `${pathOrColl.path}/${docId}`;
+    return new DocumentReference(pathOrColl.firestore, fullPath, docId);
+  }
+
+  // Case 3: doc(firestore, 'path', ...morePaths)
+  const segments = pathOrColl ? [pathOrColl, ...morePaths].filter(Boolean) : [];
+  const fullPath = segments.join('/').replace(/^\/+|\/+$/g, '');
+  const parts = fullPath.split('/');
+  const docId = parts[parts.length - 1] || generateAutoId();
+  return new DocumentReference(dbOrColl, fullPath, docId);
 }
 
-export function collection(db: Firestore, path: string): CollectionReference {
-  return new CollectionReference(db, path.replace(/^\/+|\/+$/g, ''));
+export function collection(
+  dbOrDoc: Firestore | DocumentReference,
+  path: string,
+  ...morePaths: string[]
+): CollectionReference {
+  const segments = [path, ...morePaths].filter(Boolean);
+  if (dbOrDoc instanceof DocumentReference) {
+    const fullPath = `${dbOrDoc.path}/${segments.join('/')}`.replace(/^\/+|\/+$/g, '');
+    return new CollectionReference(dbOrDoc.firestore, fullPath);
+  }
+  const fullPath = segments.join('/').replace(/^\/+|\/+$/g, '');
+  return new CollectionReference(dbOrDoc, fullPath);
 }
 
 function getRequestHeaders(db: Firestore): Record<string, string> {

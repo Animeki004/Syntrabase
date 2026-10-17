@@ -140,3 +140,26 @@ test('Admin SDK - Rejects initialization if window exists (Browser Guardrail)', 
   );
   delete (globalThis as any).window;
 });
+
+test('Admin SDK - Supports collection and document reference chaining for subcollections', () => {
+  const app = initializeAdminApp({
+    apiUrl: 'http://localhost:4000',
+    secretKey: 'sk_live_valid_test_secret_key_1234567890',
+    projectId: 'test-project',
+  });
+  const db = getAdminFirestore(app);
+
+  // 1. Chaining through collections and documents
+  const settingDocRef = db.collection('artifacts').doc('default-app-id').collection('admin').doc('settings');
+  assert.equal(settingDocRef.path, 'artifacts/default-app-id/admin/settings');
+  assert.equal(settingDocRef.id, 'settings');
+
+  // 2. Direct doc reference
+  const directDocRef = db.doc('artifacts/default-app-id/admin/settings');
+  assert.equal(directDocRef.path, 'artifacts/default-app-id/admin/settings');
+  assert.equal(directDocRef.id, 'settings');
+
+  // 3. Subcollection reference
+  const subcolRef = db.collection('artifacts/default-app-id/public/data/movies');
+  assert.equal(subcolRef.path, 'artifacts/default-app-id/public/data/movies');
+});

@@ -37,8 +37,161 @@ export class AdminFieldValue implements TransformSentinel {
   }
 }
 
+export class AdminQuery {
+  constructor(
+    public readonly firestore: AdminFirestore,
+    public readonly collectionPath: string,
+    public readonly filters: QueryFilter[] = [],
+    public readonly orderBys: QueryOrderBy[] = [],
+    public readonly limitCount?: number,
+    public readonly startAfterId?: string
+  ) {}
+
+  public where(field: string, operator: any, value: any): AdminQuery {
+    return new AdminQuery(
+      this.firestore,
+      this.collectionPath,
+      [...this.filters, { field, operator, value }],
+      this.orderBys,
+      this.limitCount,
+      this.startAfterId
+    );
+  }
+
+  public orderBy(field: string, direction: 'asc' | 'desc' = 'asc'): AdminQuery {
+    return new AdminQuery(
+      this.firestore,
+      this.collectionPath,
+      this.filters,
+      [...this.orderBys, { field, direction }],
+      this.limitCount,
+      this.startAfterId
+    );
+  }
+
+  public limit(count: number): AdminQuery {
+    return new AdminQuery(
+      this.firestore,
+      this.collectionPath,
+      this.filters,
+      this.orderBys,
+      count,
+      this.startAfterId
+    );
+  }
+
+  public startAfter(docId: string): AdminQuery {
+    return new AdminQuery(
+      this.firestore,
+      this.collectionPath,
+      this.filters,
+      this.orderBys,
+      this.limitCount,
+      docId
+    );
+  }
+
+  public async get(): Promise<DocumentSnapshot[]> {
+    return this.firestore.queryDocs({
+      collectionPath: this.collectionPath,
+      filters: this.filters,
+      orderBy: this.orderBys,
+      limit: this.limitCount,
+      startAfter: this.startAfterId,
+    });
+  }
+}
+
+export class AdminDocumentReference {
+  constructor(
+    public readonly firestore: AdminFirestore,
+    public readonly path: string,
+    public readonly id: string
+  ) {}
+
+  public collection(subcollectionName: string): AdminCollectionReference {
+    return new AdminCollectionReference(
+      this.firestore,
+      `${this.path}/${subcollectionName.replace(/^\/+|\/+$/g, '')}`
+    );
+  }
+
+  public async get(): Promise<DocumentSnapshot | null> {
+    const parts = this.path.split('/');
+    const docId = parts.pop()!;
+    const colPath = parts.join('/');
+    return this.firestore.getDoc(colPath, docId);
+  }
+
+  public async set(data: DocumentData, options: { merge?: boolean } = {}): Promise<DocumentSnapshot> {
+    const parts = this.path.split('/');
+    const docId = parts.pop()!;
+    const colPath = parts.join('/');
+    return this.firestore.setDoc(colPath, docId, data, options.merge || false);
+  }
+
+  public async update(data: DocumentData): Promise<DocumentSnapshot> {
+    const parts = this.path.split('/');
+    const docId = parts.pop()!;
+    const colPath = parts.join('/');
+    return this.firestore.updateDoc(colPath, docId, data);
+  }
+
+  public async delete(): Promise<void> {
+    const parts = this.path.split('/');
+    const docId = parts.pop()!;
+    const colPath = parts.join('/');
+    return this.firestore.deleteDoc(colPath, docId);
+  }
+}
+
+export class AdminCollectionReference {
+  constructor(
+    public readonly firestore: AdminFirestore,
+    public readonly path: string
+  ) {}
+
+  public doc(documentId?: string): AdminDocumentReference {
+    const id = documentId || `auto_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    return new AdminDocumentReference(this.firestore, `${this.path}/${id}`, id);
+  }
+
+  public async add(data: DocumentData): Promise<AdminDocumentReference> {
+    const docRef = this.doc();
+    await docRef.set(data);
+    return docRef;
+  }
+
+  public async get(): Promise<DocumentSnapshot[]> {
+    return this.firestore.queryDocs({ collectionPath: this.path });
+  }
+
+  public where(field: string, operator: any, value: any): AdminQuery {
+    return new AdminQuery(this.firestore, this.path, [{ field, operator, value }]);
+  }
+
+  public orderBy(field: string, direction: 'asc' | 'desc' = 'asc'): AdminQuery {
+    return new AdminQuery(this.firestore, this.path, [], [{ field, direction }]);
+  }
+
+  public limit(count: number): AdminQuery {
+    return new AdminQuery(this.firestore, this.path, [], [], count);
+  }
+}
+
 export class AdminFirestore {
   constructor(public readonly app: AdminApp) {}
+
+  public collection(collectionPath: string): AdminCollectionReference {
+    return new AdminCollectionReference(this, collectionPath.replace(/^\/+|\/+$/g, ''));
+  }
+
+  public doc(documentPath: string): AdminDocumentReference {
+    const clean = documentPath.replace(/^\/+|\/+$/g, '');
+    const parts = clean.split('/');
+    const id = parts[parts.length - 1];
+    return new AdminDocumentReference(this, clean, id);
+  }
 
   private getHeaders(): Record<string, string> {
     return {

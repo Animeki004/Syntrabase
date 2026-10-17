@@ -120,3 +120,32 @@ test('Client SDK Storage - toBase64 handles Uint8Array and Buffer correctly', as
     assert.equal(b64FromBlob, expectedBase64);
   }
 });
+
+test('Client SDK Firestore - Supports hierarchical subcollections and multi-segment paths', () => {
+  const app = ClientSDK.initializeApp({
+    apiKey: 'syn_test_key',
+    projectId: 'test-project',
+    apiUrl: 'http://localhost:3000',
+  });
+  const db = ClientSDK.getFirestore(app);
+
+  // 1. Direct multi-segment string path
+  const docRef1 = ClientSDK.doc(db, 'artifacts/default-app-id/admin/settings');
+  assert.equal(docRef1.path, 'artifacts/default-app-id/admin/settings');
+  assert.equal(docRef1.id, 'settings');
+
+  // 2. Variadic segments
+  const docRef2 = ClientSDK.doc(db, 'artifacts', 'default-app-id', 'admin', 'settings');
+  assert.equal(docRef2.path, 'artifacts/default-app-id/admin/settings');
+  assert.equal(docRef2.id, 'settings');
+
+  // 3. Subcollection from DocumentReference
+  const parentDocRef = ClientSDK.doc(db, 'artifacts', 'default-app-id');
+  const subColRef = ClientSDK.collection(parentDocRef, 'admin');
+  assert.equal(subColRef.path, 'artifacts/default-app-id/admin');
+
+  // 4. Document from SubcollectionReference
+  const subDocRef = ClientSDK.doc(subColRef, 'settings');
+  assert.equal(subDocRef.path, 'artifacts/default-app-id/admin/settings');
+  assert.equal(subDocRef.id, 'settings');
+});

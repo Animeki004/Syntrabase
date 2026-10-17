@@ -304,18 +304,31 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
   server.get('/api/v1/projects/:projectId/databases/:databaseId/collections/:collectionPath/documents', getCollectionDocumentsHandler);
   server.get('/api/v1/projects/:projectId/databases/:databaseId/col-documents', getCollectionDocumentsHandler);
 
-  // Get single document
-  server.get('/api/v1/projects/:projectId/databases/:databaseId/documents/:collectionPath/:documentId', async (req, reply) => {
-    const { projectId, collectionPath: rawCol, documentId: rawDoc } = req.params as {
-      projectId: string;
-      databaseId: string;
-      collectionPath: string;
-      documentId: string;
-    };
-    const collectionPath = decodeURIComponent(rawCol).trim().replace(/^\/+|\/+$/g, '');
-    const documentId = decodeURIComponent(rawDoc).trim().replace(/^\/+|\/+$/g, '');
-    const environmentId = (req.headers['x-environment-id'] as string) || 'default';
+  // Helper to extract collectionPath and documentId from any path depth
+  const extractDocPath = (raw: string): { collectionPath: string; documentId: string; docPath: string } => {
+    const clean = decodeURIComponent(raw || '').trim().replace(/^\/+|\/+$/g, '');
+    const parts = clean.split('/');
+    const documentId = parts.pop() || '';
+    const collectionPath = parts.join('/');
     const docPath = `/${collectionPath}/${documentId}`;
+    return { collectionPath, documentId, docPath };
+  };
+
+  // Get single document (supports root docs & arbitrary nested subcollection docs)
+  server.get('/api/v1/projects/:projectId/databases/:databaseId/documents/*', async (req, reply) => {
+    const { projectId: rawId } = req.params as { projectId: string; databaseId: string };
+    const { collectionPath, documentId, docPath } = extractDocPath((req.params as any)['*']);
+
+    if (!collectionPath || !documentId) {
+      return reply.status(400).send({
+        error: 'INVALID_PATH',
+        message: 'Document path must include both a collection path and a document ID',
+      });
+    }
+
+    const { ProjectService } = await import('../services/project.service.js');
+    const projectId = await ProjectService.resolveProjectId(rawId);
+    const environmentId = (req.headers['x-environment-id'] as string) || 'default';
 
     // 1. Evaluate read rule & cross-project isolation first
     try {
@@ -343,19 +356,22 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     return reply.send(doc);
   });
 
-  // Set document (create or overwrite)
-  server.post('/api/v1/projects/:projectId/databases/:databaseId/documents/:collectionPath/:documentId', async (req, reply) => {
-    const { projectId, collectionPath: rawCol, documentId: rawDoc } = req.params as {
-      projectId: string;
-      databaseId: string;
-      collectionPath: string;
-      documentId: string;
-    };
-    const collectionPath = decodeURIComponent(rawCol).trim().replace(/^\/+|\/+$/g, '');
-    const documentId = decodeURIComponent(rawDoc).trim().replace(/^\/+|\/+$/g, '');
+  // Set document (create or overwrite, supports root docs & arbitrary nested subcollection docs)
+  server.post('/api/v1/projects/:projectId/databases/:databaseId/documents/*', async (req, reply) => {
+    const { projectId: rawId } = req.params as { projectId: string; databaseId: string };
+    const { collectionPath, documentId, docPath } = extractDocPath((req.params as any)['*']);
+
+    if (!collectionPath || !documentId) {
+      return reply.status(400).send({
+        error: 'INVALID_PATH',
+        message: 'Document path must include both a collection path and a document ID',
+      });
+    }
+
+    const { ProjectService } = await import('../services/project.service.js');
+    const projectId = await ProjectService.resolveProjectId(rawId);
     const environmentId = (req.headers['x-environment-id'] as string) || 'default';
     const body = SetDocumentSchema.parse(req.body);
-    const docPath = `/${collectionPath}/${documentId}`;
 
     let existing: any = null;
     try {
@@ -402,19 +418,22 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     return reply.status(existing ? 200 : 201).send(savedDoc);
   });
 
-  // Update document (partial update)
-  server.patch('/api/v1/projects/:projectId/databases/:databaseId/documents/:collectionPath/:documentId', async (req, reply) => {
-    const { projectId, collectionPath: rawCol, documentId: rawDoc } = req.params as {
-      projectId: string;
-      databaseId: string;
-      collectionPath: string;
-      documentId: string;
-    };
-    const collectionPath = decodeURIComponent(rawCol).trim().replace(/^\/+|\/+$/g, '');
-    const documentId = decodeURIComponent(rawDoc).trim().replace(/^\/+|\/+$/g, '');
+  // Update document (partial update, supports root docs & arbitrary nested subcollection docs)
+  server.patch('/api/v1/projects/:projectId/databases/:databaseId/documents/*', async (req, reply) => {
+    const { projectId: rawId } = req.params as { projectId: string; databaseId: string };
+    const { collectionPath, documentId, docPath } = extractDocPath((req.params as any)['*']);
+
+    if (!collectionPath || !documentId) {
+      return reply.status(400).send({
+        error: 'INVALID_PATH',
+        message: 'Document path must include both a collection path and a document ID',
+      });
+    }
+
+    const { ProjectService } = await import('../services/project.service.js');
+    const projectId = await ProjectService.resolveProjectId(rawId);
     const environmentId = (req.headers['x-environment-id'] as string) || 'default';
     const body = UpdateDocumentSchema.parse(req.body);
-    const docPath = `/${collectionPath}/${documentId}`;
 
     let existing: any = null;
     try {
@@ -461,18 +480,21 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     return reply.send(updatedDoc);
   });
 
-  // Delete document
-  server.delete('/api/v1/projects/:projectId/databases/:databaseId/documents/:collectionPath/:documentId', async (req, reply) => {
-    const { projectId, collectionPath: rawCol, documentId: rawDoc } = req.params as {
-      projectId: string;
-      databaseId: string;
-      collectionPath: string;
-      documentId: string;
-    };
-    const collectionPath = decodeURIComponent(rawCol).trim().replace(/^\/+|\/+$/g, '');
-    const documentId = decodeURIComponent(rawDoc).trim().replace(/^\/+|\/+$/g, '');
+  // Delete document (supports root docs & arbitrary nested subcollection docs)
+  server.delete('/api/v1/projects/:projectId/databases/:databaseId/documents/*', async (req, reply) => {
+    const { projectId: rawId } = req.params as { projectId: string; databaseId: string };
+    const { collectionPath, documentId, docPath } = extractDocPath((req.params as any)['*']);
+
+    if (!collectionPath || !documentId) {
+      return reply.status(400).send({
+        error: 'INVALID_PATH',
+        message: 'Document path must include both a collection path and a document ID',
+      });
+    }
+
+    const { ProjectService } = await import('../services/project.service.js');
+    const projectId = await ProjectService.resolveProjectId(rawId);
     const environmentId = (req.headers['x-environment-id'] as string) || 'default';
-    const docPath = `/${collectionPath}/${documentId}`;
 
     let existing: any = null;
     try {
@@ -502,13 +524,16 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     return reply.status(204).send();
   });
 
-  // Delete entire collection (requires developer project access)
-  server.delete('/api/v1/projects/:projectId/databases/:databaseId/collections/:collectionPath', async (req, reply) => {
-    const { projectId: rawId, collectionPath } = req.params as {
-      projectId: string;
-      databaseId: string;
-      collectionPath: string;
-    };
+  // Delete entire collection (supports root collections & subcollections, requires developer project access)
+  server.delete('/api/v1/projects/:projectId/databases/:databaseId/collections/*', async (req, reply) => {
+    const { projectId: rawId } = req.params as { projectId: string; databaseId: string };
+    const rawCol = (req.params as any)['*'] || '';
+    const collectionPath = decodeURIComponent(rawCol).trim().replace(/^\/+|\/+$/g, '');
+
+    if (!collectionPath) {
+      return reply.status(400).send({ error: 'INVALID_PATH', message: 'Collection path required' });
+    }
+
     const { ProjectService } = await import('../services/project.service.js');
     const projectId = await ProjectService.resolveProjectId(rawId);
     await AuthService.requireProjectAccess(req, projectId);

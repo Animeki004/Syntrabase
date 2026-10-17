@@ -2265,15 +2265,11 @@ export default function FirebaseStudioReplicaPage() {
                         {doc.isMissing && rawEntries.length === 0 ? (
                           <div style={{ padding: '60px 16px', textAlign: 'center' }}>
                             <div style={{ color: 'var(--text-muted)', fontSize: '13px', fontStyle: 'italic', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                              <span>This document does not exist. It will not appear in queries or snapshots.</span>
-                              <a
-                                href="https://firebase.google.com/docs/firestore/data-model#hierarchical-data"
-                                target="_blank"
-                                rel="noreferrer"
-                                style={{ color: '#58a6ff', textDecoration: 'underline', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
-                              >
-                                Learn more <ExternalLink size={11} />
-                              </a>
+                              <Info size={14} style={{ opacity: 0.7 }} />
+                              <span>This document acts as a subcollection container and has no direct fields.</span>
+                            </div>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '11px', marginTop: '6px', opacity: 0.75 }}>
+                              Select a subcollection above to view nested documents, or click &quot;+ Add field&quot; to define root-level data.
                             </div>
                           </div>
                         ) : filteredEntries.length === 0 ? (
