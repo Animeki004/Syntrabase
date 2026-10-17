@@ -670,8 +670,13 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     }
 
     if (body.collections && body.collections.length > 0) {
-      const allowed = new Set(body.collections);
-      targetDocs = targetDocs.filter((d) => allowed.has(d.collectionPath));
+      const allowed = body.collections.map((c) => c.trim().toLowerCase());
+      targetDocs = targetDocs.filter((d) => {
+        const p = d.collectionPath.toLowerCase();
+        return allowed.some(
+          (a) => p === a || p.startsWith(`${a}/`) || p.endsWith(`/${a}`) || p.includes(`/${a}/`)
+        );
+      });
     }
 
     const uniqueCollections = Array.from(new Set(targetDocs.map((d) => d.collectionPath)));
