@@ -11,20 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🛡️ End-to-End Security Audit, Super Admin Hardening, & Firestore Migration Engine
 
-This release delivers an exhaustive security audit across API gateways, developer console, super admin, and SDK packages, accompanied by critical bug-bounty fixes, session lifecycle hardening, and direct SDK-to-SDK Firestore data migration capabilities.
+This release delivers an exhaustive security audit across API gateways, developer console, super admin, and SDK packages, accompanied by critical bug-bounty fixes, session lifecycle hardening, platform branding customization, and direct SDK-to-SDK Firestore data migration capabilities.
 
 #### 🐛 Bug Bounty Fixes & Telemetry Enhancements
 1. **SMTP Quota 500-Cap Persistence Fix (`SYN-BUG-001`)**
    - **Root Cause:** In `EmailService.syncProviderAccountUsage`, telemetry queried `currentAcc.daily_sent_count`. Because in-memory cached provider objects store camelCase `dailySentCount`, this evaluated to `undefined || 0 = 0`, recalculating remaining credits as `500 - 0 = 500` on every background sync cycle and wiping out sent email decrements.
-   - **Remediation:** Coalesced `Number(currentAcc.dailySentCount ?? currentAcc.daily_sent_count ?? 0)` across in-memory models and PostgreSQL queries. Hardened `recordExternalDispatch` to synchronously update in-memory telemetry and persist directly to the database. Updated SMTP test tools to automatically synchronize with `/api/v1/internal/email/record-dispatch`.
+   - **Remediation:** Coalesced `Number(currentAcc.dailySentCount ?? currentAcc.daily_sent_count ?? 0)` across in-memory models and PostgreSQL queries. Hardened `recordExternalDispatch` to synchronously update in-memory telemetry and persist directly to the database. Updated SMTP test tools to automatically synchronize with `/api/v1/internal/email/record-dispatch`. Added `POST /api/v1/projects/:projectId/email/send` outbound dispatch route with real-time cap decrement.
 
 2. **Super Admin Telemetry Card Layout Overflow Fix (`SYN-UI-001`)**
    - **Root Cause:** In `/email` (Global Email Infrastructure), Card 1's inner container padded 18px on top of `.card`'s global 22px padding (88px total width deduction), shrinking usable horizontal space to ~200px and pushing the "Healthy" badge outside the card boundary.
-   - **Remediation:** Added `.has-sections` and `padding: 0` to Card 1, upgraded grid minimum column width to `minmax(320px, 1fr)`, and enforced `flex-shrink: 0` and `white-space: nowrap` for badges and account selector triggers.
+   - **Remediation:** Added `.has-sections` and `padding: 0` to Card 1, upgraded grid minimum column width to `repeat(auto-fit, minmax(340px, 1fr))`, wrapped controls with `flex-wrap: wrap`, and enforced `flex-shrink: 0` and `white-space: nowrap` for badges and account selector triggers. Persisted selected account ID in `localStorage`.
 
 3. **Super Admin Session Expiration & Real-Time Eviction (`SYN-SEC-010`)**
-   - **Root Cause:** `SuperAdminShell` previously only evaluated token expiration during a 10-second background poll. Users navigating between pages or returning to an idle tab remained stuck on child screens while child API calls silently threw 401/403 toasts.
-   - **Remediation:** Installed a global `window.fetch` interceptor for all `/api/v1/admin/*` endpoints that aborts expired requests and evicts expired sessions immediately. Added a proactive 2-second heartbeat interval, `focus`, `visibilitychange`, and cross-tab `storage` event listeners. Upgraded `/login` to detect `?reason=session_expired` and render an explicit session alert.
+   - **Root Cause:** `SuperAdminShell` previously only evaluated token expiration during a 10-second background poll. Users navigating between pages or returning to an idle tab remained stuck on child screens while child API calls silently threw 401/403 toasts. Soft routing via `router.replace` did not reset authenticated shell state.
+   - **Remediation:** Hardened session expiration handler to immediately clear localStorage tokens, set `authChecked(false)`, and trigger hard reload via `window.location.href = '/login?reason=session_expired'`. Installed a global `window.fetch` interceptor for all `/api/v1/admin/*` endpoints that aborts expired requests and evicts expired sessions immediately. Added a proactive 2-second heartbeat interval, `focus`, `visibilitychange`, and cross-tab `storage` event listeners.
 
 4. **Zero-Trust SOC & Defense Center Synchronization (`SYN-SOC-001`)**
    - **Remediation:** Connected the "Reset Posture to Level 0" button to a newly provisioned backend endpoint `POST /api/v1/admin/security/reset` with SHA-256 tamper-evident audit logging. Connected Safe Attack Simulations to trigger immediate real-time event log synchronization (`fetchEvents()`). Made defense posture matrices and attack simulation grids responsive using `repeat(auto-fit, minmax(...))`.
@@ -32,16 +32,26 @@ This release delivers an exhaustive security audit across API gateways, develope
 5. **Auth Gateway Error Sanitization & Email Enumeration Hardening (`SYN-SEC-011`)**
    - **Remediation:** Sanitized authentication error handlers in `/api/v1/auth/*` so internal socket errors (e.g., `EACCES`, `ECONNREFUSED`) are never reflected to clients, mapping consistently to `INVALID_CREDENTIALS` to prevent user enumeration and internal topology discovery.
 
+6. **MFA Policy Resolution & Lockout Remediation (`SYN-MFA-001`)**
+   - **Root Cause:** In `AuthService.loginWithEmail`, unenrolled users under mandatory MFA policies were challenged for TOTP codes they never configured, and users with disabled project MFA were still challenged if factors remained in database records.
+   - **Remediation:** Refactored MFA enforcement: disabled MFA bypasses challenges completely; mandatory unenrolled accounts receive `mfaEnrollmentRequired: true`. Added administrative 2FA reset endpoints (`DELETE /api/v1/projects/:projectId/auth/users/:userId/mfa` and `DELETE /api/v1/auth/developer/mfa`) and interactive "Reset 2FA" buttons with factor indicators in Developer Console.
+
+7. **Storage Download Project Isolation & Direct Download Route (`SYN-STOR-001`)**
+   - **Remediation:** Hardened `/api/v1/storage/download` to verify target project active status and reject suspended projects with `403 PROJECT_SUSPENDED`. Added direct authenticated download route `GET /api/v1/storage/:projectId/objects/:objectId/download`.
+
 #### 🚀 New Features & SDK Tools
+- **Global Platform Branding & SEO Management:**
+  - Dedicated Super Admin management dashboard at `/branding` allowing full customization of Platform Name, Tagline, Favicon URL/Upload, Logo URL/Upload, SEO Meta Title, Meta Description, Search Keywords, OpenGraph Preview Cards, Primary Colors, and Copyright notices.
+  - Live interactive preview cards for Browser Tabs, Google Search SERP results, and Twitter/Facebook OpenGraph cards.
+  - Public branding API at `GET /api/v1/public/branding` and dynamic favicon link injection in Console and Super Admin shells.
 - **Firestore-to-Syntrabase SDK Migration Utility (`scripts/migrate-firestore-to-syntrabase.cjs`):**
   - High-performance, schema-preserving, SDK-to-SDK data migration tool.
   - Automatically discovers Firestore collections, processes documents in batches up to 500, converts complex Firestore datatypes (`Timestamp`, `GeoPoint`, `DocumentReference`, `Bytes`), and supports subcollections.
   - Includes `--dry-run` and built-in `--test` mode for verification without requiring cloud credentials.
 
 #### 🧪 Verification & Automated Regression Gates
-- **Integration & Security Test Suite:** 117 automated tests executed with **117 passing (100%)**.
-- **Security Assessment Suite:** 37 targeted adversarial security tests passing with **100% clean exit**.
-- **Production TypeScript Compilation:** 0 errors across `apps/api`, `apps/console`, `apps/super-admin`, and all `packages/*`.
+- **Production TypeScript Compilation:** 100% clean builds across `apps/api`, `apps/console`, `apps/super-admin`, and all `packages/*`.
+- **Security & MFA Regression Gates:** 10/10 automated tests passing in `user-actions-and-mfa-security.test.ts`.
 
 ---
 

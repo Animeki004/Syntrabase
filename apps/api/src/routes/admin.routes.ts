@@ -14,6 +14,7 @@ import { EmailService } from '../services/email.service.js';
 import { NotificationService } from '../services/notification.service.js';
 import { ContactService } from '../services/contact.service.js';
 import { ProjectService } from '../services/project.service.js';
+import { BrandingService } from '../services/branding.service.js';
 import { CryptoUtil } from '../utils/crypto.js';
 import { UrlUtil } from '../utils/url.util.js';
 import { CreatePlanSchema, UpdatePlanSchema, AssignProjectPlanSchema, ReplyContactInquirySchema, UpdateContactRetentionSchema, PurgeContactInquiriesSchema } from '@syntrabase/schemas';
@@ -1570,6 +1571,54 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
 
     const policy = await ContactService.updateRetentionPolicy(body, admin.uid);
     return reply.send(policy);
+  });
+
+  // ===========================================================================
+  // 12. Global Platform Branding & SEO Configuration
+  // ===========================================================================
+
+  // Get Platform Branding & SEO Settings (Super Admin Only)
+  server.get('/api/v1/admin/branding', async (req, reply) => {
+    await requireSuperAdmin(req);
+    const branding = await BrandingService.getBranding();
+    return reply.send({ branding });
+  });
+
+  // Update Platform Branding & SEO Settings (Super Admin Only)
+  server.put('/api/v1/admin/branding', async (req, reply) => {
+    const admin = await requireSuperAdmin(req);
+    const updates = (req.body as any) || {};
+
+    const branding = await BrandingService.updateBranding(updates);
+
+    await AuditService.log({
+      actorId: admin.uid,
+      actorType: 'developer',
+      action: 'admin.platform_branding_updated',
+      targetResource: 'platform_branding:global',
+      payload: { platformName: branding.platformName, metaTitle: branding.metaTitle },
+    });
+
+    return reply.send({ success: true, branding });
+  });
+
+  // Public Branding Endpoint for Client Shells, Landing Page & Metadata
+  server.get('/api/v1/public/branding', async (_req, reply) => {
+    const branding = await BrandingService.getBranding();
+    return reply.send({
+      platformName: branding.platformName,
+      tagline: branding.tagline,
+      logoUrl: branding.logoUrl,
+      faviconUrl: branding.faviconUrl,
+      metaTitle: branding.metaTitle,
+      metaDescription: branding.metaDescription,
+      metaKeywords: branding.metaKeywords,
+      ogImageUrl: branding.ogImageUrl,
+      twitterCard: branding.twitterCard,
+      primaryColor: branding.primaryColor,
+      contactEmail: branding.contactEmail,
+      copyrightText: branding.copyrightText,
+    });
   });
 };
 

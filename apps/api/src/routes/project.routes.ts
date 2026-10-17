@@ -886,6 +886,54 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     }
   });
 
+  // Outbound Transactional Email Send API for Apps & SDKs
+  server.post('/api/v1/projects/:projectId/email/send', async (req, reply) => {
+    const devId = await requireDeveloperId(req);
+    const { projectId } = req.params as { projectId: string };
+    await ProjectService.assertProjectAccess(devId, projectId);
+    const { to, toEmail, from, fromEmail, fromName, subject, text, html } = (req.body as any) || {};
+
+    const targetRecipient = (to || toEmail || '').trim();
+    if (!targetRecipient || !targetRecipient.includes('@')) {
+      return reply.status(400).send({ error: 'Valid recipient email address is required (to / toEmail)' });
+    }
+
+    const dynamicSender = (from || fromEmail || '').trim() || (await UrlUtil.resolvePlatformSender(req)).email;
+    const mailSubject = (subject || '').trim() || 'Notification from Syntrabase';
+    const mailText = text || '';
+    const mailHtml = html || undefined;
+
+    try {
+      const queueItem = await EmailService.enqueueEmail({
+        projectId,
+        toEmail: targetRecipient,
+        fromEmail: dynamicSender,
+        fromName: fromName || 'Syntrabase App',
+        subject: mailSubject,
+        text: mailText,
+        html: mailHtml,
+        actionType: 'CUSTOM_DISPATCH',
+      });
+
+      // Trigger queue process immediately so SMTP counters decrement in real time
+      await EmailService.processOutboxQueue().catch(() => {});
+
+      await AuditService.log({
+        actorId: devId,
+        actorType: 'developer',
+        action: 'email.sent',
+        targetResource: `outbox:${queueItem.id}`,
+        projectId,
+        payload: { recipientEmail: targetRecipient, queueId: queueItem.id },
+      });
+
+      return reply.send({ success: true, messageId: queueItem.id, queueItem });
+    } catch (err: any) {
+      const statusCode = err.name === 'EmailDeliveryError' ? 503 : 500;
+      return reply.status(statusCode).send({ error: err.message });
+    }
+  });
+
   // ===========================================================================
   // 9. Developer Console Contact Center (Decoupled Submission)
   // ===========================================================================

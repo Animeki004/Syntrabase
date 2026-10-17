@@ -61,7 +61,12 @@ export default function GlobalEmailControlPage() {
   // Provider Accounts State
   const [accounts, setAccounts] = useState<EmailProviderAccount[]>([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
-  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('super_admin_selected_email_account') || '';
+    }
+    return '';
+  });
 
   // Add Account Modal State
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
@@ -968,12 +973,12 @@ export default function GlobalEmailControlPage() {
       )}
 
       {/* Top Telemetry Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', alignItems: 'stretch' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px', alignItems: 'stretch' }}>
         {/* Card 1: Provider Plan & Dynamic Credits Countdown */}
         <Card className="has-sections" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '140px', overflow: 'hidden', padding: 0 }}>
           <div style={{ padding: '16px 18px 10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
                   {activeAccount?.providerType === 'smtp' ? 'SMTP Quota & Cap' : 'Brevo Live Credits'}
                 </span>
@@ -1016,11 +1021,16 @@ export default function GlobalEmailControlPage() {
                   </button>
                 )}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginLeft: 'auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginLeft: 'auto' }}>
                 {accounts.length > 1 && (
                   <select
                     value={activeAccount?.id || ''}
-                    onChange={(e) => setSelectedAccountId(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedAccountId(e.target.value);
+                      if (typeof window !== 'undefined') {
+                        localStorage.setItem('super_admin_selected_email_account', e.target.value);
+                      }
+                    }}
                     style={{
                       fontSize: '11px',
                       padding: '2px 6px',
@@ -1030,7 +1040,7 @@ export default function GlobalEmailControlPage() {
                       color: 'var(--text-primary)',
                       cursor: 'pointer',
                       outline: 'none',
-                      maxWidth: '110px',
+                      maxWidth: '120px',
                       textOverflow: 'ellipsis',
                       overflow: 'hidden',
                       whiteSpace: 'nowrap',

@@ -625,7 +625,8 @@ export default function LoginPage() {
             {/* ------------------------------------------------------------- */}
             {mode === 'mfa' && (
               <div>
-                <form onSubmit={handleVerifyMfaTotp} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {mfaAllowedFactors.includes('totp') ? (
+                  <form onSubmit={handleVerifyMfaTotp} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div
                     style={{
                       display: 'flex',
@@ -741,8 +742,75 @@ export default function LoginPage() {
                     <ArrowLeft size={14} /> Back to Sign In
                   </button>
                 </form>
-              </div>
-            )}
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '12px 14px',
+                      borderRadius: '8px',
+                      backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                      border: '1px solid rgba(59, 130, 246, 0.25)',
+                      color: '#93c5fd',
+                      fontSize: '0.82rem',
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    <Fingerprint size={20} color="#3b82f6" style={{ flexShrink: 0 }} />
+                    <div>
+                      Account protected by <strong>Hardware Passkey / Security Key</strong>. Click below to authenticate.
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={handleVerifyMfaPasskey}
+                    disabled={passkeyLoading || mfaVerifying}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      fontSize: '0.92rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    <Fingerprint size={18} />
+                    {passkeyLoading ? 'Authenticating with Passkey...' : 'Verify Security Key / Passkey'}
+                  </Button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrorMsg(null);
+                      setMfaCode('');
+                      setMfaSession('');
+                      setMode('login');
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#9ca3af',
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      padding: '4px',
+                      marginTop: '6px',
+                    }}
+                  >
+                    <ArrowLeft size={14} /> Back to Sign In
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
             {/* ------------------------------------------------------------- */}
             {/* VIEW 2: FORGOT PASSWORD */}

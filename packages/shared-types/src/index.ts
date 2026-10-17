@@ -103,8 +103,10 @@ export interface AuthResponse {
   refreshToken?: string;
   expiresIn?: number;
   mfaRequired?: boolean;
+  mfaEnrollmentRequired?: boolean;
   mfaSession?: string;
   allowedFactors?: ('totp' | 'passkey')[];
+  message?: string;
 }
 
 export interface MfaChallengeResponse {

@@ -26,7 +26,8 @@ import {
   Info,
   Clock,
   RefreshCw,
-  Check
+  Check,
+  Globe
 } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { ThemeProvider } from './ThemeContext';
@@ -48,6 +49,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { name: 'Auth & Gateways', href: '/gateways', icon: KeyRound },
       { name: 'Email Infrastructure', href: '/email', icon: Mail },
       { name: 'Engine & DB Health', href: '/health', icon: Server },
+      { name: 'Website & Branding', href: '/branding', icon: Globe },
     ],
   },
   {
@@ -74,6 +76,7 @@ const ROUTE_TITLES: Record<string, { title: string; subtitle: string }> = {
   '/email': { title: 'Global Email Infrastructure', subtitle: 'Brevo HTTPS API delivery, provider accounts, quota management, and outbox router' },
   '/notifications': { title: 'Operations Notifications & Triage', subtitle: 'Contact inquiries, provider quota warnings, and system alerts' },
   '/health': { title: 'Engine & DB Health', subtitle: 'PostgreSQL connection pools, outbox consumers, and Fastify health' },
+  '/branding': { title: 'Website Branding & SEO', subtitle: 'Global platform favicon, identity logos, social OpenGraph banners, and search engine metadata' },
   '/soc': { title: 'Zero-Trust SOC', subtitle: 'Autonomous threat defense, incident mitigation, and rate limiting rules' },
   '/audit': { title: 'Cryptographic Audit', subtitle: 'SHA-256 tamper-evident ledger and platform security events' },
   '/backups': { title: 'Disaster Recovery', subtitle: 'AES-256-GCM encrypted backups and automated restore verifications' },
@@ -123,9 +126,10 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('super_admin_refresh_token');
       localStorage.removeItem('super_admin_email');
       localStorage.removeItem('super_admin_user');
+      setAuthChecked(false);
+      window.location.href = '/login?reason=session_expired';
     }
-    router.replace('/login?reason=session_expired');
-  }, [router]);
+  }, []);
 
   const fetchTelemetry = async () => {
     try {
@@ -246,6 +250,28 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     setAdminEmail(email);
     setAuthChecked(true);
   }, [pathname, router, handleSessionExpired]);
+
+  // Dynamically load platform branding & update favicon
+  useEffect(() => {
+    const applyBranding = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/public/branding`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.faviconUrl) {
+            let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
+            if (!link) {
+              link = document.createElement('link');
+              link.rel = 'icon';
+              document.head.appendChild(link);
+            }
+            link.href = data.faviconUrl;
+          }
+        }
+      } catch {}
+    };
+    applyBranding();
+  }, [API_BASE]);
 
   // Proactive fast 2-second session check and window event listeners
   useEffect(() => {

@@ -42,6 +42,7 @@ import {
   Fingerprint,
   Smartphone,
   KeyRound,
+  ShieldOff,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 import { useProject } from '@/components/ProjectContext';
@@ -80,6 +81,8 @@ export default function SyntrabaseAuthPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [userSearch, setUserSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const [selectedUserMfa, setSelectedUserMfa] = useState<{ totp?: boolean; passkeysCount?: number } | null>(null);
+  const [isClearingMfa, setIsClearingMfa] = useState(false);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -596,6 +599,56 @@ export default function SyntrabaseAuthPage() {
       addToast('Failed to revoke tokens', 'error');
     }
   };
+
+  const handleResetUserMfa = async (uid: string) => {
+    if (!confirm('Are you sure you want to remove all 2FA factors (TOTP and Passkeys) for this user? They will be able to sign in with password only.')) {
+      return;
+    }
+    setIsClearingMfa(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/users/${uid}/mfa`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        setSelectedUserMfa({ totp: false, passkeysCount: 0 });
+        addToast('All 2FA factors removed for this user.', 'success');
+      } else {
+        addToast('Failed to reset 2FA for user', 'error');
+      }
+    } catch {
+      addToast('Network error resetting 2FA', 'error');
+    } finally {
+      setIsClearingMfa(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedUser?.id || !projectId) {
+      setSelectedUserMfa(null);
+      return;
+    }
+    let isSubscribed = true;
+    const fetchMfa = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/auth/users/${selectedUser.id}/mfa`, {
+          headers: getAuthHeaders(),
+        });
+        if (res.ok && isSubscribed) {
+          const data = await res.json();
+          const hasTotp = (data.factors || []).some((f: any) => f.factorType === 'totp' && f.verified);
+          const pks = (data.passkeys || []).length;
+          setSelectedUserMfa({ totp: hasTotp, passkeysCount: pks });
+        }
+      } catch {
+        if (isSubscribed) setSelectedUserMfa(null);
+      }
+    };
+    fetchMfa();
+    return () => {
+      isSubscribed = false;
+    };
+  }, [selectedUser?.id, projectId, getAuthHeaders]);
 
   const handleSelectTemplate = (type: any) => {
     setActiveTemplateType(type);
@@ -3040,6 +3093,20 @@ export default function SyntrabaseAuthPage() {
                 <span style={{ color: 'var(--text-muted)' }}>Created:</span>
                 <span style={{ color: 'var(--text-primary)' }}>{new Date(selectedUser.createdAt).toLocaleString()}</span>
               </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Multi-Factor Authentication (2FA):</span>
+                <span style={{ fontWeight: 600, color: selectedUserMfa?.totp || (selectedUserMfa?.passkeysCount || 0) > 0 ? 'var(--success)' : 'var(--text-muted)' }}>
+                  {selectedUserMfa === null
+                    ? 'Checking...'
+                    : selectedUserMfa.totp && (selectedUserMfa.passkeysCount || 0) > 0
+                    ? `TOTP Authenticator & ${selectedUserMfa.passkeysCount} Passkey(s)`
+                    : selectedUserMfa.totp
+                    ? 'TOTP Authenticator Active'
+                    : (selectedUserMfa.passkeysCount || 0) > 0
+                    ? `${selectedUserMfa.passkeysCount} Passkey(s) Active`
+                    : 'None Enrolled (Password Only)'}
+                </span>
+              </div>
             </div>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border-subtle)' }}>
@@ -3059,6 +3126,20 @@ export default function SyntrabaseAuthPage() {
                 <Key size={14} />
                 <span>Reset Password</span>
               </button>
+
+              {(selectedUserMfa?.totp || (selectedUserMfa?.passkeysCount || 0) > 0) && (
+                <button
+                  type="button"
+                  onClick={() => handleResetUserMfa(selectedUser.id)}
+                  disabled={isClearingMfa}
+                  className="btn btn-secondary"
+                  style={{ padding: '8px 14px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#eab308', borderColor: 'rgba(234, 179, 8, 0.4)' }}
+                  title="Unenroll all 2FA authenticator apps and passkeys for this user"
+                >
+                  <ShieldOff size={14} />
+                  <span>{isClearingMfa ? 'Resetting 2FA...' : 'Reset 2FA'}</span>
+                </button>
+              )}
 
               <button
                 onClick={() => handleToggleUserStatus(selectedUser)}

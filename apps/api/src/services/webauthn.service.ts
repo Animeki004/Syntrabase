@@ -309,29 +309,33 @@ export class WebAuthnService {
    * Lists registered passkeys for an application user.
    */
   public static async listAppUserPasskeys(userId: string, projectId: string): Promise<PasskeyRecord[]> {
-    const res = await query<{
-      id: string;
-      credential_id: string;
-      device_name: string;
-      created_at: string;
-      last_used_at?: string;
-      aaguid?: string;
-    }>(
-      `SELECT id, credential_id, device_name, created_at, last_used_at, aaguid
-       FROM app_user_passkeys
-       WHERE user_id = $1 AND project_id = $2
-       ORDER BY created_at DESC`,
-      [userId, projectId]
-    );
+    try {
+      const res = await query<{
+        id: string;
+        credential_id: string;
+        device_name: string;
+        created_at: string;
+        last_used_at?: string;
+        aaguid?: string;
+      }>(
+        `SELECT id, credential_id, device_name, created_at, last_used_at, aaguid
+         FROM app_user_passkeys
+         WHERE user_id = $1 AND project_id = $2
+         ORDER BY created_at DESC`,
+        [userId, projectId]
+      );
 
-    return res.rows.map((r) => ({
-      id: r.id,
-      credentialId: r.credential_id,
-      deviceName: r.device_name,
-      createdAt: r.created_at,
-      lastUsedAt: r.last_used_at,
-      aaguid: r.aaguid,
-    }));
+      return res.rows.map((r) => ({
+        id: r.id,
+        credentialId: r.credential_id,
+        deviceName: r.device_name,
+        createdAt: r.created_at,
+        lastUsedAt: r.last_used_at,
+        aaguid: r.aaguid,
+      }));
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -578,29 +582,33 @@ export class WebAuthnService {
   }
 
   public static async listDeveloperPasskeys(developerId: string): Promise<PasskeyRecord[]> {
-    const res = await query<{
-      id: string;
-      credential_id: string;
-      device_name: string;
-      created_at: string;
-      last_used_at?: string;
-      aaguid?: string;
-    }>(
-      `SELECT id, credential_id, device_name, created_at, last_used_at, aaguid
-       FROM developer_passkeys
-       WHERE developer_id = $1
-       ORDER BY created_at DESC`,
-      [developerId]
-    );
+    try {
+      const res = await query<{
+        id: string;
+        credential_id: string;
+        device_name: string;
+        created_at: string;
+        last_used_at?: string;
+        aaguid?: string;
+      }>(
+        `SELECT id, credential_id, device_name, created_at, last_used_at, aaguid
+         FROM developer_passkeys
+         WHERE developer_id = $1
+         ORDER BY created_at DESC`,
+        [developerId]
+      );
 
-    return res.rows.map((r) => ({
-      id: r.id,
-      credentialId: r.credential_id,
-      deviceName: r.device_name,
-      createdAt: r.created_at,
-      lastUsedAt: r.last_used_at,
-      aaguid: r.aaguid,
-    }));
+      return res.rows.map((r) => ({
+        id: r.id,
+        credentialId: r.credential_id,
+        deviceName: r.device_name,
+        createdAt: r.created_at,
+        lastUsedAt: r.last_used_at,
+        aaguid: r.aaguid,
+      }));
+    } catch {
+      return [];
+    }
   }
 
   public static async deleteDeveloperPasskey(developerId: string, passkeyId: string): Promise<void> {

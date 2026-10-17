@@ -179,6 +179,28 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval);
   }, [pathname, isPublicRoute, router]);
 
+  // Dynamically load platform branding & update favicon
+  useEffect(() => {
+    const applyBranding = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/public/branding`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.faviconUrl) {
+            let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
+            if (!link) {
+              link = document.createElement('link');
+              link.rel = 'icon';
+              document.head.appendChild(link);
+            }
+            link.href = data.faviconUrl;
+          }
+        }
+      } catch {}
+    };
+    applyBranding();
+  }, []);
+
   // Notifications state
   const [notifications, setNotifications] = useState<InternalNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);

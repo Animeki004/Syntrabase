@@ -14,6 +14,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
+      <head>
+        <link rel="icon" href="/favicon.ico" id="dynamic-favicon" />
+      </head>
       <body>
         <SuperAdminShell>{children}</SuperAdminShell>
       </body>

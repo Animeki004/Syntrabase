@@ -149,6 +149,22 @@ export const storageRoutes: FastifyPluginAsync = async (server: FastifyInstance)
       return reply.status(403).send({ error: validation.error || 'Invalid download token' });
     }
 
+    // Verify project is active and not suspended
+    if (validation.projectId) {
+      try {
+        const projRes = await query<{ is_active: boolean; status: string }>(
+          'SELECT is_active, status FROM projects WHERE id = $1',
+          [validation.projectId]
+        );
+        if (projRes.rows.length > 0) {
+          const proj = projRes.rows[0];
+          if (proj.is_active === false || proj.status === 'suspended') {
+            return reply.status(403).send({ error: 'PROJECT_SUSPENDED', message: 'Project is inactive or suspended' });
+          }
+        }
+      } catch {}
+    }
+
     // Locate file in storage via database metadata first
     const objRes = await query<{ metadata: any; mime_type: string; original_name: string }>(
       'SELECT metadata, mime_type, original_name FROM storage_objects WHERE project_id = $1 AND object_path = $2',
@@ -174,6 +190,57 @@ export const storageRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Content-Security-Policy', "default-src 'none'");
     reply.header('Content-Disposition', `inline; filename="${originalName.replace(/"/g, '')}"`);
+
+    const stream = fs.createReadStream(fullFilePath);
+    return reply.send(stream);
+  });
+
+  // Direct authenticated download by objectId
+  server.get('/api/v1/storage/:projectId/objects/:objectId/download', async (req, reply) => {
+    const { projectId, objectId } = req.params as { projectId: string; objectId: string };
+
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+
+    // Check project status
+    try {
+      const projRes = await query<{ is_active: boolean; status: string }>(
+        'SELECT is_active, status FROM projects WHERE id = $1',
+        [projectId]
+      );
+      if (projRes.rows.length > 0) {
+        const proj = projRes.rows[0];
+        if (proj.is_active === false || proj.status === 'suspended') {
+          return reply.status(403).send({ error: 'PROJECT_SUSPENDED', message: 'Project is inactive or suspended' });
+        }
+      }
+    } catch {}
+
+    const objRes = await query<{ metadata: any; mime_type: string; original_name: string; object_path: string }>(
+      'SELECT metadata, mime_type, original_name, object_path FROM storage_objects WHERE project_id = $1 AND (id::text = $2 OR object_path = $2)',
+      [projectId, objectId]
+    ).catch(() => ({ rows: [] }));
+
+    const obj = objRes.rows[0];
+    const internalFilename = obj?.metadata?.internalFilename;
+    if (!internalFilename) {
+      return reply.status(404).send({ error: 'Object not found' });
+    }
+
+    const storageRoot = path.resolve(config.storage.localRoot);
+    const fullFilePath = path.join(storageRoot, internalFilename);
+    if (!fullFilePath.startsWith(storageRoot) || !fs.existsSync(fullFilePath)) {
+      return reply.status(404).send({ error: 'Object not found on disk or invalid path' });
+    }
+
+    const mimeType = obj.mime_type || 'application/octet-stream';
+    const originalName = obj.original_name || path.basename(obj.object_path || 'file');
+
+    reply.header('Content-Type', mimeType);
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('Content-Security-Policy', "default-src 'none'");
+    reply.header('Content-Disposition', `attachment; filename="${originalName.replace(/"/g, '')}"`);
 
     const stream = fs.createReadStream(fullFilePath);
     return reply.send(stream);

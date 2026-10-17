@@ -804,12 +804,27 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
     });
   });
 
+  server.delete('/api/v1/projects/:projectId/auth/users/:userId/mfa', async (req, reply) => {
+    const { projectId, userId } = req.params as { projectId: string; userId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+    await MfaService.disableAllAppUserMfa(userId, projectId);
+    return reply.status(204).send();
+  });
+
   server.delete('/api/v1/projects/:projectId/auth/users/:userId/mfa/:factorId', async (req, reply) => {
     const { projectId, userId, factorId } = req.params as { projectId: string; userId: string; factorId: string };
     if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
       await AuthService.requireProjectAccess(req, projectId);
     }
-    await query('DELETE FROM app_user_mfa WHERE user_id = $1 AND (id = $2 OR factor_type = $2)', [userId, factorId]);
+    if (factorId === 'all') {
+      await MfaService.disableAllAppUserMfa(userId, projectId);
+    } else if (factorId === 'totp') {
+      await MfaService.disableTotp(userId);
+    } else {
+      await query('DELETE FROM app_user_mfa WHERE user_id = $1 AND (id = $2 OR factor_type = $2)', [userId, factorId]);
+    }
     return reply.status(204).send();
   });
 
@@ -1192,6 +1207,12 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
     const developerId = await AuthService.requireDeveloper(req);
     await MfaService.disableDeveloperTotp(developerId);
     return reply.send({ success: true, message: 'Developer TOTP disabled' });
+  });
+
+  server.delete('/api/v1/auth/developer/mfa', async (req, reply) => {
+    const developerId = await AuthService.requireDeveloper(req);
+    await MfaService.disableAllDeveloperMfa(developerId);
+    return reply.send({ success: true, message: 'All Developer MFA factors disabled and removed' });
   });
 
   server.post('/api/v1/auth/developer/passkeys/register/options', async (req, reply) => {

@@ -647,4 +647,26 @@ export class MfaService {
       unitTestMockMfaStore.delete(`developer:${developerId}:totp`);
     }
   }
+
+  public static async disableAllAppUserMfa(userId: string, projectId?: string): Promise<void> {
+    await query('DELETE FROM app_user_mfa WHERE user_id = $1', [userId]);
+    if (projectId) {
+      await query('DELETE FROM app_user_passkeys WHERE user_id = $1 AND project_id = $2', [userId, projectId]).catch(() => {});
+    } else {
+      await query('DELETE FROM app_user_passkeys WHERE user_id = $1', [userId]).catch(() => {});
+    }
+    if (config.env !== 'production') {
+      unitTestMockMfaStore.delete(`app_user:${userId}:totp`);
+      unitTestMockMfaStore.delete(`app_user:${userId}:passkey`);
+    }
+  }
+
+  public static async disableAllDeveloperMfa(developerId: string): Promise<void> {
+    await query('DELETE FROM developer_mfa WHERE developer_id = $1', [developerId]);
+    await query('DELETE FROM developer_passkeys WHERE developer_id = $1', [developerId]).catch(() => {});
+    if (config.env !== 'production') {
+      unitTestMockMfaStore.delete(`developer:${developerId}:totp`);
+      unitTestMockMfaStore.delete(`developer:${developerId}:passkey`);
+    }
+  }
 }
