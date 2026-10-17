@@ -41,7 +41,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@syntrabase/shared-types": "^1.2.1"
+    "@syntrabase/shared-types": "^1.2.3.1"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",

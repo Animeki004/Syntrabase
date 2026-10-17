@@ -16,6 +16,7 @@ This dedicated SDK patch release brings `@syntrabase/client-sdk` and `@syntrabas
 #### 📦 Version Bump
 - `@syntrabase/client-sdk`: Bumped to `1.2.3.1`
 - `@syntrabase/admin-sdk`: Bumped to `1.2.3.1`
+- `@syntrabase/shared-types`: Bumped to `1.2.3.1` (synchronized shared types, persistence, token, and datatype definitions)
 
 #### 🔐 Browser & Offline Persistence Lifecycle (`@syntrabase/client-sdk`)
 - **`browserLocalPersistence`**: Complete `localStorage`-backed session persistence engine with automatic session restoration on page reload and background silent token renewal.

@@ -1015,4 +1015,44 @@ export interface ContactRetentionPolicy {
   updatedAt: string;
 }
 
+// -----------------------------------------------------------------------------
+// 15. SDK Persistence, Custom Tokens, Aggregations & Datatypes (v1.2.3.1)
+// -----------------------------------------------------------------------------
+
+export type PersistenceType = 'LOCAL' | 'SESSION' | 'INDEXED_DB' | 'NONE';
+
+export interface CustomTokenResponse {
+  token: string;
+  customToken?: string;
+}
+
+export interface AggregateSpec {
+  [key: string]: { type: 'count' | 'sum' | 'avg'; field?: string };
+}
+
+export interface AggregateResult {
+  [key: string]: number;
+}
+
+export interface TimestampLike {
+  seconds: number;
+  nanoseconds: number;
+  toDate(): Date;
+  toMillis(): number;
+  isEqual(other: TimestampLike): boolean;
+}
+
+export interface GeoPointLike {
+  latitude: number;
+  longitude: number;
+  isEqual(other: GeoPointLike): boolean;
+}
+
+export interface BytesLike {
+  toBase64(): string;
+  toUint8Array(): Uint8Array;
+  isEqual(other: BytesLike): boolean;
+}
+
+
 
