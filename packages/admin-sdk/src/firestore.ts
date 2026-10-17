@@ -10,6 +10,106 @@ import {
   TransformSentinel,
 } from '@syntrabase/shared-types';
 
+export class Timestamp {
+  constructor(public readonly seconds: number, public readonly nanoseconds: number) {
+    if (nanoseconds < 0 || nanoseconds >= 1e9) {
+      throw new Error('Timestamp nanoseconds out of range: must be between 0 and 999,999,999');
+    }
+  }
+
+  static now(): Timestamp {
+    return Timestamp.fromMillis(Date.now());
+  }
+
+  static fromDate(date: Date): Timestamp {
+    return Timestamp.fromMillis(date.getTime());
+  }
+
+  static fromMillis(milliseconds: number): Timestamp {
+    const seconds = Math.floor(milliseconds / 1000);
+    const nanoseconds = Math.floor((milliseconds % 1000) * 1e6);
+    return new Timestamp(seconds, nanoseconds);
+  }
+
+  toDate(): Date {
+    return new Date(this.toMillis());
+  }
+
+  toMillis(): number {
+    return this.seconds * 1000 + Math.floor(this.nanoseconds / 1e6);
+  }
+
+  isEqual(other: Timestamp): boolean {
+    return this.seconds === other.seconds && this.nanoseconds === other.nanoseconds;
+  }
+
+  valueOf(): string {
+    return this.toDate().toISOString();
+  }
+
+  toJSON(): { seconds: number; nanoseconds: number } {
+    return { seconds: this.seconds, nanoseconds: this.nanoseconds };
+  }
+}
+
+export class GeoPoint {
+  constructor(public readonly latitude: number, public readonly longitude: number) {
+    if (latitude < -90 || latitude > 90) {
+      throw new Error('GeoPoint latitude must be between -90 and 90');
+    }
+    if (longitude < -180 || longitude > 180) {
+      throw new Error('GeoPoint longitude must be between -180 and 180');
+    }
+  }
+
+  isEqual(other: GeoPoint): boolean {
+    return this.latitude === other.latitude && this.longitude === other.longitude;
+  }
+
+  toJSON(): { latitude: number; longitude: number } {
+    return { latitude: this.latitude, longitude: this.longitude };
+  }
+}
+
+export class Bytes {
+  private constructor(private readonly _byteString: string) {}
+
+  static fromBase64String(base64: string): Bytes {
+    return new Bytes(base64);
+  }
+
+  static fromUint8Array(array: Uint8Array): Bytes {
+    if (typeof Buffer !== 'undefined') {
+      return new Bytes(Buffer.from(array.buffer, array.byteOffset, array.byteLength).toString('base64'));
+    }
+    let binary = '';
+    for (let i = 0; i < array.byteLength; i++) {
+      binary += String.fromCharCode(array[i]);
+    }
+    return new Bytes(btoa(binary));
+  }
+
+  toBase64(): string {
+    return this._byteString;
+  }
+
+  toUint8Array(): Uint8Array {
+    if (typeof Buffer !== 'undefined') {
+      return new Uint8Array(Buffer.from(this._byteString, 'base64'));
+    }
+    const binary = atob(this._byteString);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  isEqual(other: Bytes): boolean {
+    return this._byteString === other._byteString;
+  }
+}
+
 export class AdminFieldValue implements TransformSentinel {
   public constructor(
     public readonly _transformType: TransformSentinel['_transformType'],
@@ -36,6 +136,13 @@ export class AdminFieldValue implements TransformSentinel {
     return new AdminFieldValue('__SYNTRABASE_DELETE_FIELD__');
   }
 }
+
+export const FieldValue = AdminFieldValue;
+export const serverTimestamp = () => AdminFieldValue.serverTimestamp();
+export const increment = (n: number) => AdminFieldValue.increment(n);
+export const arrayUnion = (...elements: unknown[]) => AdminFieldValue.arrayUnion(...elements);
+export const arrayRemove = (...elements: unknown[]) => AdminFieldValue.arrayRemove(...elements);
+export const deleteField = () => AdminFieldValue.delete();
 
 export class AdminQuery {
   constructor(
@@ -368,3 +475,10 @@ export class AdminFirestore {
 export function getAdminFirestore(app: AdminApp): AdminFirestore {
   return new AdminFirestore(app);
 }
+
+export const getFirestore = getAdminFirestore;
+export type Firestore = AdminFirestore;
+export type DocumentReference = AdminDocumentReference;
+export type CollectionReference = AdminCollectionReference;
+export type Query = AdminQuery;
+

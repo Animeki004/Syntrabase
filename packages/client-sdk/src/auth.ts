@@ -10,6 +10,9 @@ export class Auth {
   constructor(public readonly app: FirebaseApp) {}
 
   public setSession(user: AppUser | null, accessToken: string | null, refreshToken: string | null) {
+    if (user && accessToken) {
+      (user as any).getIdToken = async (_forceRefresh = false) => accessToken;
+    }
     this.currentUser = user;
     this.accessToken = accessToken;
     this.refreshToken = refreshToken;
@@ -542,11 +545,129 @@ export async function deletePasskey(auth: Auth, passkeyId: string): Promise<void
   }
 }
 
+function resolveAuth(authOrUser?: Auth | AppUser): Auth {
+  if (authOrUser && 'app' in authOrUser && (authOrUser as Auth).app) {
+    return authOrUser as Auth;
+  }
+  const instances = Array.from(authInstances.values());
+  if (authOrUser && 'id' in authOrUser) {
+    const matched = instances.find((i) => i.currentUser?.id === (authOrUser as AppUser).id);
+    if (matched) return matched;
+  }
+  if (instances.length > 0) return instances[0];
+  throw new Error('No active Auth instance found');
+}
+
+/**
+ * Updates a user's basic profile information (displayName, photoURL).
+ */
+export async function updateProfile(
+  authOrUser: Auth | AppUser,
+  profile: { displayName?: string | null; photoURL?: string | null }
+): Promise<void> {
+  const auth = resolveAuth(authOrUser);
+  if (!auth.accessToken) {
+    throw new Error('User must be signed in to update profile');
+  }
+
+  const url = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/users/me`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${auth.accessToken}`,
+      'x-api-key': auth.app.options.apiKey,
+    },
+    body: JSON.stringify({
+      displayName: profile.displayName ?? undefined,
+      photoURL: profile.photoURL ?? undefined,
+    }),
+  });
+
+  if (!res.ok) {
+    const errorData = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    throw new Error(errorData.message || errorData.error || `Failed to update profile: ${res.statusText}`);
+  }
+
+  if (auth.currentUser) {
+    if (profile.displayName !== undefined) auth.currentUser.displayName = profile.displayName || undefined;
+    if (profile.photoURL !== undefined) auth.currentUser.photoURL = profile.photoURL || undefined;
+  }
+}
+
+/**
+ * Updates a user's password.
+ */
+export async function updatePassword(authOrUser: Auth | AppUser, newPassword: string): Promise<void> {
+  const auth = resolveAuth(authOrUser);
+  if (!auth.accessToken) {
+    throw new Error('User must be signed in to update password');
+  }
+
+  const url = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/users/me`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${auth.accessToken}`,
+      'x-api-key': auth.app.options.apiKey,
+    },
+    body: JSON.stringify({ newPassword }),
+  });
+
+  if (!res.ok) {
+    const errorData = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    throw new Error(errorData.message || errorData.error || `Failed to update password: ${res.statusText}`);
+  }
+}
+
+/**
+ * Updates a user's email address.
+ */
+export async function updateEmail(authOrUser: Auth | AppUser, newEmail: string): Promise<void> {
+  const auth = resolveAuth(authOrUser);
+  if (!auth.accessToken) {
+    throw new Error('User must be signed in to update email');
+  }
+
+  const url = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/users/me`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${auth.accessToken}`,
+      'x-api-key': auth.app.options.apiKey,
+    },
+    body: JSON.stringify({ email: newEmail }),
+  });
+
+  if (!res.ok) {
+    const errorData = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    throw new Error(errorData.message || errorData.error || `Failed to update email: ${res.statusText}`);
+  }
+
+  if (auth.currentUser) {
+    auth.currentUser.email = newEmail;
+  }
+}
+
+/**
+ * Returns a JSON Web Token (JWT) used to identify the user to Syntrabase services.
+ */
+export async function getIdToken(authOrUser?: Auth | AppUser, _forceRefresh = false): Promise<string> {
+  const auth = resolveAuth(authOrUser);
+  if (!auth.accessToken) {
+    throw new Error('No user currently signed in to get ID token');
+  }
+  return auth.accessToken;
+}
+
 /**
  * Self-service account deletion for the signed-in user.
  * Enforces project-level user action permission (enableDelete).
  */
-export async function deleteUser(auth: Auth): Promise<void> {
+export async function deleteUser(authOrUser: Auth | AppUser): Promise<void> {
+  const auth = resolveAuth(authOrUser);
   if (!auth.accessToken) {
     throw new Error('User must be signed in to delete account');
   }

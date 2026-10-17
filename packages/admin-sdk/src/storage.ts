@@ -60,3 +60,7 @@ export class AdminStorage {
 export function getAdminStorage(app: AdminApp): AdminStorage {
   return new AdminStorage(app);
 }
+
+export const getStorage = getAdminStorage;
+export type Storage = AdminStorage;
+

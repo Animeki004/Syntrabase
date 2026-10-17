@@ -1064,6 +1064,8 @@ export class AuthService {
     data: {
       email?: string;
       displayName?: string;
+      photoURL?: string;
+      photoUrl?: string;
       phoneNumber?: string;
       emailVerified?: boolean;
       disabled?: boolean;
@@ -1082,6 +1084,11 @@ export class AuthService {
     if (data.displayName !== undefined) {
       params.push(data.displayName);
       updates.push(`display_name = $${params.length}`);
+    }
+    const photo = data.photoURL !== undefined ? data.photoURL : data.photoUrl;
+    if (photo !== undefined) {
+      params.push(photo);
+      updates.push(`photo_url = $${params.length}`);
     }
     if (data.phoneNumber !== undefined) {
       params.push(data.phoneNumber);
@@ -1114,7 +1121,7 @@ export class AuthService {
       SET ${updates.join(', ')}
       WHERE id = $1 AND project_id = $2
       RETURNING id, project_id as "projectId", environment_id as "environmentId", email,
-                display_name as "displayName", phone_number as "phoneNumber",
+                display_name as "displayName", photo_url as "photoURL", phone_number as "phoneNumber",
                 email_verified as "emailVerified", disabled, is_anonymous as "isAnonymous",
                 custom_claims as "customClaims", created_at as "createdAt", updated_at as "updatedAt"
     `;
@@ -1369,6 +1376,24 @@ export class AuthService {
     await query('DELETE FROM auth_sessions WHERE user_id = $1', [userId]);
     await query('DELETE FROM app_users WHERE id = $1 AND project_id = $2', [userId, resolvedProjectId]);
   }
+
+  /**
+   * Self-service profile/password/email update for authenticated app user.
+   */
+  public static async updateAppUserSelf(
+    projectId: string,
+    userId: string,
+    data: {
+      displayName?: string;
+      photoURL?: string;
+      photoUrl?: string;
+      email?: string;
+      password?: string;
+    }
+  ): Promise<any> {
+    return this.adminUpdateAppUser(projectId, userId, data);
+  }
+
 
   /**
    * Completes two-stage MFA challenge for an application user.

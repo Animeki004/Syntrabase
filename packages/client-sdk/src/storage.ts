@@ -101,6 +101,90 @@ export async function uploadBytes(
   return { ref: storageRef, metadata: meta };
 }
 
+export type StringFormat = 'raw' | 'base64' | 'base64url' | 'data_url';
+
+export async function uploadString(
+  storageRef: StorageReference,
+  value: string,
+  format: StringFormat = 'raw',
+  metadata?: { contentType?: string; customMetadata?: Record<string, string> }
+): Promise<{ ref: StorageReference; metadata: Record<string, unknown> }> {
+  let base64Data: string;
+  let detectedContentType = metadata?.contentType;
+
+  if (format === 'raw') {
+    if (typeof Buffer !== 'undefined') {
+      base64Data = Buffer.from(value, 'utf8').toString('base64');
+    } else {
+      base64Data = btoa(unescape(encodeURIComponent(value)));
+    }
+    if (!detectedContentType) {
+      detectedContentType = 'text/plain;charset=utf-8';
+    }
+  } else if (format === 'base64') {
+    base64Data = value;
+  } else if (format === 'base64url') {
+    let b64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) {
+      b64 += '=';
+    }
+    base64Data = b64;
+  } else if (format === 'data_url') {
+    const match = value.match(/^data:([^;]+)?(;base64)?,(.*)$/);
+    if (!match) {
+      throw new Error('Invalid data_url format');
+    }
+    const mediaType = match[1];
+    const isBase64 = match[2] === ';base64';
+    const payload = match[3];
+
+    if (mediaType && !detectedContentType) {
+      detectedContentType = mediaType;
+    }
+
+    if (isBase64) {
+      base64Data = payload;
+    } else {
+      const decoded = decodeURIComponent(payload);
+      if (typeof Buffer !== 'undefined') {
+        base64Data = Buffer.from(decoded, 'utf8').toString('base64');
+      } else {
+        base64Data = btoa(unescape(encodeURIComponent(decoded)));
+      }
+    }
+  } else {
+    throw new Error(`Unsupported string format: ${format}`);
+  }
+
+  const finalMetadata = {
+    ...metadata,
+    contentType: detectedContentType || metadata?.contentType || 'application/octet-stream',
+  };
+
+  const headers = getStorageHeaders(storageRef.storage);
+  const url = `${storageRef.storage.app.options.apiUrl}/api/v1/storage/${storageRef.storage.app.options.projectId}/upload`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      bucketName: storageRef.bucket,
+      objectPath: storageRef.fullPath,
+      originalName: storageRef.fullPath.split('/').pop() || 'upload',
+      mimeType: finalMetadata.contentType,
+      base64Data,
+      metadata: finalMetadata.customMetadata,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error || `Upload string failed: ${res.statusText}`);
+  }
+
+  const meta = (await res.json()) as Record<string, unknown>;
+  return { ref: storageRef, metadata: meta };
+}
+
 export async function getDownloadURL(storageRef: StorageReference): Promise<string> {
   const url = `${storageRef.storage.app.options.apiUrl}/api/v1/storage/${storageRef.storage.app.options.projectId}/signed-url`;
   const res = await fetch(url, {
@@ -162,3 +246,5 @@ export async function listAll(
 
   return { items, prefixes: [] };
 }
+
+export const list = listAll;

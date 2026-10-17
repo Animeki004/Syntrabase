@@ -97,6 +97,27 @@ test('Client SDK API Surface - Exposes standard Firebase v9/v10 functions', () =
   assert.equal(typeof ClientSDK.signInWithPasskey, 'function');
   assert.equal(typeof ClientSDK.listPasskeys, 'function');
   assert.equal(typeof ClientSDK.deletePasskey, 'function');
+  // Full Modular Firebase v9/v10 Equivalence Additions
+  assert.equal(typeof ClientSDK.Timestamp, 'function');
+  assert.equal(typeof ClientSDK.GeoPoint, 'function');
+  assert.equal(typeof ClientSDK.Bytes, 'function');
+  assert.equal(typeof ClientSDK.FieldValue, 'function');
+  assert.equal(typeof ClientSDK.limitToLast, 'function');
+  assert.equal(typeof ClientSDK.startAt, 'function');
+  assert.equal(typeof ClientSDK.startAfter, 'function');
+  assert.equal(typeof ClientSDK.endAt, 'function');
+  assert.equal(typeof ClientSDK.endBefore, 'function');
+  assert.equal(typeof ClientSDK.uploadString, 'function');
+  assert.equal(typeof ClientSDK.list, 'function');
+  assert.equal(typeof ClientSDK.updateProfile, 'function');
+  assert.equal(typeof ClientSDK.updatePassword, 'function');
+  assert.equal(typeof ClientSDK.updateEmail, 'function');
+  assert.equal(typeof ClientSDK.getIdToken, 'function');
+  assert.equal(typeof ClientSDK.browserLocalPersistence, 'string');
+  assert.equal(typeof ClientSDK.browserSessionPersistence, 'string');
+  assert.equal(typeof ClientSDK.inMemoryPersistence, 'string');
+  assert.equal(typeof ClientSDK.setPersistence, 'function');
+  assert.equal(typeof ClientSDK.signInWithCustomToken, 'function');
 });
 
 test('Client SDK Storage - toBase64 handles Uint8Array and Buffer correctly', async () => {
@@ -148,4 +169,92 @@ test('Client SDK Firestore - Supports hierarchical subcollections and multi-segm
   const subDocRef = ClientSDK.doc(subColRef, 'settings');
   assert.equal(subDocRef.path, 'artifacts/default-app-id/admin/settings');
   assert.equal(subDocRef.id, 'settings');
+});
+
+test('Client SDK Firestore - Timestamp, GeoPoint, and Bytes data structures', () => {
+  // Timestamp
+  const now = ClientSDK.Timestamp.now();
+  assert.equal(typeof now.seconds, 'number');
+  assert.equal(typeof now.nanoseconds, 'number');
+  assert.ok(now.toDate() instanceof Date);
+  assert.equal(typeof now.toMillis(), 'number');
+
+  const fromDate = ClientSDK.Timestamp.fromDate(new Date(1700000000000));
+  assert.equal(fromDate.toMillis(), 1700000000000);
+  assert.ok(fromDate.isEqual(ClientSDK.Timestamp.fromMillis(1700000000000)));
+
+  // GeoPoint
+  const geo = new ClientSDK.GeoPoint(37.7749, -122.4194);
+  assert.equal(geo.latitude, 37.7749);
+  assert.equal(geo.longitude, -122.4194);
+  assert.ok(geo.isEqual(new ClientSDK.GeoPoint(37.7749, -122.4194)));
+  assert.throws(() => new ClientSDK.GeoPoint(100, 0));
+
+  // Bytes
+  const rawBytes = new Uint8Array([72, 101, 108, 108, 111]); // "Hello"
+  const bytes = ClientSDK.Bytes.fromUint8Array(rawBytes);
+  assert.equal(bytes.toBase64(), 'SGVsbG8=');
+  assert.deepEqual(Array.from(bytes.toUint8Array()), [72, 101, 108, 108, 111]);
+});
+
+test('Client SDK - User exact import signature validation', () => {
+  const {
+    initializeApp,
+    getAuth,
+    signInAnonymously,
+    signInWithCustomToken,
+    onAuthStateChanged,
+    signInWithEmailAndPassword,
+    signOut,
+    setPersistence,
+    browserLocalPersistence,
+    getFirestore,
+    doc,
+    deleteDoc,
+    onSnapshot,
+    collection,
+    addDoc,
+    updateDoc,
+    getDoc,
+    setDoc,
+  } = ClientSDK;
+
+  assert.equal(typeof initializeApp, 'function');
+  assert.equal(typeof getAuth, 'function');
+  assert.equal(typeof signInAnonymously, 'function');
+  assert.equal(typeof signInWithCustomToken, 'function');
+  assert.equal(typeof onAuthStateChanged, 'function');
+  assert.equal(typeof signInWithEmailAndPassword, 'function');
+  assert.equal(typeof signOut, 'function');
+  assert.equal(typeof setPersistence, 'function');
+  assert.equal(typeof browserLocalPersistence, 'string');
+  assert.equal(typeof getFirestore, 'function');
+  assert.equal(typeof doc, 'function');
+  assert.equal(typeof deleteDoc, 'function');
+  assert.equal(typeof onSnapshot, 'function');
+  assert.equal(typeof collection, 'function');
+  assert.equal(typeof addDoc, 'function');
+  assert.equal(typeof updateDoc, 'function');
+  assert.equal(typeof getDoc, 'function');
+  assert.equal(typeof setDoc, 'function');
+
+  // Verify instantiation with user configuration structure
+  const testConfig = {
+    projectId: '08121278-7bd1-4a7d-8081-f7e2f6c3e2d7',
+    apiKey: 'pk_live_88ca9ce5146182936c23d8a77618a6fe',
+    apiUrl: 'https://api.originhub.me',
+  };
+
+  const app = initializeApp(testConfig);
+  assert.equal(app.options.projectId, testConfig.projectId);
+  assert.equal(app.options.apiUrl, 'https://api.originhub.me');
+
+  const auth = getAuth(app);
+  assert.ok(auth);
+
+  const db = getFirestore(app);
+  assert.ok(db);
+
+  const testDoc = doc(db, 'artifacts', 'default-app-id');
+  assert.equal(testDoc.path, 'artifacts/default-app-id');
 });

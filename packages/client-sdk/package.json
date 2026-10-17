@@ -33,6 +33,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "test:unit": "node --test dist/client-sdk/src/test/client-bundle.test.js",
     "test:security": "node --test dist/client-sdk/src/test/client-bundle.test.js",
     "clean": "rimraf dist"
   },

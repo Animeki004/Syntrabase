@@ -262,3 +262,7 @@ export class AdminAuth {
 export function getAdminAuth(app: AdminApp): AdminAuth {
   return new AdminAuth(app);
 }
+
+export const getAuth = getAdminAuth;
+export type Auth = AdminAuth;
+

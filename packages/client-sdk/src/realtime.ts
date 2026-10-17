@@ -1,19 +1,21 @@
-import { DocumentReference, CollectionReference, getDoc } from './firestore.js';
+import { DocumentReference, CollectionReference, Query, getDoc, getDocs } from './firestore.js';
 import { getAuth } from './auth.js';
 import { DocumentData } from '@syntrabase/shared-types';
 
-export type SnapshotCallback = (snapshot: { exists(): boolean; data(): DocumentData | undefined; id: string }) => void;
+export type SnapshotCallback = (snapshot: any) => void;
 export type SnapshotErrorCallback = (error: Error) => void;
 
 export function onSnapshot(
-  targetRef: DocumentReference | CollectionReference,
+  targetRef: DocumentReference | CollectionReference | Query,
   onNext: SnapshotCallback,
   onError?: SnapshotErrorCallback
 ): () => void {
-  const db = targetRef.firestore;
+  const isDoc = targetRef instanceof DocumentReference;
+  const isQuery = targetRef instanceof Query;
+  const collectionRef = isDoc ? undefined : isQuery ? targetRef.collectionRef : (targetRef as CollectionReference);
+  const db = isDoc ? targetRef.firestore : collectionRef!.firestore;
   const auth = getAuth(db.app);
 
-  const isDoc = targetRef instanceof DocumentReference;
   let collectionPath: string;
   let documentId: string | undefined = undefined;
 
@@ -22,12 +24,16 @@ export function onSnapshot(
     documentId = parts.pop()!;
     collectionPath = parts.join('/');
   } else {
-    collectionPath = targetRef.path;
+    collectionPath = collectionRef!.path;
   }
 
   // 1. Initial fetch
   if (isDoc) {
     getDoc(targetRef as DocumentReference)
+      .then((snap) => onNext(snap))
+      .catch((err) => onError && onError(err));
+  } else {
+    getDocs(targetRef as CollectionReference | Query)
       .then((snap) => onNext(snap))
       .catch((err) => onError && onError(err));
   }

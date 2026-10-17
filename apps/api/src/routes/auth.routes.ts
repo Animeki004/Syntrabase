@@ -767,6 +767,43 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
     }
   });
 
+  server.patch('/api/v1/projects/:projectId/auth/users/me', async (req, reply) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Bearer token required to update user profile' });
+    }
+    const token = authHeader.split(' ')[1];
+    let decoded: any;
+    try {
+      decoded = AuthService.verifyAccessToken(token);
+    } catch {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid or expired access token' });
+    }
+    if (!decoded?.uid) {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Invalid token' });
+    }
+    const { projectId } = req.params as { projectId: string };
+    const body = (req.body || {}) as {
+      displayName?: string;
+      photoURL?: string;
+      photoUrl?: string;
+      email?: string;
+      password?: string;
+      newPassword?: string;
+    };
+    try {
+      const updatedUser = await AuthService.updateAppUserSelf(projectId, decoded.uid, {
+        displayName: body.displayName,
+        photoURL: body.photoURL ?? body.photoUrl,
+        email: body.email,
+        password: body.newPassword ?? body.password,
+      });
+      return reply.send({ user: updatedUser });
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
   server.post('/api/v1/projects/:projectId/auth/users/:userId/revoke-sessions', async (req, reply) => {
     const { projectId, userId } = req.params as { projectId: string; userId: string };
     if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {

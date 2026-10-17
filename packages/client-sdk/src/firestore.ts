@@ -113,8 +113,108 @@ function getRequestHeaders(db: Firestore): Record<string, string> {
 }
 
 // -----------------------------------------------------------------------------
-// Field Value Transforms
+// Data Types & Field Value Transforms
 // -----------------------------------------------------------------------------
+
+export class Timestamp {
+  constructor(public readonly seconds: number, public readonly nanoseconds: number) {
+    if (nanoseconds < 0 || nanoseconds >= 1e9) {
+      throw new Error('Timestamp nanoseconds out of range: must be between 0 and 999,999,999');
+    }
+  }
+
+  static now(): Timestamp {
+    return Timestamp.fromMillis(Date.now());
+  }
+
+  static fromDate(date: Date): Timestamp {
+    return Timestamp.fromMillis(date.getTime());
+  }
+
+  static fromMillis(milliseconds: number): Timestamp {
+    const seconds = Math.floor(milliseconds / 1000);
+    const nanoseconds = Math.floor((milliseconds % 1000) * 1e6);
+    return new Timestamp(seconds, nanoseconds);
+  }
+
+  toDate(): Date {
+    return new Date(this.toMillis());
+  }
+
+  toMillis(): number {
+    return this.seconds * 1000 + Math.floor(this.nanoseconds / 1e6);
+  }
+
+  isEqual(other: Timestamp): boolean {
+    return this.seconds === other.seconds && this.nanoseconds === other.nanoseconds;
+  }
+
+  valueOf(): string {
+    return this.toDate().toISOString();
+  }
+
+  toJSON(): { seconds: number; nanoseconds: number } {
+    return { seconds: this.seconds, nanoseconds: this.nanoseconds };
+  }
+}
+
+export class GeoPoint {
+  constructor(public readonly latitude: number, public readonly longitude: number) {
+    if (latitude < -90 || latitude > 90) {
+      throw new Error('GeoPoint latitude must be between -90 and 90');
+    }
+    if (longitude < -180 || longitude > 180) {
+      throw new Error('GeoPoint longitude must be between -180 and 180');
+    }
+  }
+
+  isEqual(other: GeoPoint): boolean {
+    return this.latitude === other.latitude && this.longitude === other.longitude;
+  }
+
+  toJSON(): { latitude: number; longitude: number } {
+    return { latitude: this.latitude, longitude: this.longitude };
+  }
+}
+
+export class Bytes {
+  private constructor(private readonly _byteString: string) {}
+
+  static fromBase64String(base64: string): Bytes {
+    return new Bytes(base64);
+  }
+
+  static fromUint8Array(array: Uint8Array): Bytes {
+    if (typeof Buffer !== 'undefined') {
+      return new Bytes(Buffer.from(array.buffer, array.byteOffset, array.byteLength).toString('base64'));
+    }
+    let binary = '';
+    for (let i = 0; i < array.byteLength; i++) {
+      binary += String.fromCharCode(array[i]);
+    }
+    return new Bytes(btoa(binary));
+  }
+
+  toBase64(): string {
+    return this._byteString;
+  }
+
+  toUint8Array(): Uint8Array {
+    if (typeof Buffer !== 'undefined') {
+      return new Uint8Array(Buffer.from(this._byteString, 'base64'));
+    }
+    const binary = atob(this._byteString);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  isEqual(other: Bytes): boolean {
+    return this._byteString === other._byteString;
+  }
+}
 
 export class FieldValue implements TransformSentinel {
   public constructor(
@@ -292,11 +392,12 @@ export async function addDoc(
 // -----------------------------------------------------------------------------
 
 export interface QueryConstraint {
-  type: 'where' | 'orderBy' | 'limit' | 'startAfter';
+  type: 'where' | 'orderBy' | 'limit' | 'limitToLast' | 'startAt' | 'startAfter' | 'endAt' | 'endBefore';
   filter?: QueryFilter;
   order?: QueryOrderBy;
   limitCount?: number;
   startAfterId?: string;
+  cursorValue?: unknown;
 }
 
 export function where(field: string, opStr: QueryFilterOperator, value: unknown): QueryConstraint {
@@ -311,8 +412,28 @@ export function limit(limitCount: number): QueryConstraint {
   return { type: 'limit', limitCount };
 }
 
-export function startAfter(startAfterId: string): QueryConstraint {
-  return { type: 'startAfter', startAfterId };
+export function limitToLast(limitCount: number): QueryConstraint {
+  return { type: 'limitToLast', limitCount };
+}
+
+export function startAt(...values: unknown[]): QueryConstraint {
+  const first = values[0];
+  const startAfterId = typeof first === 'string' ? first : (first as any)?.id ? (first as any).id : undefined;
+  return { type: 'startAt', startAfterId, cursorValue: values.length === 1 ? values[0] : values };
+}
+
+export function startAfter(...values: unknown[]): QueryConstraint {
+  const first = values[0];
+  const startAfterId = typeof first === 'string' ? first : (first as any)?.id ? (first as any).id : undefined;
+  return { type: 'startAfter', startAfterId, cursorValue: values.length === 1 ? values[0] : values };
+}
+
+export function endAt(...values: unknown[]): QueryConstraint {
+  return { type: 'endAt', cursorValue: values.length === 1 ? values[0] : values };
+}
+
+export function endBefore(...values: unknown[]): QueryConstraint {
+  return { type: 'endBefore', cursorValue: values.length === 1 ? values[0] : values };
 }
 
 export class Query {
@@ -384,8 +505,8 @@ export async function getDocs(queryObj: Query | CollectionReference | Collection
   for (const c of constraints) {
     if (c.type === 'where' && c.filter) filters.push(c.filter);
     if (c.type === 'orderBy' && c.order) orderBys.push(c.order);
-    if (c.type === 'limit' && c.limitCount) limitCount = c.limitCount;
-    if (c.type === 'startAfter' && c.startAfterId) startAfterId = c.startAfterId;
+    if ((c.type === 'limit' || c.type === 'limitToLast') && c.limitCount) limitCount = c.limitCount;
+    if ((c.type === 'startAfter' || c.type === 'startAt') && c.startAfterId) startAfterId = c.startAfterId;
   }
 
   const url = `${collectionRef.firestore.app.options.apiUrl}/api/v1/projects/${collectionRef.firestore.app.options.projectId}/databases/(default)/query`;
