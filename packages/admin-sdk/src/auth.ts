@@ -216,6 +216,78 @@ export class AdminAuth {
     if (!res.ok) throw new Error(`Admin deleteUserPasskey failed: ${res.statusText}`);
   }
 
+  /**
+   * Generates a signed custom authentication token (JWT) for a user.
+   */
+  public async createCustomToken(uid: string, developerClaims?: Record<string, unknown>): Promise<string> {
+    const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/auth/custom-token/create`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ uid, claims: developerClaims }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(err.error || `Admin createCustomToken failed: ${res.statusText}`);
+    }
+    const data = (await res.json()) as { customToken: string };
+    return data.customToken;
+  }
+
+  /**
+   * Generates an out-of-band email verification link for an application user.
+   */
+  public async generateEmailVerificationLink(email: string): Promise<string> {
+    const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/auth/links/verify-email`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(err.error || `Admin generateEmailVerificationLink failed: ${res.statusText}`);
+    }
+    const data = (await res.json()) as { link: string };
+    return data.link;
+  }
+
+  /**
+   * Generates an out-of-band password reset link for an application user.
+   */
+  public async generatePasswordResetLink(email: string): Promise<string> {
+    const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/auth/links/reset-password`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(err.error || `Admin generatePasswordResetLink failed: ${res.statusText}`);
+    }
+    const data = (await res.json()) as { link: string };
+    return data.link;
+  }
+
+  /**
+   * Generates an out-of-band sign-in with email link.
+   */
+  public async generateSignInWithEmailLink(email: string): Promise<string> {
+    const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/auth/links/email-sign-in`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(err.error || `Admin generateSignInWithEmailLink failed: ${res.statusText}`);
+    }
+    const data = (await res.json()) as { link: string };
+    return data.link;
+  }
+
   public async verifyIdToken(
     token: string
   ): Promise<{ uid: string; email?: string; projectId?: string; environmentId?: string; [key: string]: unknown }> {

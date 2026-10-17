@@ -118,6 +118,22 @@ test('Client SDK API Surface - Exposes standard Firebase v9/v10 functions', () =
   assert.equal(typeof ClientSDK.inMemoryPersistence, 'string');
   assert.equal(typeof ClientSDK.setPersistence, 'function');
   assert.equal(typeof ClientSDK.signInWithCustomToken, 'function');
+  assert.equal(typeof ClientSDK.FieldPath, 'function');
+  assert.equal(typeof ClientSDK.documentId, 'function');
+  assert.equal(typeof ClientSDK.and, 'function');
+  assert.equal(typeof ClientSDK.or, 'function');
+  assert.equal(typeof ClientSDK.count, 'function');
+  assert.equal(typeof ClientSDK.getCountFromServer, 'function');
+  assert.equal(typeof ClientSDK.getAggregateFromServer, 'function');
+  assert.equal(typeof ClientSDK.getBytes, 'function');
+  assert.equal(typeof ClientSDK.getBlob, 'function');
+  assert.equal(typeof ClientSDK.checkActionCode, 'function');
+  assert.equal(typeof ClientSDK.verifyPasswordResetCode, 'function');
+  assert.equal(typeof ClientSDK.enableMultiTabIndexedDbPersistence, 'function');
+  assert.equal(typeof ClientSDK.initializeFirestore, 'function');
+  assert.equal(typeof ClientSDK.persistentLocalCache, 'function');
+  assert.equal(typeof ClientSDK.memoryLocalCache, 'function');
+  assert.equal(ClientSDK.CACHE_SIZE_UNLIMITED, -1);
 });
 
 test('Client SDK Storage - toBase64 handles Uint8Array and Buffer correctly', async () => {

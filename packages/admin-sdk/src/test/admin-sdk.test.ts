@@ -33,6 +33,10 @@ test('Admin SDK - Initializes with valid sk_live key', () => {
   const auth = getAdminAuth(app);
   assert.ok(auth);
   assert.equal(typeof auth.getUser, 'function');
+  assert.equal(typeof auth.createCustomToken, 'function');
+  assert.equal(typeof auth.generateEmailVerificationLink, 'function');
+  assert.equal(typeof auth.generatePasswordResetLink, 'function');
+  assert.equal(typeof auth.generateSignInWithEmailLink, 'function');
   assert.equal(typeof auth.setUserActions, 'function');
   assert.equal(typeof auth.getUserActions, 'function');
   assert.equal(typeof auth.setMfaPolicy, 'function');

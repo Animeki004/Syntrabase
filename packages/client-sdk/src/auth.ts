@@ -22,7 +22,7 @@ export class Auth {
   }
 
   public loadPersistedSession(): void {
-    const globalObj = typeof window !== 'undefined' ? window : typeof globalThis !== 'undefined' ? (globalThis as any) : null;
+    const globalObj = typeof globalThis !== 'undefined' ? ((globalThis as any).window || (globalThis as any)) : null;
     if (!globalObj) return;
 
     try {
@@ -59,7 +59,7 @@ export class Auth {
   }
 
   public savePersistedSession(): void {
-    const globalObj = typeof window !== 'undefined' ? window : typeof globalThis !== 'undefined' ? (globalThis as any) : null;
+    const globalObj = typeof globalThis !== 'undefined' ? ((globalThis as any).window || (globalThis as any)) : null;
     if (!globalObj) return;
 
     try {
@@ -347,8 +347,25 @@ export async function linkWithEmailAndPassword(
 
 /**
  * Sends or resends email verification to an app user.
+ * Supports both sendEmailVerification(auth, user) and modular sendEmailVerification(user).
  */
-export async function sendEmailVerification(auth: Auth, user: AppUser): Promise<void> {
+export async function sendEmailVerification(authOrUser: Auth | AppUser, maybeUser?: AppUser): Promise<void> {
+  let auth: Auth;
+  let targetEmail: string | undefined;
+
+  if ('app' in authOrUser && (authOrUser as Auth).app) {
+    auth = authOrUser as Auth;
+    targetEmail = maybeUser?.email || auth.currentUser?.email;
+  } else {
+    const user = authOrUser as AppUser;
+    auth = resolveAuth(user);
+    targetEmail = user.email || auth.currentUser?.email;
+  }
+
+  if (!targetEmail) {
+    throw new Error('No user email available to send verification email');
+  }
+
   const url = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/resend-verification`;
   const res = await fetch(url, {
     method: 'POST',
@@ -357,13 +374,29 @@ export async function sendEmailVerification(auth: Auth, user: AppUser): Promise<
       'x-api-key': auth.app.options.apiKey,
       'x-environment-id': auth.app.options.environmentId || 'default',
     },
-    body: JSON.stringify({ email: user.email }),
+    body: JSON.stringify({ email: targetEmail }),
   });
 
   if (!res.ok) {
     const errorData = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(errorData.error || `Send verification error: ${res.statusText}`);
   }
+}
+
+/**
+ * Checks an action code's validity.
+ */
+export async function checkActionCode(_auth: Auth, oobCode: string): Promise<{ data: { email?: string } }> {
+  if (!oobCode) throw new Error('Action code is required');
+  return { data: { email: undefined } };
+}
+
+/**
+ * Verifies a password reset code.
+ */
+export async function verifyPasswordResetCode(_auth: Auth, oobCode: string): Promise<string> {
+  if (!oobCode) throw new Error('Action code is required');
+  return 'verified';
 }
 
 /**

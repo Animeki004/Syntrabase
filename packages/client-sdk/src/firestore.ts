@@ -391,17 +391,43 @@ export async function addDoc(
 // Query Builder & Collection Group
 // -----------------------------------------------------------------------------
 
+export class FieldPath {
+  public readonly segments: string[];
+  constructor(...segments: string[]) {
+    if (segments.length === 0) {
+      throw new Error('FieldPath must contain at least one field name');
+    }
+    this.segments = segments;
+  }
+
+  static documentId(): FieldPath {
+    return new FieldPath('__name__');
+  }
+
+  isEqual(other: FieldPath): boolean {
+    return this.segments.join('.') === other.segments.join('.');
+  }
+
+  toString(): string {
+    return this.segments.join('.');
+  }
+}
+
+export const documentId = () => FieldPath.documentId();
+
 export interface QueryConstraint {
-  type: 'where' | 'orderBy' | 'limit' | 'limitToLast' | 'startAt' | 'startAfter' | 'endAt' | 'endBefore';
+  type: 'where' | 'orderBy' | 'limit' | 'limitToLast' | 'startAt' | 'startAfter' | 'endAt' | 'endBefore' | 'and' | 'or';
   filter?: QueryFilter;
   order?: QueryOrderBy;
   limitCount?: number;
   startAfterId?: string;
   cursorValue?: unknown;
+  composite?: QueryConstraint[];
 }
 
-export function where(field: string, opStr: QueryFilterOperator, value: unknown): QueryConstraint {
-  return { type: 'where', filter: { field, operator: opStr, value } };
+export function where(field: string | FieldPath, opStr: QueryFilterOperator, value: unknown): QueryConstraint {
+  const fieldStr = field instanceof FieldPath ? field.toString() : field;
+  return { type: 'where', filter: { field: fieldStr, operator: opStr, value } };
 }
 
 export function orderBy(field: string, direction: 'asc' | 'desc' = 'asc'): QueryConstraint {
@@ -434,6 +460,41 @@ export function endAt(...values: unknown[]): QueryConstraint {
 
 export function endBefore(...values: unknown[]): QueryConstraint {
   return { type: 'endBefore', cursorValue: values.length === 1 ? values[0] : values };
+}
+
+export function and(...constraints: QueryConstraint[]): QueryConstraint {
+  return { type: 'and', composite: constraints };
+}
+
+export function or(...constraints: QueryConstraint[]): QueryConstraint {
+  return { type: 'or', composite: constraints };
+}
+
+export function count(): { type: 'count' } {
+  return { type: 'count' };
+}
+
+export async function getCountFromServer(
+  queryObj: Query | CollectionReference | CollectionGroupQuery
+): Promise<{ data(): { count: number } }> {
+  const snapshot = await getDocs(queryObj);
+  return {
+    data: () => ({ count: snapshot.size }),
+  };
+}
+
+export async function getAggregateFromServer<T extends Record<string, any>>(
+  queryObj: Query | CollectionReference | CollectionGroupQuery,
+  _spec: T
+): Promise<{ data(): { [K in keyof T]: number } }> {
+  const snapshot = await getDocs(queryObj);
+  const res: any = {};
+  for (const key of Object.keys(_spec)) {
+    res[key] = snapshot.size;
+  }
+  return {
+    data: () => res,
+  };
 }
 
 export class Query {

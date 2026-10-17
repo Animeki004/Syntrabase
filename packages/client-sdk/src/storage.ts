@@ -206,6 +206,32 @@ export async function getDownloadURL(storageRef: StorageReference): Promise<stri
   return `${storageRef.storage.app.options.apiUrl}${data.signedUrl}`;
 }
 
+export async function getBytes(storageRef: StorageReference, maxDownloadSizeBytes?: number): Promise<ArrayBuffer> {
+  const downloadUrl = await getDownloadURL(storageRef);
+  const res = await fetch(downloadUrl);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch storage object bytes: ${res.statusText}`);
+  }
+  const buffer = await res.arrayBuffer();
+  if (maxDownloadSizeBytes && buffer.byteLength > maxDownloadSizeBytes) {
+    throw new Error(`Downloaded bytes (${buffer.byteLength}) exceed maximum allowed (${maxDownloadSizeBytes})`);
+  }
+  return buffer;
+}
+
+export async function getBlob(storageRef: StorageReference, maxDownloadSizeBytes?: number): Promise<Blob> {
+  const downloadUrl = await getDownloadURL(storageRef);
+  const res = await fetch(downloadUrl);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch storage object blob: ${res.statusText}`);
+  }
+  const blob = await res.blob();
+  if (maxDownloadSizeBytes && blob.size > maxDownloadSizeBytes) {
+    throw new Error(`Downloaded blob size (${blob.size}) exceeds maximum allowed (${maxDownloadSizeBytes})`);
+  }
+  return blob;
+}
+
 export async function deleteObject(storageRef: StorageReference): Promise<void> {
   const url = `${storageRef.storage.app.options.apiUrl}/api/v1/storage/${storageRef.storage.app.options.projectId}/objects/${encodeURIComponent(storageRef.fullPath)}`;
   const res = await fetch(url, {

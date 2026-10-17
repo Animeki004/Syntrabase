@@ -144,6 +144,30 @@ export const arrayUnion = (...elements: unknown[]) => AdminFieldValue.arrayUnion
 export const arrayRemove = (...elements: unknown[]) => AdminFieldValue.arrayRemove(...elements);
 export const deleteField = () => AdminFieldValue.delete();
 
+export class FieldPath {
+  public readonly segments: string[];
+  constructor(...segments: string[]) {
+    if (segments.length === 0) {
+      throw new Error('FieldPath must contain at least one field name');
+    }
+    this.segments = segments;
+  }
+
+  static documentId(): FieldPath {
+    return new FieldPath('__name__');
+  }
+
+  isEqual(other: FieldPath): boolean {
+    return this.segments.join('.') === other.segments.join('.');
+  }
+
+  toString(): string {
+    return this.segments.join('.');
+  }
+}
+
+export const documentId = () => FieldPath.documentId();
+
 export class AdminQuery {
   constructor(
     public readonly firestore: AdminFirestore,
@@ -154,15 +178,25 @@ export class AdminQuery {
     public readonly startAfterId?: string
   ) {}
 
-  public where(field: string, operator: any, value: any): AdminQuery {
+  public where(field: string | FieldPath, operator: any, value: any): AdminQuery {
+    const fieldStr = field instanceof FieldPath ? field.toString() : field;
     return new AdminQuery(
       this.firestore,
       this.collectionPath,
-      [...this.filters, { field, operator, value }],
+      [...this.filters, { field: fieldStr, operator, value }],
       this.orderBys,
       this.limitCount,
       this.startAfterId
     );
+  }
+
+  public count(): { get(): Promise<{ data(): { count: number } }> } {
+    return {
+      get: async () => {
+        const docs = await this.get();
+        return { data: () => ({ count: docs.length }) };
+      },
+    };
   }
 
   public orderBy(field: string, direction: 'asc' | 'desc' = 'asc'): AdminQuery {

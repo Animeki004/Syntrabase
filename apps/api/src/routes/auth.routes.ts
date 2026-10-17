@@ -537,6 +537,158 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
     }
   });
 
+  // Admin Custom Token Generation
+  server.post('/api/v1/projects/:projectId/auth/custom-token/create', async (req, reply) => {
+    const { projectId } = req.params as { projectId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+    const body = (req.body || {}) as { uid: string; claims?: Record<string, unknown> };
+    if (!body?.uid || typeof body.uid !== 'string') {
+      return reply.status(400).send({ error: 'INVALID_ARGUMENT', message: 'User ID (uid) string is required' });
+    }
+    const customToken = jwt.sign(
+      {
+        uid: body.uid,
+        projectId,
+        claims: body.claims || {},
+        isCustomToken: true,
+      },
+      config.jwt.secret,
+      { expiresIn: 3600 }
+    );
+    return reply.send({ customToken });
+  });
+
+  // Client Custom Token Exchange / Sign-In
+  server.post('/api/v1/projects/:projectId/auth/custom-token', async (req, reply) => {
+    const { projectId } = req.params as { projectId: string };
+    await ProjectService.assertProjectNotSuspended(projectId);
+
+    const body = (req.body || {}) as { token: string };
+    if (!body?.token || typeof body.token !== 'string') {
+      return reply.status(400).send({ error: 'INVALID_TOKEN', message: 'Custom token string is required' });
+    }
+
+    let payload: any;
+    try {
+      payload = jwt.verify(body.token, config.jwt.secret);
+    } catch (err: any) {
+      return reply.status(401).send({ error: 'INVALID_CUSTOM_TOKEN', message: err.message || 'Custom token is invalid or expired' });
+    }
+
+    if (!payload?.isCustomToken || payload.projectId !== projectId || !payload.uid) {
+      return reply.status(401).send({ error: 'INVALID_CUSTOM_TOKEN', message: 'Token is not a valid custom token for this project' });
+    }
+
+    const environmentId = (req.headers['x-environment-id'] as string) || 'default';
+    const resolvedProjectId = await ProjectService.resolveProjectId(projectId);
+
+    const userRes = await query<any>(
+      `SELECT id, project_id as "projectId", environment_id as "environmentId", email,
+              display_name as "displayName", photo_url as "photoURL", email_verified as "emailVerified",
+              disabled, is_anonymous as "isAnonymous", custom_claims as "customClaims",
+              created_at as "createdAt", updated_at as "updatedAt"
+       FROM app_users
+       WHERE id = $1 AND project_id = $2`,
+      [payload.uid, resolvedProjectId]
+    );
+
+    let appUser: any;
+    if (userRes.rows.length === 0) {
+      const insertRes = await query<any>(
+        `INSERT INTO app_users (id, project_id, environment_id, custom_claims, created_at, updated_at)
+         VALUES ($1, $2, (SELECT id FROM environments WHERE project_id = $2 AND is_default = TRUE LIMIT 1), $3, NOW(), NOW())
+         ON CONFLICT (id) DO UPDATE SET custom_claims = EXCLUDED.custom_claims, updated_at = NOW()
+         RETURNING id, project_id as "projectId", environment_id as "environmentId", email,
+                   display_name as "displayName", photo_url as "photoURL", email_verified as "emailVerified",
+                   disabled, is_anonymous as "isAnonymous", custom_claims as "customClaims",
+                   created_at as "createdAt", updated_at as "updatedAt"`,
+        [payload.uid, resolvedProjectId, JSON.stringify(payload.claims || {})]
+      );
+      appUser = insertRes.rows[0];
+    } else {
+      appUser = userRes.rows[0];
+      if (appUser.disabled) {
+        return reply.status(403).send({ error: 'USER_DISABLED', message: 'This user account has been disabled' });
+      }
+      if (payload.claims && Object.keys(payload.claims).length > 0) {
+        const mergedClaims = { ...(appUser.customClaims || {}), ...payload.claims };
+        await query('UPDATE app_users SET custom_claims = $1::jsonb, updated_at = NOW() WHERE id = $2', [
+          JSON.stringify(mergedClaims),
+          appUser.id,
+        ]);
+        appUser.customClaims = mergedClaims;
+      }
+    }
+
+    await query('UPDATE app_users SET last_sign_in_at = NOW() WHERE id = $1', [appUser.id]).catch(() => {});
+
+    const accessToken = AuthService.generateAccessToken({
+      uid: appUser.id,
+      email: appUser.email,
+      projectId: appUser.projectId,
+      environmentId: appUser.environmentId || environmentId,
+      claims: appUser.customClaims,
+    });
+
+    const rawRefreshToken = CryptoUtil.generateSecureToken(32);
+    const refreshTokenHash = CryptoUtil.sha256(rawRefreshToken);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    await query(
+      `INSERT INTO auth_sessions (user_id, refresh_token_hash, expires_at)
+       VALUES ($1, $2, $3)`,
+      [appUser.id, refreshTokenHash, expiresAt]
+    );
+
+    return reply.send({
+      user: appUser,
+      accessToken,
+      refreshToken: rawRefreshToken,
+      expiresIn: 900,
+    });
+  });
+
+  // Admin Out-Of-Band Email Verification Link
+  server.post('/api/v1/projects/:projectId/auth/links/verify-email', async (req, reply) => {
+    const { projectId } = req.params as { projectId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+    const { email } = (req.body || {}) as { email: string };
+    const rawToken = CryptoUtil.generateSecureToken(32);
+    const origin = UrlUtil.resolveConsoleUrl(req);
+    const link = `${origin}/auth/action?mode=verifyEmail&oobCode=${rawToken}&apiKey=${req.headers['x-api-key'] || ''}`;
+    return reply.send({ link });
+  });
+
+  // Admin Out-Of-Band Password Reset Link
+  server.post('/api/v1/projects/:projectId/auth/links/reset-password', async (req, reply) => {
+    const { projectId } = req.params as { projectId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+    const { email } = (req.body || {}) as { email: string };
+    const rawToken = CryptoUtil.generateSecureToken(32);
+    const origin = UrlUtil.resolveConsoleUrl(req);
+    const link = `${origin}/auth/action?mode=resetPassword&oobCode=${rawToken}&apiKey=${req.headers['x-api-key'] || ''}`;
+    return reply.send({ link });
+  });
+
+  // Admin Out-Of-Band Email Sign-In Link
+  server.post('/api/v1/projects/:projectId/auth/links/email-sign-in', async (req, reply) => {
+    const { projectId } = req.params as { projectId: string };
+    if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
+      await AuthService.requireProjectAccess(req, projectId);
+    }
+    const { email } = (req.body || {}) as { email: string };
+    const rawToken = CryptoUtil.generateSecureToken(32);
+    const origin = UrlUtil.resolveConsoleUrl(req);
+    const link = `${origin}/auth/action?mode=signIn&oobCode=${rawToken}&apiKey=${req.headers['x-api-key'] || ''}`;
+    return reply.send({ link });
+  });
+
   server.post('/api/v1/projects/:projectId/auth/link-account', async (req, reply) => {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
