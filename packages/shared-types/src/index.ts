@@ -1016,7 +1016,7 @@ export interface ContactRetentionPolicy {
 }
 
 // -----------------------------------------------------------------------------
-// 20. Comprehensive SDK Parity & Firebase Modular Types (v1.2.3.1)
+// 20. Comprehensive SDK Parity & Firebase Modular Types (v1.2.5)
 // -----------------------------------------------------------------------------
 
 export type User = AppUser;

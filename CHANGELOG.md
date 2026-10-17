@@ -7,16 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.2.3.1] - 2026-10-17
+## [1.2.5] - 2026-10-18
 
 ### 🚀 SDK Parity, Drop-in Firebase Compatibility, Persistence Lifecycle & Full Security Hardening
 
 This dedicated SDK patch release brings `@syntrabase/client-sdk` and `@syntrabase/admin-sdk` to 100% ergonomic parity with Firebase modular v9/v10 APIs while enforcing strict zero-mock zero-leakage security boundaries, comprehensive offline and multi-tab browser persistence, custom token lifecycle, and full query/aggregation operators.
 
 #### 📦 Version Bump
-- `@syntrabase/client-sdk`: Bumped to `1.2.3.1`
-- `@syntrabase/admin-sdk`: Bumped to `1.2.3.1`
-- `@syntrabase/shared-types`: Bumped to `1.2.3.1` (synchronized shared types, persistence, token, and datatype definitions)
+- `@syntrabase/client-sdk`: Bumped to `1.2.5`
+- `@syntrabase/admin-sdk`: Bumped to `1.2.5`
+- `@syntrabase/shared-types`: Bumped to `1.2.5` (synchronized shared types, persistence, token, and datatype definitions)
 
 #### 🔐 Browser & Offline Persistence Lifecycle (`@syntrabase/client-sdk`)
 - **`browserLocalPersistence`**: Complete `localStorage`-backed session persistence engine with automatic session restoration on page reload and background silent token renewal.

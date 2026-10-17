@@ -1,6 +1,6 @@
 {
   "name": "@syntrabase/shared-types",
-  "version": "1.2.3.1",
+  "version": "1.2.5",
   "type": "module",
   "description": "Shared TypeScript definitions and interfaces for the Syntrabase platform",
   "main": "dist/index.js",

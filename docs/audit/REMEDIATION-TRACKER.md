@@ -85,7 +85,7 @@
 
 ---
 
-## 7. Phase 7 Remediation Track (v1.2.3 Platform & v1.2.3.1 SDK Hardening)
+## 7. Phase 7 Remediation Track (v1.2.3 Platform & v1.2.5 SDK Hardening)
 
 | ID | Title | Severity | CVSS | Component | Root Cause | Exploit Mechanics / Verification | Fix Implemented | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
