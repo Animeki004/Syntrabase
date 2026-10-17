@@ -1,6 +1,6 @@
 {
   "name": "@syntrabase/client-sdk",
-  "version": "1.2.3",
+  "version": "1.2.3.1",
   "type": "module",
   "description": "Public Syntrabase client SDK with modular v9/v10 syntax",
   "main": "dist/client-sdk/src/index.js",

@@ -85,7 +85,19 @@
 
 ---
 
-## 7. Test Suite Alignment & Assertion Fixes
+## 7. Phase 7 Remediation Track (v1.2.3 Platform & v1.2.3.1 SDK Hardening)
+
+| ID | Title | Severity | CVSS | Component | Root Cause | Exploit Mechanics / Verification | Fix Implemented | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **SYN-BUG-001** | SMTP Provider Telemetry Quota Desynchronization & 500-Cap Auto-Reset | **HIGH** | 7.5 | `apps/api/src/services/email.service.ts`, `apps/api/src/routes/admin.routes.ts` | Property mismatch (`dailySentCount` vs `daily_sent_count`) reset quota back to 500 on background sync. | Sent email decrements were lost, potentially masking outbound spam abuse or misreporting telemetry. | Coalesced property access in cache & DB; hardened `recordExternalDispatch` and outbound dispatch endpoint. | **REMEDIATED & VERIFIED** |
+| **SYN-SEC-010** | Super Admin Session Expiration Silent Desynchronization & 2s Eviction | **HIGH** | 8.2 | `apps/super-admin/src/components/SuperAdminShell.tsx`, `login/page.tsx` | Expired tokens only evaluated in 10s poll; idle browsers left users visually authenticated. | Stale sessions on unattended terminals could be manipulated; session revocation was not real-time. | Global fetch interceptor + 2s heartbeat + focus/visibility listeners with instant eviction. | **REMEDIATED & VERIFIED** |
+| **SYN-SEC-011** | Auth Gateway Error Sanitization & Strict Email Enumeration Defense | **MEDIUM** | 5.3 | `apps/api/src/routes/auth.routes.ts` | Internal socket errors (`EACCES`, `ECONNREFUSED`) leaked in responses. | Attackers probe auth endpoints to map infrastructure topology and distinguish valid accounts. | Sanitized all error responses to generic `INVALID_CREDENTIALS` codes. | **REMEDIATED & VERIFIED** |
+| **SYN-MIG-001** | Direct SDK-to-SDK Firestore Migration Engine with Project Isolation | **FEATURE** | 0.0 | `apps/api/src/routes/document.routes.ts`, `scripts/migrate-firestore-to-syntrabase.cjs` | Moving from Firebase Firestore required manual export/import pipelines. | Increased risk of credential exposure or cross-tenant document misplacement during migration. | High-performance batch migration tool with subcollection support and schema preservation. | **REMEDIATED & VERIFIED** |
+| **SYN-SDK-001** | Modular v9/v10 Drop-In Parity, Offline Multi-Tab Cache & Custom Tokens | **HIGH** | 7.0 | `packages/client-sdk`, `packages/admin-sdk` | Missing persistence engines, custom token flows, and rich Firestore datatypes. | Developers faced migration barriers or inconsistent session restoration across page reloads. | Implemented 4 persistence engines, multi-tab cache, custom tokens, aggregations, and datatypes. | **REMEDIATED & VERIFIED** |
+
+---
+
+## 8. Test Suite Alignment & Assertion Fixes
 
 | ID | Title | Category | Component | Description & Remediation | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |

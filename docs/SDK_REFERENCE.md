@@ -48,6 +48,32 @@ Authenticates an existing user and stores tokens in memory.
 const { user } = await signInWithEmailAndPassword(auth, 'alice@example.com', 'SuperSecretPass123!');
 ```
 
+#### `signInWithCustomToken(auth, customToken)`
+Authenticates using a secure custom token minted by `@syntrabase/admin-sdk` (`createCustomToken`).
+```typescript
+import { signInWithCustomToken } from '@syntrabase/client-sdk';
+
+const { user } = await signInWithCustomToken(auth, customJwtFromBackend);
+console.log('Signed in with custom token:', user.uid);
+```
+
+#### `setPersistence(auth, persistence)`
+Configures the authentication state persistence mode. Automatically restores session on page reload when using browser persistence.
+- `browserLocalPersistence`: Retains session state in `localStorage` across tab closes and browser restarts.
+- `browserSessionPersistence`: Retains session state in `sessionStorage` for current tab only.
+- `indexedDBLocalPersistence`: Retains session state in browser IndexedDB database.
+- `inMemoryPersistence`: Transient in-memory storage (cleared when page or script unloads).
+
+```typescript
+import { setPersistence, browserLocalPersistence, inMemoryPersistence } from '@syntrabase/client-sdk';
+
+// Persist session across browser restarts
+await setPersistence(auth, browserLocalPersistence);
+
+// Or switch to ephemeral in-memory persistence
+await setPersistence(auth, inMemoryPersistence);
+```
+
 #### `signInAnonymously(auth)`
 Provisions an ephemeral guest session for frictionless onboarding.
 ```typescript
@@ -142,6 +168,53 @@ Redeems the password reset action code and sets a new password.
 await confirmPasswordReset(auth, actionCodeFromUrl, 'BrandNewPassword123!');
 ```
 
+#### `updateProfile(user, { displayName, photoURL })`
+Updates profile metadata for the current user and synchronizes to the server.
+```typescript
+import { updateProfile } from '@syntrabase/client-sdk';
+
+await updateProfile(auth.currentUser!, {
+  displayName: 'Alice Cooper',
+  photoURL: 'https://example.com/avatar.png'
+});
+```
+
+#### `updatePassword(user, newPassword)`
+Updates the password for the currently authenticated user.
+```typescript
+import { updatePassword } from '@syntrabase/client-sdk';
+
+await updatePassword(auth.currentUser!, 'NewSuperSecurePass456!');
+```
+
+#### `updateEmail(user, newEmail)`
+Updates the email address for the currently authenticated user.
+```typescript
+import { updateEmail } from '@syntrabase/client-sdk';
+
+await updateEmail(auth.currentUser!, 'alice.new@example.com');
+```
+
+#### `getIdToken(user, forceRefresh?)`
+Retrieves a valid JWT ID token for the user, automatically refreshing expired tokens unless forced.
+```typescript
+import { getIdToken } from '@syntrabase/client-sdk';
+
+const token = await getIdToken(auth.currentUser!);
+// Or force token refresh from backend:
+const freshToken = await getIdToken(auth.currentUser!, true);
+```
+
+#### `deleteUser(userOrAuth)`
+Permanently deletes the authenticated user account and revokes active sessions.
+```typescript
+import { deleteUser } from '@syntrabase/client-sdk';
+
+await deleteUser(auth.currentUser!);
+// Or pass auth directly:
+await deleteUser(auth);
+```
+
 #### `signOut(auth)`
 Clears active tokens and notifies all registered auth state listeners.
 ```typescript
@@ -225,22 +298,72 @@ await updateDoc(userRef, {
 });
 ```
 
-#### Queries & Filtering
-```typescript
-import { query, where, orderBy, limit, getDocs } from '@syntrabase/client-sdk';
+#### Firestore Datatypes
+Syntrabase provides complete Firebase-compatible datatype implementations:
+- `Timestamp`: High-precision timestamp with nanoseconds (`now()`, `fromDate(date)`, `fromMillis(ms)`, `toDate()`, `toMillis()`, `isEqual(other)`).
+- `GeoPoint`: Geolocation coordinates (`new GeoPoint(latitude, longitude)`, `isEqual(other)`).
+- `Bytes`: Binary data representation (`Bytes.fromBase64String(str)`, `Bytes.fromUint8Array(arr)`, `toBase64()`, `toUint8Array()`, `isEqual(other)`).
+- `FieldPath` & `documentId()`: Canonical field path identifiers and sentinel for document ID filtering.
 
+```typescript
+import { Timestamp, GeoPoint, Bytes, FieldPath, documentId } from '@syntrabase/client-sdk';
+
+// Store rich datatypes
+await setDoc(docRef, {
+  createdAt: Timestamp.now(),
+  scheduledFor: Timestamp.fromDate(new Date('2026-12-31')),
+  location: new GeoPoint(37.7749, -122.4194),
+  binaryData: Bytes.fromBase64String('SGVsbG8gU3ludHJhYmFzZSE=')
+});
+
+// Query by document ID sentinel
+const docQuery = query(collection(db, 'users'), where(documentId(), '==', 'user_123'));
+```
+
+#### Queries, Filtering & Cursor Pagination
+```typescript
+import {
+  query, where, orderBy, limit, limitToLast,
+  startAt, startAfter, endAt, endBefore, and, or, getDocs
+} from '@syntrabase/client-sdk';
+
+// Advanced query constraints
 const q = query(
   collection(db, 'orders'),
-  where('status', '==', 'shipped'),
-  where('total', '>=', 50),
+  and(
+    where('status', '==', 'shipped'),
+    or(
+      where('priority', '==', 'high'),
+      where('total', '>=', 100)
+    )
+  ),
   orderBy('total', 'desc'),
-  limit(20)
+  limit(25),
+  startAfter(50)
 );
 
 const querySnapshot = await getDocs(q);
 querySnapshot.docs.forEach((doc) => {
   console.log(doc.id, doc.data());
 });
+```
+
+#### Server-Side Aggregations (`count`, `getCountFromServer`, `getAggregateFromServer`)
+Perform high-performance server-side aggregations without downloading all document snapshots.
+```typescript
+import { query, collection, where, count, getCountFromServer, getAggregateFromServer } from '@syntrabase/client-sdk';
+
+const ordersQuery = query(collection(db, 'orders'), where('status', '==', 'pending'));
+
+// Count aggregation
+const countSnapshot = await getCountFromServer(ordersQuery);
+console.log('Total pending orders:', countSnapshot.data().count);
+
+// Generalized server aggregation
+const aggregateSnapshot = await getAggregateFromServer(ordersQuery, {
+  totalPending: count()
+});
+console.log('Aggregate count:', aggregateSnapshot.data().totalPending);
 ```
 
 #### Collection Group Queries
@@ -284,12 +407,24 @@ batch.delete(doc(db, 'staging', 'temp_old'));
 await batch.commit();
 ```
 
-#### Offline Persistence
-Cache documents in memory or local storage with automatic offline fallback when connectivity drops.
+#### Offline Persistence & Multi-Tab Cache Configuration
+Cache documents in memory or persistent IndexedDB with multi-tab synchronization and offline fallback when connectivity drops.
 ```typescript
-import { enableIndexedDbPersistence } from '@syntrabase/client-sdk';
+import {
+  initializeFirestore, enableIndexedDbPersistence, enableMultiTabIndexedDbPersistence,
+  persistentLocalCache, memoryLocalCache, CACHE_SIZE_UNLIMITED
+} from '@syntrabase/client-sdk';
 
-enableIndexedDbPersistence(db);
+// 1. Enable single-tab IndexedDB persistence:
+await enableIndexedDbPersistence(db);
+
+// 2. Enable multi-tab synchronized IndexedDB persistence:
+await enableMultiTabIndexedDbPersistence(db);
+
+// 3. Or initialize Firestore with cache settings directly:
+const dbConfigured = initializeFirestore(app, {
+  localCache: persistentLocalCache({ cacheSizeBytes: CACHE_SIZE_UNLIMITED })
+});
 ```
 
 ---
@@ -307,6 +442,79 @@ const unsub = onSnapshot(doc(db, 'chats', 'general'), (snapshot) => {
 
 // To stop listening:
 unsub();
+```
+
+---
+
+### Storage Module (`@syntrabase/client-sdk`)
+
+#### `getStorage(app?)` & `ref(storage, path)`
+Construct references to cloud storage locations.
+```typescript
+import { getStorage, ref } from '@syntrabase/client-sdk';
+
+const storage = getStorage(app);
+const fileRef = ref(storage, 'avatars/user_123.png');
+```
+
+#### `uploadBytes(storageRef, data, metadata?)`
+Uploads raw `Uint8Array`, `ArrayBuffer`, `Blob`, or `File` with automatic Base64 encoding.
+```typescript
+import { uploadBytes } from '@syntrabase/client-sdk';
+
+const file = new File(['Hello World'], 'hello.txt', { type: 'text/plain' });
+const snapshot = await uploadBytes(fileRef, file, { contentType: 'text/plain' });
+console.log('Upload complete, bytes transferred:', snapshot.bytesTransferred);
+```
+
+#### `uploadString(storageRef, string, format?, metadata?)`
+Uploads string payloads supporting `raw`, `base64`, `base64url`, and `data_url` formats.
+```typescript
+import { uploadString } from '@syntrabase/client-sdk';
+
+// Upload Base64 Data URL (e.g. from canvas or camera)
+const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const snapshot = await uploadString(fileRef, dataUrl, 'data_url');
+```
+
+#### `getDownloadURL(storageRef)`
+Retrieves a signed, project-scoped download URL for the target object.
+```typescript
+import { getDownloadURL } from '@syntrabase/client-sdk';
+
+const url = await getDownloadURL(fileRef);
+console.log('Download URL:', url);
+```
+
+#### `getBytes(storageRef, maxDownloadSizeBytes?)` & `getBlob(storageRef, maxDownloadSizeBytes?)`
+Directly downloads the file content as an `ArrayBuffer` or `Blob`.
+```typescript
+import { getBytes, getBlob } from '@syntrabase/client-sdk';
+
+// Download as ArrayBuffer (up to 10MB)
+const arrayBuffer = await getBytes(fileRef, 10 * 1024 * 1024);
+
+// Download as Blob
+const blob = await getBlob(fileRef);
+```
+
+#### `list(storageRef, options?)` & `listAll(storageRef)`
+Lists objects and prefixes under a directory path.
+```typescript
+import { list, listAll } from '@syntrabase/client-sdk';
+
+const listResult = await list(ref(storage, 'avatars'), { maxResults: 50 });
+console.log('Files:', listResult.items.map((r) => r.name));
+console.log('Subdirectories:', listResult.prefixes.map((r) => r.name));
+```
+
+#### `deleteObject(storageRef)`
+Deletes the file at the specified storage reference.
+```typescript
+import { deleteObject } from '@syntrabase/client-sdk';
+
+await deleteObject(fileRef);
+console.log('File deleted successfully');
 ```
 
 ---
@@ -447,6 +655,63 @@ const passkeys = await adminAuth.listUserPasskeys(newUser.uid);
 if (passkeys.length > 0) {
   await adminAuth.deleteUserPasskey(newUser.uid, passkeys[0].id);
 }
+
+// Mint a Custom JWT Token (for custom auth, migrations, external providers)
+const customToken = await adminAuth.createCustomToken(newUser.uid, {
+  role: 'admin',
+  tier: 'premium'
+});
+console.log('Minted custom token:', customToken);
+
+// Generate Out-of-Band Email Action Links
+const verifyEmailLink = await adminAuth.generateEmailVerificationLink('alice@example.com');
+const resetPasswordLink = await adminAuth.generatePasswordResetLink('alice@example.com');
+const emailSignInLink = await adminAuth.generateSignInWithEmailLink('alice@example.com');
+
+console.log('Action links:', { verifyEmailLink, resetPasswordLink, emailSignInLink });
+```
+
+---
+
+### Modular Drop-In Aliases (Firebase Admin Parity)
+
+`@syntrabase/admin-sdk` provides drop-in modular functional aliases matching Firebase Admin SDK conventions:
+
+```typescript
+import { initializeAdminApp, getFirestore, getAuth, getStorage } from '@syntrabase/admin-sdk';
+
+const app = initializeAdminApp({
+  apiUrl: process.env.SYNTRABASE_API_URL!,
+  secretKey: process.env.SYNTRABASE_SECRET_KEY!,
+  projectId: process.env.SYNTRABASE_PROJECT_ID!
+});
+
+// Drop-in aliases
+const db = getFirestore(app);
+const auth = getAuth(app);
+const storage = getStorage(app);
+```
+
+---
+
+### Admin Storage
+
+Manage project storage objects and generate signed URLs programmatically with privileged access:
+
+```typescript
+import { getAdminStorage } from '@syntrabase/admin-sdk';
+
+const adminStorage = getAdminStorage(adminApp);
+
+// Generate signed download URL (valid for 1 hour)
+const downloadUrl = await adminStorage.getSignedDownloadUrl('reports/q4-report.pdf', 3600);
+
+// List all objects in bucket
+const objects = await adminStorage.listObjects('reports/');
+console.log('Stored objects:', objects);
+
+// Administratively delete object
+await adminStorage.deleteObject('reports/old-draft.pdf');
 ```
 
 ---

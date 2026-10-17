@@ -23,15 +23,22 @@ Syntrabase SDKs are engineered as **1:1 modular drop-in replacements** for Fireb
 | **TOTP MFA Enrollment** | Requires GCP Identity Platform addon | `enrollTotpMfa(auth)` & `verifyTotpMfa(auth, token)` | **Enhanced** | Built-in standard RFC-6238 TOTP with QR codes out of the box |
 | **Auth State Listener** | `onAuthStateChanged(auth, callback)` | `onAuthStateChanged(auth, callback)` | **100% Match** | Reactive session listener |
 | **Sign Out** | `signOut(auth)` | `signOut(auth)` | **100% Match** | Session teardown and listener notifications |
+| **Custom Token Sign-In** | `signInWithCustomToken(auth, token)` | `signInWithCustomToken(auth, token)` | **100% Match** | Exchange backend-minted custom JWT for app session |
+| **Persistence Switching** | `setPersistence(auth, persistence)` | `setPersistence(auth, persistence)` | **100% Match** | Supports `browserLocalPersistence`, `browserSessionPersistence`, `indexedDBLocalPersistence`, `inMemoryPersistence` |
+| **User Profile Updates** | `updateProfile(user, data)`, `updatePassword(user, pass)`, `updateEmail(user, email)` | `updateProfile(user, data)`, `updatePassword(user, pass)`, `updateEmail(user, email)` | **100% Match** | Self-service profile mutations and credential rotation |
+| **Get ID Token** | `getIdToken(user, forceRefresh?)` | `getIdToken(user, forceRefresh?)` | **100% Match** | Silent token refresh and expiry management |
 | **Document CRUD** | `getDoc()`, `setDoc()`, `updateDoc()`, `deleteDoc()`, `addDoc()` | `getDoc()`, `setDoc()`, `updateDoc()`, `deleteDoc()`, `addDoc()` | **100% Match** | Backed by PostgreSQL JSONB with AST Security Rules evaluation |
+| **Firestore Datatypes** | `Timestamp`, `GeoPoint`, `Bytes` | `Timestamp`, `GeoPoint`, `Bytes` | **100% Match** | Nanosecond timestamps, coordinates, and byte buffers |
 | **Field Transforms** | `serverTimestamp()`, `increment()`, `arrayUnion()`, `arrayRemove()`, `deleteField()` | `serverTimestamp()`, `increment()`, `arrayUnion()`, `arrayRemove()`, `deleteField()` | **100% Match** | Server-executed atomic field operations |
-| **Complex Queries** | `query()`, `where()`, `orderBy()`, `limit()`, `startAfter()` | `query()`, `where()`, `orderBy()`, `limit()`, `startAfter()` | **100% Match** | Rich query execution with cursor pagination |
+| **Complex Queries** | `query()`, `where()`, `orderBy()`, `limit()`, `limitToLast()`, `startAfter()`, `and()`, `or()` | `query()`, `where()`, `orderBy()`, `limit()`, `limitToLast()`, `startAfter()`, `and()`, `or()` | **100% Match** | Rich query execution with cursor pagination and logical operators |
+| **Field Path & ID Sentinel** | `FieldPath`, `documentId()` | `FieldPath`, `documentId()` | **100% Match** | Document key filtering and structured field references |
+| **Server Aggregations** | `count()`, `getCountFromServer()`, `getAggregateFromServer()` | `count()`, `getCountFromServer()`, `getAggregateFromServer()` | **100% Match** | High-performance server-side counts without document egress |
 | **Collection Groups** | `collectionGroup(db, 'id')` | `collectionGroup(db, 'id')` | **100% Match** | Cross-subcollection queries across the document tree |
 | **Atomic Write Batches** | `writeBatch(db)` (`set`, `update`, `delete`, `commit`) | `writeBatch(db)` (`set`, `update`, `delete`, `commit`) | **100% Match** | All-or-nothing atomic database transactions |
 | **Optimistic Transactions** | `runTransaction(db, updateFn)` | `runTransaction(db, updateFn)` | **100% Match** | Precondition checking with automatic jittered exponential backoff |
 | **Realtime Sync** | `onSnapshot(ref, onNext, onError)` | `onSnapshot(ref, onNext, onError)` | **100% Match** | Duplex WebSocket CDC channel with automatic cleanup |
-| **Offline Persistence** | `enableIndexedDbPersistence(db)` | `enableIndexedDbPersistence(db)` | **100% Match** | Browser IndexedDB local snapshot cache with memory fallback |
-| **Object Storage** | `ref()`, `uploadBytes()`, `getDownloadURL()`, `deleteObject()`, `listAll()` | `ref()`, `uploadBytes()`, `getDownloadURL()`, `deleteObject()`, `listAll()` | **100% Match** | S3/MinIO backend with signed download URLs |
+| **Offline Persistence** | `enableIndexedDbPersistence(db)`, `enableMultiTabIndexedDbPersistence(db)` | `enableIndexedDbPersistence(db)`, `enableMultiTabIndexedDbPersistence(db)` | **100% Match** | Multi-tab synchronized IndexedDB cache with memory fallback |
+| **Object Storage** | `ref()`, `uploadBytes()`, `uploadString()`, `getDownloadURL()`, `getBytes()`, `getBlob()`, `deleteObject()`, `list()`, `listAll()` | `ref()`, `uploadBytes()`, `uploadString()`, `getDownloadURL()`, `getBytes()`, `getBlob()`, `deleteObject()`, `list()`, `listAll()` | **100% Match** | Upload strings (raw, base64, data_url), direct binary retrieval, and listing |
 
 ---
 
@@ -40,6 +47,9 @@ Syntrabase SDKs are engineered as **1:1 modular drop-in replacements** for Fireb
 | Capability / Feature | Firebase Admin SDK (`firebase-admin/*`) | Syntrabase Admin SDK (`@syntrabase/admin-sdk`) | Compatibility Status | Syntrabase Implementation / Advantage |
 |---|---|---|:---:|---|
 | **App Initialization** | `initializeApp({ credential, projectId })` | `initializeAdminApp({ secretKey, projectId, apiUrl })` | **100% Match** | Secret key (`sk_live_...`) authorization bypassing security rules |
+| **Modular Functional Aliases** | `getFirestore(app)`, `getAuth(app)`, `getStorage(app)` | `getFirestore(app)`, `getAuth(app)`, `getStorage(app)` | **100% Match** | Drop-in modular functional API parity |
+| **Custom Token Minting** | `auth().createCustomToken(uid, claims?)` | `adminAuth.createCustomToken(uid, claims?)` | **100% Match** | Mint signed JWT custom tokens for user authentication |
+| **Email Action Links** | `generateEmailVerificationLink()`, `generatePasswordResetLink()`, `generateSignInWithEmailLink()` | `adminAuth.generateEmailVerificationLink()`, `generatePasswordResetLink()`, `generateSignInWithEmailLink()` | **100% Match** | Out-of-band links for headless or custom mail services |
 | **Get User by UID** | `auth().getUser(uid)` | `adminAuth.getUser(uid)` | **100% Match** | Returns full user profile entity |
 | **Get User by Email** | `auth().getUserByEmail(email)` | `adminAuth.getUserByEmail(email)` | **100% Match** | Case-insensitive lookup |
 | **List Users (Paginated)** | `auth().listUsers(maxResults, pageToken)` | `adminAuth.listUsers({ page, limit, search })` | **Enhanced** | Added direct server-side regex/substring search parameter |

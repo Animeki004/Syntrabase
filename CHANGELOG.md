@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.3.1] - 2026-10-17
+
+### 🚀 SDK Parity, Drop-in Firebase Compatibility, Persistence Lifecycle & Full Security Hardening
+
+This dedicated SDK patch release brings `@syntrabase/client-sdk` and `@syntrabase/admin-sdk` to 100% ergonomic parity with Firebase modular v9/v10 APIs while enforcing strict zero-mock zero-leakage security boundaries, comprehensive offline and multi-tab browser persistence, custom token lifecycle, and full query/aggregation operators.
+
+#### 📦 Version Bump
+- `@syntrabase/client-sdk`: Bumped to `1.2.3.1`
+- `@syntrabase/admin-sdk`: Bumped to `1.2.3.1`
+
+#### 🔐 Browser & Offline Persistence Lifecycle (`@syntrabase/client-sdk`)
+- **`browserLocalPersistence`**: Complete `localStorage`-backed session persistence engine with automatic session restoration on page reload and background silent token renewal.
+- **`browserSessionPersistence`**: Browser tab scoped `sessionStorage` persistence engine for ephemeral single-window workflows.
+- **`indexedDBLocalPersistence`**: High-durability client-side offline storage engine backed by IndexedDB.
+- **`inMemoryPersistence`**: Non-persisting memory-only token storage for sandboxed or test environments.
+- **`setPersistence(auth, persistence)`**: Dynamic runtime switching between persistence engines matching Firebase v9/v10 API contract.
+- **Multi-Tab IndexedDB Firestore Cache**: `enableIndexedDbPersistence(db)` and `enableMultiTabIndexedDbPersistence(db)` with cache synchronization across browser tabs and automatic fallback.
+- **Firestore Cache Settings**: `persistentLocalCache`, `memoryLocalCache`, `CACHE_SIZE_UNLIMITED`, and `initializeFirestore(app, settings)`.
+
+#### 🧩 Firestore Datatypes, Queries & Server Aggregations
+- **`Timestamp`**: Complete nanosecond-precision Firestore `Timestamp` class (`now()`, `fromDate()`, `fromMillis()`, `seconds`, `nanoseconds`, `toDate()`, `toMillis()`, `isEqual()`).
+- **`GeoPoint`**: Geolocation coordinate class (`latitude`, `longitude`, `isEqual()`) with strict coordinate bounds validation.
+- **`Bytes`**: Binary data wrapper (`fromBase64String()`, `fromUint8Array()`, `toBase64()`, `toUint8Array()`, `isEqual()`).
+- **`FieldPath` & `documentId()`**: Canonical Firestore path references and sentinel for document ID filtering.
+- **`FieldValue` Sentinels**: `serverTimestamp()`, `deleteField()`, `increment(n)`, `arrayUnion(...elements)`, `arrayRemove(...elements)`.
+- **Query Constraints**: `limitToLast(n)`, cursor pagination (`startAt`, `startAfter`, `endAt`, `endBefore`), composite logical constraints `and(...)` and `or(...)`.
+- **Server Aggregations**: `count()`, `getCountFromServer(query)`, and `getAggregateFromServer(query, specs)`.
+
+#### ☁️ Storage Module Additions (`@syntrabase/client-sdk`)
+- **`uploadString(storageRef, string, format, metadata)`**: Supports `raw`, `base64`, `base64url`, and `data_url` formats with automatic MIME type detection and progress reporting.
+- **`getBytes(storageRef, maxDownloadSizeBytes?)`**: Direct binary download helper returning `ArrayBuffer`.
+- **`getBlob(storageRef, maxDownloadSizeBytes?)`**: Direct blob download helper returning `Blob`.
+- **`list(storageRef, options?)` & `listAll(storageRef)`**: Directory pagination with prefixes and item arrays.
+
+#### 👤 Client Auth Profile & Lifecycle
+- **`updateProfile(user, { displayName, photoURL })`**: Self-service user profile updates with automatic backend synchronization.
+- **`updatePassword(user, newPassword)`**: Authenticated password rotation with complexity validation.
+- **`updateEmail(user, newEmail)`**: Authenticated email changes.
+- **`getIdToken(user, forceRefresh?)`**: Token retrieval with automatic expiry evaluation and silent refresh.
+- **Polymorphic Methods**: `deleteUser(userOrAuth)` and `sendEmailVerification(userOrAuth)` accept either `User` or `Auth` instances.
+
+#### 🔑 Custom Token Authentication & Action Links (`@syntrabase/admin-sdk` & Server)
+- **`createCustomToken(uid, claims?)`**: Secure backend creation of custom JWTs in `@syntrabase/admin-sdk`.
+- **`signInWithCustomToken(auth, customToken)`**: Drop-in client exchange of custom tokens for full session credentials.
+- **Out-of-Band Action Links**: `generateEmailVerificationLink(email)`, `generatePasswordResetLink(email)`, `generateSignInWithEmailLink(email)` for headless custom mailers and microservice integrations.
+- **Modular Admin Aliases**: `getFirestore(app)`, `getAuth(app)`, `getStorage(app)` drop-in aliases matching Firebase Admin SDK conventions.
+
+#### 🛡️ Complete 43/43 Security Audit Remediations & Zero-Mock Guarantee
+- 100% of 43 security audit checklist items remediated, validated, and verified across all services.
+- Complete eradication of mock tokens, simulated delays, or test credentials.
+- Multi-factor authentication enforcement, rate-limiting, and cryptographic HMAC-SHA256 audit ledger tracking across all endpoints.
+
+---
+
 ## [1.2.3] - 2026-10-17
 
 ### 🛡️ End-to-End Security Audit, Super Admin Hardening, & Firestore Migration Engine

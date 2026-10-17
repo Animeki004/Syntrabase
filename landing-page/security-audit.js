@@ -1,5 +1,5 @@
 // Syntrabase Security Audits & Vulnerability Intelligence Dataset
-// Comprehensive record of all 35 audited security vulnerabilities, threats, and patches across SDK & platform versions.
+// Comprehensive record of all 43 audited security vulnerabilities, threats, and patches across SDK & platform versions.
 
 export const SECURITY_KPIS = {
   totalAudits: 43,

@@ -33,6 +33,13 @@ Designed for browser, mobile, and web client runtimes. Implements the modern Fir
 | | `signOut` | 100% | Verified | Clears in-memory session. |
 | | `onAuthStateChanged` | 100% | Verified | Unsubscribe cleanup returned. |
 | | `linkWithEmailAndPassword` | 100% | Verified | Account linking support. |
+| | `signInWithCustomToken` | 100% | **Added (v1.2.3.1)** | Seamless sign-in with custom JWTs minted by backend. |
+| | `setPersistence` | 100% | **Added (v1.2.3.1)** | Dynamic runtime switching between persistence engines. |
+| | `browserLocalPersistence` & `browserSessionPersistence` | 100% | **Added (v1.2.3.1)** | Web storage session restoration and silent token refresh. |
+| | `indexedDBLocalPersistence` & `inMemoryPersistence` | 100% | **Added (v1.2.3.1)** | High-durability client storage and transient test storage. |
+| | `updateProfile`, `updatePassword`, `updateEmail` | 100% | **Added (v1.2.3.1)** | User profile mutation and credential updates. |
+| | `getIdToken` | 100% | **Added (v1.2.3.1)** | Token retrieval with automatic expiry evaluation. |
+| | `deleteUser` & `sendEmailVerification` | 100% | **Hardened (v1.2.3.1)** | Polymorphic invocation accepting User or Auth instances. |
 | | `sendEmailVerification` | 100% | Verified | Out-of-band email flow. |
 | | `applyActionCode` | 100% | Verified | Token redemption flow. |
 | | `sendPasswordResetEmail` | 100% | Verified | Password reset trigger. |
@@ -43,17 +50,26 @@ Designed for browser, mobile, and web client runtimes. Implements the modern Fir
 | | `addDoc` | 100% | **Added** | Added modular `addDoc` convenience method for Firebase v9 parity. |
 | | `getDoc`, `setDoc`, `updateDoc`, `deleteDoc` | 100% | Verified | Full CRUD with optimistic client cache update. |
 | | `query`, `where`, `orderBy`, `limit`, `startAfter` | 100% | Verified | Query constraints builder. |
+| | `limitToLast`, `startAt`, `endAt`, `endBefore` | 100% | **Added (v1.2.3.1)** | Cursor pagination and reverse limit constraints. |
+| | `and()` & `or()` | 100% | **Added (v1.2.3.1)** | Composite logical query constraint operators. |
+| | `Timestamp`, `GeoPoint`, `Bytes` | 100% | **Added (v1.2.3.1)** | High-precision datatypes with nanoseconds and byte buffers. |
+| | `FieldPath` & `documentId()` | 100% | **Added (v1.2.3.1)** | Canonical field referencing and document ID filter sentinel. |
+| | `count()`, `getCountFromServer()`, `getAggregateFromServer()` | 100% | **Added (v1.2.3.1)** | Server-side aggregation queries without full document egress. |
 | | `collectionGroup` | 100% | Verified | Cross-subcollection query support. |
 | | `writeBatch` | 100% | Verified | Atomic batch writes (`commit()`). |
 | | `runTransaction` | 100% | Verified | Optimistic concurrency with exponential backoff on HTTP 409 conflict. |
 | | Field Transforms (`serverTimestamp`, `increment`, etc.) | 100% | Verified | Sentinel values handled by backend. |
 | | `enableIndexedDbPersistence` | 100% | Verified | IndexedDB / memory persistence fallback. |
+| | `enableMultiTabIndexedDbPersistence` | 100% | **Added (v1.2.3.1)** | Multi-tab synchronized offline document cache. |
+| | `initializeFirestore`, `persistentLocalCache`, `memoryLocalCache` | 100% | **Added (v1.2.3.1)** | Fine-grained cache configuration and unlimited cache size options. |
 | **Realtime** | `onSnapshot` | 100% | Verified | Initial REST fetch + WebSocket live updates with unlisten unsubscribe cleanup. |
 | **Storage** | `getStorage`, `ref` | 100% | Verified | Modular storage reference abstraction. |
 | | `uploadBytes` | 100% | **Hardened** | Fixed browser `Buffer is not defined` crash with isomorphic chunked base64 encoder. |
+| | `uploadString` | 100% | **Added (v1.2.3.1)** | Support for `raw`, `base64`, `base64url`, and `data_url` string formats. |
 | | `getDownloadURL` | 100% | Verified | Signed URL retrieval. |
+| | `getBytes` & `getBlob` | 100% | **Added (v1.2.3.1)** | Direct binary download helpers returning ArrayBuffer or Blob. |
 | | `deleteObject` | 100% | **Added** | Implemented missing storage deletion method. |
-| | `listAll` | 100% | **Added** | Implemented prefix-aware object listing. |
+| | `list` & `listAll` | 100% | **Added (v1.2.3.1)** | Paginated directory listing with items and prefixes. |
 
 ---
 
@@ -64,12 +80,16 @@ Designed strictly for trusted server-side environments (Node.js microservices, C
 | Component | Feature / Method | Security Status | Remediations Applied |
 | :--- | :--- | :--- | :--- |
 | **App** | `initializeAdminApp` | Hardened | Runtime browser guardrail throws error if `window` object exists. Strictly validates `sk_live_` secret key prefix. |
+| | `getFirestore(app)`, `getAuth(app)`, `getStorage(app)` | **Added (v1.2.3.1)** | Drop-in modular functional aliases matching Firebase Admin SDK conventions. |
 | **Auth** | `getUser`, `listUsers`, `createUser`, `updateUser`, `deleteUser` | Verified | Full administrative user management. |
+| | `createCustomToken` | **Added (v1.2.3.1)** | Secure minting of custom authentication JWTs with custom claims. |
+| | `generateEmailVerificationLink`, `generatePasswordResetLink`, `generateSignInWithEmailLink` | **Added (v1.2.3.1)** | Out-of-band email action link generators for headless mailers. |
 | | `revokeRefreshTokens` | Verified | Revokes developer and app user refresh tokens immediately. |
 | | `getProjectAuthConfig`, `updateProjectAuthConfig` | Verified | Programmatic auth security controls. |
 | | `verifyIdToken` | **Remediated** | **Major Security Hardening**: Replaced naive JSON parse with `base64url` decoding, mandatory token expiration check (`payload.exp`), user ID presence verification (`uid`/`sub`), and tenant boundary validation (`payload.projectId === options.projectId`). |
 | **Firestore** | `getDoc`, `setDoc`, `deleteDoc`, `queryDocs`, `commitTransaction`, `queryCollectionGroup` | Verified | Privileged database access bypassing security rules. |
 | | `updateDoc` | **Added** | Implemented `updateDoc` PATCH method for developer ergonomics. |
+| | `Timestamp`, `GeoPoint`, `Bytes`, `FieldPath`, `AdminFieldValue` | **Added (v1.2.3.1)** | Full datatypes exported for server-side manipulation. |
 | **Storage** | `AdminStorage` (`getSignedDownloadUrl`, `listObjects`, `deleteObject`) | **Added** | Dedicated administrative storage module created and exported (`@syntrabase/admin-sdk/storage`). |
 | **Rules** | `publishRules` | Verified | Programmatic security rules deployment. |
 | **Audit** | `verifyLedger` | Verified | Cryptographic SHA-256 HMAC hash chain verification. |
