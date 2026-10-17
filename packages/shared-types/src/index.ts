@@ -1016,7 +1016,7 @@ export interface ContactRetentionPolicy {
 }
 
 // -----------------------------------------------------------------------------
-// 20. Comprehensive SDK Parity & Firebase Modular Types (v1.2.5)
+// 20. Comprehensive SDK Parity & Firebase Modular Types (v1.2.6)
 // -----------------------------------------------------------------------------
 
 export type User = AppUser;
@@ -1106,6 +1106,7 @@ export interface QuerySnapshot<T = DocumentData> {
   empty: boolean;
   size: number;
   forEach(callback: (result: QueryDocumentSnapshot<T>) => void): void;
+  [Symbol.iterator]?(): Iterator<QueryDocumentSnapshot<T>>;
 }
 
 export interface SetOptions {
@@ -1157,9 +1158,10 @@ export interface FirebaseOptions {
 }
 
 export interface AdminOptions {
-  apiUrl: string;
-  secretKey: string;
-  projectId: string;
+  apiUrl?: string;
+  secretKey?: string;
+  projectId?: string;
+  credential?: any;
 }
 
 

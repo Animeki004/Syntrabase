@@ -272,6 +272,7 @@ export interface QuerySnapshot<T = DocumentData> {
   empty: boolean;
   size: number;
   forEach(callback: (result: QueryDocumentSnapshot<T>) => void): void;
+  [Symbol.iterator](): Iterator<QueryDocumentSnapshot<T>>;
 }
 
 export interface SetOptions {
@@ -572,6 +573,9 @@ export async function getDocs(queryObj: Query | CollectionReference | Collection
       forEach(callback: (result: QueryDocumentSnapshot) => void): void {
         docs.forEach(callback);
       },
+      [Symbol.iterator](): Iterator<QueryDocumentSnapshot> {
+        return docs[Symbol.iterator]();
+      },
     };
   }
 
@@ -622,6 +626,9 @@ export async function getDocs(queryObj: Query | CollectionReference | Collection
     size: docs.length,
     forEach(callback: (result: QueryDocumentSnapshot) => void): void {
       docs.forEach(callback);
+    },
+    [Symbol.iterator](): Iterator<QueryDocumentSnapshot> {
+      return docs[Symbol.iterator]();
     },
   };
 }
