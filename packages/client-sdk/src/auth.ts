@@ -116,6 +116,37 @@ export async function signOut(auth: Auth): Promise<void> {
   auth.setSession(null, null, null);
 }
 
+export const browserLocalPersistence = 'LOCAL';
+export const browserSessionPersistence = 'SESSION';
+export const inMemoryPersistence = 'NONE';
+
+export async function setPersistence(_auth: Auth, _persistence: string): Promise<void> {
+  // Syntrabase handles session persistence automatically in browser localStorage
+  return Promise.resolve();
+}
+
+export async function signInWithCustomToken(auth: Auth, customToken: string): Promise<{ user: AppUser }> {
+  const url = `${auth.app.options.apiUrl}/api/v1/projects/${auth.app.options.projectId}/auth/custom-token`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': auth.app.options.apiKey,
+      'x-environment-id': auth.app.options.environmentId || 'default',
+    },
+    body: JSON.stringify({ token: customToken }),
+  });
+
+  if (!res.ok) {
+    const errorData = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+    throw new Error(errorData.message || errorData.error || `Custom token sign-in error: ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as { user: AppUser; accessToken: string; refreshToken: string };
+  auth.setSession(data.user, data.accessToken, data.refreshToken);
+  return { user: data.user };
+}
+
 export function onAuthStateChanged(
   auth: Auth,
   callback: (user: AppUser | null) => void

@@ -1,23 +1,31 @@
 export interface FirebaseOptions {
   apiKey: string; // Publishable key (pk_live_...)
   projectId: string;
-  apiUrl: string;
+  apiUrl?: string;
+  apiEndpoint?: string;
   environmentId?: string;
+  realtimeEndpoint?: string;
 }
 
 export class FirebaseApp {
   private static instances = new Map<string, FirebaseApp>();
+  public readonly options: FirebaseOptions & { apiUrl: string };
 
   constructor(
     public readonly name: string,
-    public readonly options: FirebaseOptions
+    rawOptions: FirebaseOptions
   ) {
-    if (options.apiKey?.startsWith('sk_live_')) {
+    if (rawOptions.apiKey?.startsWith('sk_live_')) {
       throw new Error(
         'SECURITY VIOLATION: A server-only privileged secret key (sk_live_...) was passed to the client SDK. ' +
         'Client applications must strictly use publishable keys (pk_live_...).'
       );
     }
+    const cleanApiUrl = (rawOptions.apiUrl || rawOptions.apiEndpoint || 'http://localhost:4000').replace(/\/+$/, '');
+    this.options = {
+      ...rawOptions,
+      apiUrl: cleanApiUrl,
+    };
   }
 
   public static initialize(options: FirebaseOptions, name = '[DEFAULT]'): FirebaseApp {
