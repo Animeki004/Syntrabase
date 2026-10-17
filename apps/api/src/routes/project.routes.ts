@@ -705,6 +705,34 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     }
   });
 
+  // Test-Send Live Email via Dedicated Provider Account
+  server.post('/api/v1/projects/:projectId/email/accounts/:accountId/test-send', async (req, reply) => {
+    const devId = await requireDeveloperId(req);
+    const { projectId, accountId } = req.params as { projectId: string; accountId: string };
+    await ProjectService.assertProjectAccess(devId, projectId);
+
+    const rawId = await ProjectService.resolveProjectId(projectId);
+    const accCheck = await query<{ id: string }>(
+      `SELECT id FROM email_provider_accounts WHERE id = $1 AND (project_id = $2 OR project_id = $3)`,
+      [accountId, projectId, rawId]
+    );
+    if (!accCheck.rows[0]) {
+      return reply.status(404).send({ error: 'Dedicated provider account not found for this project' });
+    }
+
+    const body = (req.body as { toEmail?: string; subject?: string; text?: string }) || {};
+    if (!body?.toEmail) {
+      return reply.status(400).send({ error: 'toEmail is required' });
+    }
+
+    try {
+      const result = await EmailService.sendTestEmailFromAccount(accountId, body.toEmail, body.subject, body.text);
+      return reply.send(result);
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
   // Query Real-Time SMTP Delivery Status from Brevo for Project Outbox Item
   server.post('/api/v1/projects/:projectId/email/logs/:logId/sync-status', async (req, reply) => {
     const devId = await requireDeveloperId(req);

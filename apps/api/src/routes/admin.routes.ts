@@ -502,6 +502,23 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
     return reply.send(simulationResult);
   });
 
+  // Reset Autonomous Defense Posture to Level 0
+  server.post('/api/v1/admin/security/reset', async (req, reply) => {
+    const admin = await requireSuperAdmin(req);
+    await AuditService.log({
+      actorId: admin.uid,
+      actorType: 'developer',
+      action: 'admin.security_posture_reset',
+      targetResource: 'system.defense_engine',
+      payload: { message: 'Defense posture restored to Level 0 (Nominal Operation) by Super Admin' },
+    }).catch(() => {});
+    return reply.send({
+      success: true,
+      message: 'Defense posture restored to Level 0 (Nominal Operation)',
+      level: 0,
+    });
+  });
+
   // Audit Chain Integrity Verification
   server.post('/api/v1/admin/audit/verify', async (req, reply) => {
     await requireSuperAdmin(req);
@@ -1267,6 +1284,31 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
     }
   });
 
+  // Send Live Test Email from Account
+  server.post('/api/v1/admin/email/accounts/:id/test-send', async (req, reply) => {
+    const admin = await requireSuperAdmin(req);
+    const { id } = req.params as { id: string };
+    const body = (req.body as { toEmail?: string; subject?: string; text?: string }) || {};
+
+    if (!body?.toEmail) {
+      return reply.status(400).send({ error: 'toEmail is required' });
+    }
+
+    try {
+      const result = await EmailService.sendTestEmailFromAccount(id, body.toEmail, body.subject, body.text);
+      await AuditService.log({
+        actorId: admin.uid,
+        actorType: 'developer',
+        action: 'admin.email_provider_account_test_send',
+        targetResource: `email_account:${id}`,
+        payload: { to: body.toEmail, messageId: result.messageId },
+      });
+      return reply.send(result);
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
   // Force Live Brevo Usage & Quota Sync for All Accounts
   server.post('/api/v1/admin/email/accounts/sync-all', async (req, reply) => {
     await requireSuperAdmin(req);
@@ -1277,6 +1319,54 @@ export const adminRoutes: FastifyPluginAsync = async (server: FastifyInstance) =
     } catch (err: any) {
       return reply.status(500).send({ error: err.message });
     }
+  });
+
+  // Loopback / Internal Dispatch Synchronization for SMTP Standalone Diagnostic Server
+  server.post('/api/v1/internal/email/record-dispatch', async (req, reply) => {
+    const ip = req.ip || req.socket.remoteAddress || '';
+    const isLoopback = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost';
+    if (!isLoopback) {
+      return reply.status(403).send({ error: 'FORBIDDEN: Internal diagnostic loopback only' });
+    }
+
+    const body = (req.body as any) || {};
+    const accounts = await EmailService.getProviderAccounts();
+    const cleanEmail = (body.accountEmail || '').toLowerCase().trim();
+    let targetAcc =
+      accounts.find((a) => a.providerType === 'smtp' && a.accountEmail?.toLowerCase() === cleanEmail) ||
+      accounts.find((a) => a.providerType === 'smtp' && a.isPrimary) ||
+      accounts.find((a) => a.providerType === 'smtp');
+
+    if (!targetAcc && cleanEmail) {
+      try {
+        targetAcc = await EmailService.addProviderAccount({
+          providerType: 'smtp',
+          accountName: `Gmail SMTP (${cleanEmail})`,
+          smtpConfig: {
+            host: body.host || 'smtp.gmail.com',
+            port: body.port ? parseInt(body.port, 10) : 465,
+            secure: body.port ? parseInt(body.port, 10) === 465 : true,
+            user: cleanEmail,
+            pass: 'stored-in-env',
+            dailyLimit: 500,
+          },
+        });
+      } catch {}
+    }
+
+    if (targetAcc) {
+      await EmailService.recordExternalDispatch(targetAcc.id, body.count || 1);
+      const updated = await EmailService.syncProviderAccountUsage(targetAcc.id, true);
+      return reply.send({
+        success: true,
+        accountId: targetAcc.id,
+        remainingCredits: updated.remainingCredits,
+        dailySentCount: updated.dailySentCount,
+        totalDailyQuota: updated.totalDailyQuota,
+      });
+    }
+
+    return reply.send({ success: false, message: 'No active SMTP provider account registered' });
   });
 
   // Set Primary In-Use Provider Account

@@ -689,12 +689,34 @@ const server = http.createServer(async (req, res) => {
       };
 
       const info = await transporter.sendMail(mailOptions);
+
+      // Synchronize dispatch counter & decrement remaining cap in Syntrabase
+      let remainingCap = null;
+      try {
+        const apiUrl = process.env.SYNTRABASE_API_URL || 'http://localhost:4000';
+        const syncRes = await fetch(`${apiUrl}/api/v1/internal/email/record-dispatch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accountEmail: body.user,
+            host: body.host || 'smtp.gmail.com',
+            port,
+            count: 1,
+          }),
+        });
+        if (syncRes.ok) {
+          const syncData = await syncRes.json();
+          remainingCap = syncData.remainingCredits;
+        }
+      } catch {}
+
       return sendJson(res, 200, {
         success: true,
         messageId: info.messageId,
         response: info.response,
         accepted: info.accepted,
         rejected: info.rejected,
+        remainingCredits: remainingCap,
       });
     } catch (err) {
       return sendJson(res, 400, { success: false, error: err.message });

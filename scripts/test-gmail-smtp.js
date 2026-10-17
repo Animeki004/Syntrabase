@@ -210,6 +210,24 @@ Web Interface:
       console.log(`   Rejected:     ${info.rejected.join(', ')}`);
     }
 
+    try {
+      const apiUrl = process.env.SYNTRABASE_API_URL || 'http://localhost:4000';
+      const syncRes = await fetch(`${apiUrl}/api/v1/internal/email/record-dispatch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountEmail: gmailUser,
+          host: 'smtp.gmail.com',
+          port,
+          count: 1,
+        }),
+      });
+      if (syncRes.ok) {
+        const syncData = await syncRes.json();
+        console.log(`   [SYNTRABASE] Live Quota Decoupling: Cap decremented. Remaining: ${syncData.remainingCredits} credits.`);
+      }
+    } catch {}
+
     console.log('\n=============================================================================');
     console.log('             HOW TO 100% HIDE YOUR ACTUAL GMAIL ADDRESS                      ');
     console.log('=============================================================================');

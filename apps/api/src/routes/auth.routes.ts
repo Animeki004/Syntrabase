@@ -459,9 +459,13 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
         return reply.status(403).send({ error: err.code, message: err.message, provider: err.provider, code: err.code });
       }
       if (err.code === 'EMAIL_NOT_VERIFIED' || err.statusCode === 403) {
-        return reply.status(403).send({ error: 'EMAIL_NOT_VERIFIED', message: err.message });
+        return reply.status(403).send({ error: 'EMAIL_NOT_VERIFIED', message: err.message, code: 'EMAIL_NOT_VERIFIED' });
       }
-      return reply.status(401).send({ error: err.message, code: err.code || 'INVALID_CREDENTIALS' });
+      const clientCode = (err.code && !['EACCES', 'ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', '57P01', 'FST_ERR_CTP_EMPTY_JSON_BODY'].includes(err.code))
+        ? err.code
+        : 'INVALID_CREDENTIALS';
+      const clientMessage = clientCode === 'INVALID_CREDENTIALS' ? 'Invalid email or password' : err.message;
+      return reply.status(401).send({ error: clientMessage, message: clientMessage, code: clientCode });
     }
   });
 

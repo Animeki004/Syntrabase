@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.3] - 2026-10-17
+
+### 🛡️ End-to-End Security Audit, Super Admin Hardening, & Firestore Migration Engine
+
+This release delivers an exhaustive security audit across API gateways, developer console, super admin, and SDK packages, accompanied by critical bug-bounty fixes, session lifecycle hardening, and direct SDK-to-SDK Firestore data migration capabilities.
+
+#### 🐛 Bug Bounty Fixes & Telemetry Enhancements
+1. **SMTP Quota 500-Cap Persistence Fix (`SYN-BUG-001`)**
+   - **Root Cause:** In `EmailService.syncProviderAccountUsage`, telemetry queried `currentAcc.daily_sent_count`. Because in-memory cached provider objects store camelCase `dailySentCount`, this evaluated to `undefined || 0 = 0`, recalculating remaining credits as `500 - 0 = 500` on every background sync cycle and wiping out sent email decrements.
+   - **Remediation:** Coalesced `Number(currentAcc.dailySentCount ?? currentAcc.daily_sent_count ?? 0)` across in-memory models and PostgreSQL queries. Hardened `recordExternalDispatch` to synchronously update in-memory telemetry and persist directly to the database. Updated SMTP test tools to automatically synchronize with `/api/v1/internal/email/record-dispatch`.
+
+2. **Super Admin Telemetry Card Layout Overflow Fix (`SYN-UI-001`)**
+   - **Root Cause:** In `/email` (Global Email Infrastructure), Card 1's inner container padded 18px on top of `.card`'s global 22px padding (88px total width deduction), shrinking usable horizontal space to ~200px and pushing the "Healthy" badge outside the card boundary.
+   - **Remediation:** Added `.has-sections` and `padding: 0` to Card 1, upgraded grid minimum column width to `minmax(320px, 1fr)`, and enforced `flex-shrink: 0` and `white-space: nowrap` for badges and account selector triggers.
+
+3. **Super Admin Session Expiration & Real-Time Eviction (`SYN-SEC-010`)**
+   - **Root Cause:** `SuperAdminShell` previously only evaluated token expiration during a 10-second background poll. Users navigating between pages or returning to an idle tab remained stuck on child screens while child API calls silently threw 401/403 toasts.
+   - **Remediation:** Installed a global `window.fetch` interceptor for all `/api/v1/admin/*` endpoints that aborts expired requests and evicts expired sessions immediately. Added a proactive 2-second heartbeat interval, `focus`, `visibilitychange`, and cross-tab `storage` event listeners. Upgraded `/login` to detect `?reason=session_expired` and render an explicit session alert.
+
+4. **Zero-Trust SOC & Defense Center Synchronization (`SYN-SOC-001`)**
+   - **Remediation:** Connected the "Reset Posture to Level 0" button to a newly provisioned backend endpoint `POST /api/v1/admin/security/reset` with SHA-256 tamper-evident audit logging. Connected Safe Attack Simulations to trigger immediate real-time event log synchronization (`fetchEvents()`). Made defense posture matrices and attack simulation grids responsive using `repeat(auto-fit, minmax(...))`.
+
+5. **Auth Gateway Error Sanitization & Email Enumeration Hardening (`SYN-SEC-011`)**
+   - **Remediation:** Sanitized authentication error handlers in `/api/v1/auth/*` so internal socket errors (e.g., `EACCES`, `ECONNREFUSED`) are never reflected to clients, mapping consistently to `INVALID_CREDENTIALS` to prevent user enumeration and internal topology discovery.
+
+#### 🚀 New Features & SDK Tools
+- **Firestore-to-Syntrabase SDK Migration Utility (`scripts/migrate-firestore-to-syntrabase.cjs`):**
+  - High-performance, schema-preserving, SDK-to-SDK data migration tool.
+  - Automatically discovers Firestore collections, processes documents in batches up to 500, converts complex Firestore datatypes (`Timestamp`, `GeoPoint`, `DocumentReference`, `Bytes`), and supports subcollections.
+  - Includes `--dry-run` and built-in `--test` mode for verification without requiring cloud credentials.
+
+#### 🧪 Verification & Automated Regression Gates
+- **Integration & Security Test Suite:** 117 automated tests executed with **117 passing (100%)**.
+- **Security Assessment Suite:** 37 targeted adversarial security tests passing with **100% clean exit**.
+- **Production TypeScript Compilation:** 0 errors across `apps/api`, `apps/console`, `apps/super-admin`, and all `packages/*`.
+
+---
+
 ## [1.2.2] - 2026-10-16
 
 ### 🛡️ Deep Core Security Engineering & Zero-Mock Platform Hardening Pass

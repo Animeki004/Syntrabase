@@ -1,6 +1,6 @@
 {
   "name": "@syntrabase/api",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": true,
   "type": "module",
   "description": "Fastify Backend API Gateway & Realtime Engine for the Syntrabase platform",
@@ -11,7 +11,8 @@
     "dev": "node --watch dist/apps/api/src/server.js",
     "db:migrate": "node dist/apps/api/src/db/migrate.js",
     "db:seed": "node dist/apps/api/src/db/seed.js",
-    "test:integration": "node --test --test-force-exit dist/apps/api/src/test/api-integration.test.js dist/apps/api/src/test/security-adversarial.test.js dist/apps/api/src/test/security-assessment-verification.test.js dist/apps/api/src/test/realtime-correctness.test.js dist/apps/api/src/test/plan-enforcement.test.js dist/apps/api/src/test/syntrabase-features.test.js dist/apps/api/src/test/auth-engine.test.js dist/apps/api/src/test/project-database.test.js dist/apps/api/src/test/brevo-email-and-contact.test.js dist/apps/api/src/test/user-actions-and-mfa-security.test.js dist/apps/api/src/test/tenant-suspension-and-email-policy.test.js"
+    "test:integration": "node --test --test-force-exit dist/apps/api/src/test/api-integration.test.js dist/apps/api/src/test/security-adversarial.test.js dist/apps/api/src/test/security-assessment-verification.test.js dist/apps/api/src/test/realtime-correctness.test.js dist/apps/api/src/test/plan-enforcement.test.js dist/apps/api/src/test/syntrabase-features.test.js dist/apps/api/src/test/auth-engine.test.js dist/apps/api/src/test/project-database.test.js dist/apps/api/src/test/brevo-email-and-contact.test.js dist/apps/api/src/test/user-actions-and-mfa-security.test.js dist/apps/api/src/test/tenant-suspension-and-email-policy.test.js",
+    "test:security": "node --test --test-force-exit dist/apps/api/src/test/security-adversarial.test.js dist/apps/api/src/test/security-assessment-verification.test.js"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

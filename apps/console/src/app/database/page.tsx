@@ -119,6 +119,82 @@ export default function FirebaseStudioReplicaPage() {
   const [isCreatingDb, setIsCreatingDb] = useState<boolean>(false);
   const [isRefreshingDocs, setIsRefreshingDocs] = useState<boolean>(false);
 
+  // SDK-to-SDK Firestore Migration State
+  const [showMigrationModal, setShowMigrationModal] = useState<boolean>(false);
+  const [migrationFirebaseProject, setMigrationFirebaseProject] = useState<string>('');
+  const [migrationServiceAccount, setMigrationServiceAccount] = useState<string>('');
+  const [migrationCollections, setMigrationCollections] = useState<string>('');
+  const [migrationBatchSize, setMigrationBatchSize] = useState<number>(250);
+  const [migrationDryRun, setMigrationDryRun] = useState<boolean>(false);
+  const [isMigrating, setIsMigrating] = useState<boolean>(false);
+  const [migrationResult, setMigrationResult] = useState<any>(null);
+  const [migrationError, setMigrationError] = useState<string | null>(null);
+
+  const handleExecuteMigration = async (isTestMode = false) => {
+    setIsMigrating(true);
+    setMigrationError(null);
+    setMigrationResult(null);
+
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      let parsedDocs: any[] | undefined = undefined;
+      if (migrationServiceAccount.trim()) {
+        try {
+          const parsed = JSON.parse(migrationServiceAccount.trim());
+          if (Array.isArray(parsed.documents)) {
+            parsedDocs = parsed.documents;
+          }
+        } catch {
+          // non-document JSON format
+        }
+      }
+
+      const bodyPayload = {
+        batchSize: migrationBatchSize,
+        dryRun: migrationDryRun,
+        testMode: isTestMode,
+        collections: migrationCollections
+          ? migrationCollections.split(',').map((s) => s.trim()).filter(Boolean)
+          : undefined,
+        documents: parsedDocs,
+      };
+
+      const res = await fetch(
+        `${API_BASE_URL}/api/v1/projects/${projectId}/databases/${selectedDatabaseId}/migrate/firestore`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(bodyPayload),
+        }
+      );
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Migration failed');
+      }
+
+      setMigrationResult(data);
+      addToast(
+        data.dryRun
+          ? `Dry run successful: ${data.totalDocuments} documents verified`
+          : `Migration successful: ${data.committedDocuments} documents written to ${selectedDatabaseId}`,
+        'success'
+      );
+
+      if (!data.dryRun) {
+        await fetchLiveCollectionsAndDocs();
+      }
+    } catch (err: any) {
+      setMigrationError(err.message || 'Migration encountered an error');
+      addToast(err.message || 'Migration failed', 'error');
+    } finally {
+      setIsMigrating(false);
+    }
+  };
+
   // Composite Indexes state
   interface CompositeIndexItem {
     id: string;
@@ -1625,6 +1701,31 @@ export default function FirebaseStudioReplicaPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={() => {
+              setMigrationResult(null);
+              setMigrationError(null);
+              setShowMigrationModal(true);
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              backgroundColor: 'rgba(59, 130, 246, 0.12)',
+              border: '1px solid rgba(96, 165, 250, 0.35)',
+              borderRadius: '16px',
+              padding: '5px 12px',
+              color: '#93c5fd',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+            title="Import and transfer collections and documents directly from Firebase Firestore into this project"
+          >
+            <Sparkles size={13} color="#60a5fa" />
+            <span>Migrate from Firestore</span>
+          </button>
           <button
             onClick={() => handleCopyPath(getComputedPath())}
             style={{
@@ -3375,6 +3476,233 @@ export default function FirebaseStudioReplicaPage() {
               <option value="Collection Group">Collection Group</option>
             </Select>
           </div>
+        </div>
+      </Modal>
+
+      {/* =======================================================================
+          SDK-TO-SDK FIRESTORE MIGRATION MODAL
+          ======================================================================= */}
+      <Modal
+        isOpen={showMigrationModal}
+        onClose={() => !isMigrating && setShowMigrationModal(false)}
+        title="Firestore to Syntrabase SDK-to-SDK Migration"
+        description="Transfer collections, documents, subcollections, and schema models directly from Google Cloud Firestore into your dedicated project database."
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <button
+              type="button"
+              className="fb-btn-text"
+              onClick={() => handleExecuteMigration(true)}
+              disabled={isMigrating}
+              style={{ color: '#8ab4f8', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              title="Test the migration pipeline with safe synthetic Firestore documents"
+            >
+              <Sparkles size={13} />
+              <span>Test with Sample Data</span>
+            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                className="fb-btn-text"
+                onClick={() => setShowMigrationModal(false)}
+                disabled={isMigrating}
+              >
+                Close
+              </button>
+              <button
+                className="fb-btn-blue-pill"
+                onClick={() => handleExecuteMigration(false)}
+                disabled={isMigrating}
+                style={{
+                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {isMigrating ? (
+                  <>
+                    <RefreshCw size={13} className="animate-spin" />
+                    <span>Migrating Data...</span>
+                  </>
+                ) : (
+                  <>
+                    <Database size={13} />
+                    <span>{migrationDryRun ? 'Run Dry Run' : 'Start Migration'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* Dedicated Project Scope Alert */}
+          <div
+            style={{
+              padding: '10px 12px',
+              borderRadius: '6px',
+              backgroundColor: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+            }}
+          >
+            <ShieldCheck size={18} color="#60a5fa" style={{ flexShrink: 0 }} />
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+              <b>Dedicated Project Bound:</b> Documents will be written exclusively to{' '}
+              <code style={{ color: '#93c5fd' }}>{activeProject.name || activeProject.id}</code> (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px' }}>{projectId}</span>) in database{' '}
+              <code style={{ color: '#93c5fd' }}>{selectedDatabaseId}</code>. Strict multi-tenant isolation is enforced.
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+              Firebase Project ID (Optional)
+            </label>
+            <Input
+              placeholder="e.g. my-firebase-app or leave empty if in service account JSON"
+              value={migrationFirebaseProject}
+              onChange={(e) => setMigrationFirebaseProject(e.target.value)}
+              disabled={isMigrating}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+              Specific Collections to Migrate (Optional)
+            </label>
+            <Input
+              placeholder="e.g. users, products, orders (comma-separated; leave empty for all)"
+              value={migrationCollections}
+              onChange={(e) => setMigrationCollections(e.target.value)}
+              disabled={isMigrating}
+            />
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '3px', display: 'block' }}>
+              Specify collection names separated by commas, or leave blank to migrate all root collections.
+            </span>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+              Firebase Service Account Credentials / Document JSON (Optional)
+            </label>
+            <Textarea
+              placeholder='Paste Firebase service account key JSON or exported document array {"documents": [...]}'
+              value={migrationServiceAccount}
+              onChange={(e) => setMigrationServiceAccount(e.target.value)}
+              rows={4}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: '11px' }}
+              disabled={isMigrating}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'center' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                Batch Commit Size
+              </label>
+              <Input
+                type="number"
+                min={1}
+                max={500}
+                value={String(migrationBatchSize)}
+                onChange={(e) => setMigrationBatchSize(Math.min(500, Math.max(1, parseInt(e.target.value, 10) || 250)))}
+                disabled={isMigrating}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '18px' }}>
+              <input
+                type="checkbox"
+                id="dryRunCheck"
+                checked={migrationDryRun}
+                onChange={(e) => setMigrationDryRun(e.target.checked)}
+                disabled={isMigrating}
+                style={{ cursor: 'pointer' }}
+              />
+              <label htmlFor="dryRunCheck" style={{ fontSize: '12px', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 500 }}>
+                Dry Run Simulation (Verify without writing)
+              </label>
+            </div>
+          </div>
+
+          {/* Migration Progress & Result Card */}
+          {migrationResult && (
+            <div
+              style={{
+                marginTop: '10px',
+                padding: '12px 14px',
+                borderRadius: '6px',
+                backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CheckCircle2 size={16} color="var(--success-text)" />
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--success-text)' }}>
+                  {migrationResult.dryRun ? 'Dry Run Validation Completed' : 'Migration Completed Successfully'}
+                </span>
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                {migrationResult.message}
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '8px',
+                  background: 'var(--bg-surface-subtle)',
+                  padding: '8px 10px',
+                  borderRadius: '4px',
+                  marginTop: '4px',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Collections</div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {migrationResult.collections?.length || 0}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Documents</div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {migrationResult.totalDocuments || 0}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Committed</div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--success-text)' }}>
+                    {migrationResult.committedDocuments || 0}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {migrationError && (
+            <div
+              style={{
+                marginTop: '10px',
+                padding: '12px 14px',
+                borderRadius: '6px',
+                backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                color: 'var(--danger-text)',
+                fontSize: '12px',
+              }}
+            >
+              <XCircle size={16} color="var(--danger-text)" style={{ flexShrink: 0 }} />
+              <span>{migrationError}</span>
+            </div>
+          )}
         </div>
       </Modal>
     </div>

@@ -212,3 +212,42 @@ test('Syntrabase API - Cloud function triggers DELETE endpoint operates with aut
 
   assert.ok([200, 404, 500].includes(res.statusCode));
 });
+
+test('Syntrabase API - Firestore migration endpoint strictly requires developer authentication', async () => {
+  const server = await buildServer();
+  const res = await server.inject({
+    method: 'POST',
+    url: '/api/v1/projects/default-project/databases/(default)/migrate/firestore',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ testMode: true, dryRun: true }),
+  });
+
+  // Without developer auth token, must reject with 401 Unauthorized
+  assert.equal(res.statusCode, 401);
+});
+
+test('Syntrabase API - Firestore migration endpoint validates testMode dry-run and batches', async () => {
+  const server = await buildServer();
+  const res = await server.inject({
+    method: 'POST',
+    url: '/api/v1/projects/default-project/databases/(default)/migrate/firestore',
+    headers: {
+      'content-type': 'application/json',
+      authorization: 'Bearer admin-token',
+    },
+    body: JSON.stringify({ testMode: true, dryRun: true, batchSize: 100 }),
+  });
+
+  // When authorized, returns 200 with dryRun stats (or 500 if DB offline)
+  assert.ok([200, 500].includes(res.statusCode));
+  if (res.statusCode === 200) {
+    const data = JSON.parse(res.body);
+    assert.equal(data.success, true);
+    assert.equal(data.dryRun, true);
+    assert.ok(data.totalDocuments > 0);
+    assert.equal(data.committedDocuments, 0);
+  }
+});
+

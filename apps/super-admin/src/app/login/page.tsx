@@ -17,6 +17,17 @@ export default function SuperAdminLoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('reason') === 'session_expired') {
+        setSessionExpired(true);
+      }
+    }
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -116,6 +127,26 @@ export default function SuperAdminLoginPage() {
         {/* Login Form Card */}
         <Card style={{ backgroundColor: '#13151b', borderColor: '#262933', boxShadow: '0 16px 40px rgba(0,0,0,0.6)' }}>
           <CardContent style={{ padding: '28px 24px' }}>
+            {sessionExpired && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 12px',
+                  borderRadius: '6px',
+                  backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                  color: '#fbbf24',
+                  fontSize: '0.82rem',
+                  marginBottom: '16px',
+                }}
+              >
+                <ShieldCheck size={16} style={{ flexShrink: 0 }} />
+                <span>Your privileged Super Admin session has expired. Please authenticate to resume root command access.</span>
+              </div>
+            )}
+
             {errorMsg && (
               <div
                 style={{

@@ -79,6 +79,28 @@ const ROUTE_TITLES: Record<string, { title: string; subtitle: string }> = {
   '/backups': { title: 'Disaster Recovery', subtitle: 'AES-256-GCM encrypted backups and automated restore verifications' },
 };
 
+function isTokenExpired(token: string | null): boolean {
+  if (!token) return true;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const parsed = JSON.parse(jsonPayload);
+    if (!parsed.exp) return false;
+    // Expire 5 seconds early to prevent edge network race conditions
+    return Date.now() >= (parsed.exp * 1000 - 5000);
+  } catch {
+    return true;
+  }
+}
+
 function ShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -95,12 +117,30 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
+  const handleSessionExpired = React.useCallback(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('super_admin_token');
+      localStorage.removeItem('super_admin_refresh_token');
+      localStorage.removeItem('super_admin_email');
+      localStorage.removeItem('super_admin_user');
+    }
+    router.replace('/login?reason=session_expired');
+  }, [router]);
+
   const fetchTelemetry = async () => {
     try {
       const token = typeof window !== 'undefined' ? (localStorage.getItem('super_admin_token') || '') : '';
+      if (!token || isTokenExpired(token)) {
+        handleSessionExpired();
+        return;
+      }
       const res = await fetch(`${API_BASE}/api/v1/admin/health`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401 || res.status === 403) {
+        handleSessionExpired();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         if (data.hostMemory) {
@@ -118,9 +158,17 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   const fetchNotifications = async () => {
     try {
       const token = typeof window !== 'undefined' ? (localStorage.getItem('super_admin_token') || '') : '';
+      if (!token || isTokenExpired(token)) {
+        handleSessionExpired();
+        return;
+      }
       const res = await fetch(`${API_BASE}/api/v1/admin/notifications?limit=25`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401 || res.status === 403) {
+        handleSessionExpired();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setNotifications(data.notifications || []);
@@ -154,32 +202,103 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     } catch {}
   };
 
+  // Global fetch interceptor for Super Admin privileged API endpoints
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      const url = typeof args[0] === 'string' ? args[0] : (args[0] as Request)?.url || '';
+      // If fetching an internal admin endpoint, verify token isn't already expired
+      if (url.includes('/api/v1/admin')) {
+        const token = localStorage.getItem('super_admin_token');
+        if (!token || isTokenExpired(token)) {
+          handleSessionExpired();
+          return Promise.reject(new Error('Super Admin session expired or revoked'));
+        }
+      }
+
+      const response = await originalFetch(...args);
+
+      if (url.includes('/api/v1/admin') && (response.status === 401 || response.status === 403)) {
+        handleSessionExpired();
+      }
+
+      return response;
+    };
+
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, [handleSessionExpired]);
+
   useEffect(() => {
     if (pathname === '/login') {
       setAuthChecked(true);
       return;
     }
     const token = typeof window !== 'undefined' ? localStorage.getItem('super_admin_token') : null;
-    if (!token) {
-      router.replace('/login');
+    if (!token || isTokenExpired(token)) {
+      handleSessionExpired();
       return;
     }
     const email = localStorage.getItem('super_admin_email') || 'superadmin@syntrabase.internal';
     setAdminEmail(email);
     setAuthChecked(true);
-  }, [pathname, router]);
+  }, [pathname, router, handleSessionExpired]);
+
+  // Proactive fast 2-second session check and window event listeners
+  useEffect(() => {
+    if (!authChecked || pathname === '/login') return;
+
+    const checkInterval = setInterval(() => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('super_admin_token') : null;
+      if (!token || isTokenExpired(token)) {
+        handleSessionExpired();
+      }
+    }, 2000);
+
+    const onVisibilityOrFocus = () => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('super_admin_token') : null;
+      if (!token || isTokenExpired(token)) {
+        handleSessionExpired();
+      }
+    };
+
+    const onStorageChange = (e: StorageEvent) => {
+      if (e.key === 'super_admin_token' && (!e.newValue || isTokenExpired(e.newValue))) {
+        handleSessionExpired();
+      }
+    };
+
+    window.addEventListener('visibilitychange', onVisibilityOrFocus);
+    window.addEventListener('focus', onVisibilityOrFocus);
+    window.addEventListener('storage', onStorageChange);
+
+    return () => {
+      clearInterval(checkInterval);
+      window.removeEventListener('visibilitychange', onVisibilityOrFocus);
+      window.removeEventListener('focus', onVisibilityOrFocus);
+      window.removeEventListener('storage', onStorageChange);
+    };
+  }, [authChecked, pathname, handleSessionExpired]);
 
   useEffect(() => {
     if (authChecked && pathname !== '/login') {
       fetchTelemetry();
       fetchNotifications();
       const interval = setInterval(() => {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('super_admin_token') : null;
+        if (!token || isTokenExpired(token)) {
+          handleSessionExpired();
+          return;
+        }
         fetchTelemetry();
         fetchNotifications();
-      }, 15000);
+      }, 10000);
       return () => clearInterval(interval);
     }
-  }, [authChecked, pathname]);
+  }, [authChecked, pathname, handleSessionExpired]);
 
   if (pathname === '/login') {
     return <>{children}</>;

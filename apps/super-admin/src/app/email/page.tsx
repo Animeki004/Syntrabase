@@ -89,6 +89,13 @@ export default function GlobalEmailControlPage() {
   const [editSmtpDailyLimit, setEditSmtpDailyLimit] = useState(500);
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
 
+  // Test Email Dispatch Modal State
+  const [testSendAccount, setTestSendAccount] = useState<EmailProviderAccount | null>(null);
+  const [testRecipient, setTestRecipient] = useState('');
+  const [testSubject, setTestSubject] = useState('Syntrabase Live Delivery Test');
+  const [testMessage, setTestMessage] = useState('Hello! This is a live email dispatch to verify deliverability and confirm remaining quota decrement.');
+  const [isSendingLiveTest, setIsSendingLiveTest] = useState(false);
+
   // Policy & Global Controls State
   const [policy, setPolicy] = useState<EmailPlatformPolicy>({
     id: 1,
@@ -661,6 +668,42 @@ export default function GlobalEmailControlPage() {
     }
   };
 
+  // Dispatch Live Test Email from Account
+  const handleSendLiveTest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testSendAccount || !testRecipient) {
+      addToast('Recipient email is required', 'error');
+      return;
+    }
+    setIsSendingLiveTest(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/admin/email/accounts/${testSendAccount.id}/test-send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getAdminToken()}`,
+        },
+        body: JSON.stringify({
+          toEmail: testRecipient.trim(),
+          subject: testSubject.trim(),
+          text: testMessage.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        addToast(data.error || 'Failed to dispatch test email', 'error');
+        return;
+      }
+      addToast(`Test email delivered via ${testSendAccount.providerType?.toUpperCase()}! Remaining cap updated to ${data.account?.remainingCredits ?? 'decremented'}.`, 'success');
+      setTestSendAccount(null);
+      await fetchAccounts();
+    } catch (err: any) {
+      addToast(err.message || 'Error transmitting test email', 'error');
+    } finally {
+      setIsSendingLiveTest(false);
+    }
+  };
+
   // Delete Account
   const handleDeleteAccount = async (id: string) => {
     try {
@@ -925,19 +968,19 @@ export default function GlobalEmailControlPage() {
       )}
 
       {/* Top Telemetry Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', alignItems: 'stretch' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', alignItems: 'stretch' }}>
         {/* Card 1: Provider Plan & Dynamic Credits Countdown */}
-        <Card style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '140px' }}>
-          <div style={{ padding: '18px 20px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <Card className="has-sections" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '140px', overflow: 'hidden', padding: 0 }}>
+          <div style={{ padding: '16px 18px 10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
-                  Brevo Live Credits
+                  {activeAccount?.providerType === 'smtp' ? 'SMTP Quota & Cap' : 'Brevo Live Credits'}
                 </span>
                 <button
                   onClick={handleSyncAllBrevo}
                   disabled={isSyncingBrevo}
-                  title="Synchronize Live Credits from Brevo API"
+                  title="Synchronize Live Credits and Usage"
                   style={{
                     background: 'none',
                     border: 'none',
@@ -946,12 +989,34 @@ export default function GlobalEmailControlPage() {
                     color: 'var(--primary)',
                     display: 'inline-flex',
                     alignItems: 'center',
+                    flexShrink: 0,
                   }}
                 >
-                  <RefreshCw size={11} className={isSyncingBrevo ? 'animate-spin' : ''} />
+                  <RefreshCw size={12} className={isSyncingBrevo ? 'animate-spin' : ''} />
                 </button>
+                {activeAccount && (
+                  <button
+                    onClick={() => {
+                      setTestSendAccount(activeAccount);
+                      setTestRecipient(localStorage.getItem('super_admin_email') || 'admin@syntrabase.internal');
+                    }}
+                    title="Send Live Test Email to verify quota decrement"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '2px',
+                      cursor: 'pointer',
+                      color: 'var(--success)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Send size={12} />
+                  </button>
+                )}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginLeft: 'auto' }}>
                 {accounts.length > 1 && (
                   <select
                     value={activeAccount?.id || ''}
@@ -965,7 +1030,7 @@ export default function GlobalEmailControlPage() {
                       color: 'var(--text-primary)',
                       cursor: 'pointer',
                       outline: 'none',
-                      maxWidth: '100px',
+                      maxWidth: '110px',
                       textOverflow: 'ellipsis',
                       overflow: 'hidden',
                       whiteSpace: 'nowrap',
@@ -986,6 +1051,8 @@ export default function GlobalEmailControlPage() {
                     fontSize: '10px',
                     whiteSpace: 'nowrap',
                     flexShrink: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
                     color: !policy.emergencyShutdown && !isQuotaExhausted && !activeAccount?.isPrimary && activeAccount?.status === 'healthy' ? 'var(--success)' : undefined,
                     borderColor: !policy.emergencyShutdown && !isQuotaExhausted && !activeAccount?.isPrimary && activeAccount?.status === 'healthy' ? 'var(--success)' : undefined,
                   }}
@@ -1029,18 +1096,18 @@ export default function GlobalEmailControlPage() {
             </div>
           </div>
 
-          <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: '10px 18px 12px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
             <span>Today: <strong style={{ color: 'var(--text-primary)' }}>{dailyDispatched} sent</strong> / {totalDailyQuota.toLocaleString()} plan limit</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: activeAccount?.providerPlanInfo?.liveFromBrevo ? '#10b981' : '#f59e0b', display: 'inline-block' }} />
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: activeAccount?.providerPlanInfo?.liveFromBrevo || activeAccount?.providerType === 'smtp' ? '#10b981' : '#f59e0b', display: 'inline-block' }} />
               <strong style={{ color: isQuotaExhausted ? 'var(--danger)' : 'var(--text-primary)' }}>{percentUsed}%</strong> used
             </span>
           </div>
         </Card>
 
         {/* Card 2: Outbox Queue Depth */}
-        <Card style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '140px' }}>
-          <div style={{ padding: '18px 20px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <Card className="has-sections" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '140px', overflow: 'hidden', padding: 0 }}>
+          <div style={{ padding: '16px 18px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Outbox Pending
@@ -1058,7 +1125,7 @@ export default function GlobalEmailControlPage() {
               </span>
             </div>
           </div>
-          <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: policy.emergencyShutdown ? 'var(--danger)' : 'var(--text-muted)' }}>
+          <div style={{ padding: '10px 18px 12px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: policy.emergencyShutdown ? 'var(--danger)' : 'var(--text-muted)' }}>
             {policy.emergencyShutdown
               ? 'Dispatch halted by emergency platform shutdown.'
               : `${queueMetrics.queued} queued pending, ${queueMetrics.deferred} deferred retry`}
@@ -1066,8 +1133,8 @@ export default function GlobalEmailControlPage() {
         </Card>
 
         {/* Card 3: Total Sent via Router */}
-        <Card style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '140px' }}>
-          <div style={{ padding: '18px 20px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <Card className="has-sections" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '140px', overflow: 'hidden', padding: 0 }}>
+          <div style={{ padding: '16px 18px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Total Dispatched
@@ -1085,14 +1152,14 @@ export default function GlobalEmailControlPage() {
               </span>
             </div>
           </div>
-          <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+          <div style={{ padding: '10px 18px 12px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
             {queueMetrics.delivered !== undefined && queueMetrics.delivered > 0 ? `${queueMetrics.delivered} verified delivered • ` : ''}{queueMetrics.failed} failed / rejections
           </div>
         </Card>
 
         {/* Card 4: Global Sending State */}
-        <Card style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '140px' }}>
-          <div style={{ padding: '18px 20px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <Card className="has-sections" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '140px', overflow: 'hidden', padding: 0 }}>
+          <div style={{ padding: '16px 18px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Global Gateway
@@ -1110,7 +1177,7 @@ export default function GlobalEmailControlPage() {
               </span>
             </div>
           </div>
-          <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+          <div style={{ padding: '10px 18px 12px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
             Cap: {policy.dailyProjectCap} emails/day/project
           </div>
         </Card>
@@ -1368,6 +1435,18 @@ export default function GlobalEmailControlPage() {
                             title="Verify connection"
                           >
                             <Power size={13} />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setTestSendAccount(acc);
+                              setTestRecipient(localStorage.getItem('super_admin_email') || 'admin@syntrabase.internal');
+                            }}
+                            title="Send Live Test Email via this account"
+                            style={{ color: 'var(--success)' }}
+                          >
+                            <Send size={13} />
                           </Button>
                           <Button
                             variant="outline"
@@ -2894,6 +2973,87 @@ export default function GlobalEmailControlPage() {
             >
               <Zap size={13} style={{ marginRight: '4px' }} />
               {isSyncingCloudflare ? 'Syncing with Cloudflare...' : 'Sync & Authenticate DNS'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Test Email Dispatch Modal */}
+      <Modal
+        isOpen={!!testSendAccount}
+        onClose={() => setTestSendAccount(null)}
+        title={`Send Live Test Email (${testSendAccount?.accountName || ''})`}
+      >
+        <form onSubmit={handleSendLiveTest} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            Dispatch a live test email through <strong>{testSendAccount?.providerType?.toUpperCase()}</strong> to verify connection and observe real-time quota cap decrement.
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+              Recipient Email Address
+            </label>
+            <Input
+              type="email"
+              placeholder="e.g. user@example.com"
+              value={testRecipient}
+              onChange={(e) => setTestRecipient(e.target.value)}
+              required
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+              Subject
+            </label>
+            <Input
+              type="text"
+              value={testSubject}
+              onChange={(e) => setTestSubject(e.target.value)}
+              required
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+              Message
+            </label>
+            <textarea
+              value={testMessage}
+              onChange={(e) => setTestMessage(e.target.value)}
+              rows={3}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: 'var(--bg-surface-subtle)',
+                border: '1px solid var(--border-default)',
+                color: 'var(--text-primary)',
+                fontFamily: 'inherit',
+                fontSize: '0.85rem',
+                outline: 'none',
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={isSendingLiveTest}
+              onClick={() => setTestSendAccount(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              disabled={isSendingLiveTest}
+            >
+              <Send size={13} style={{ marginRight: '6px' }} />
+              {isSendingLiveTest ? 'Transmitting...' : 'Dispatch Live Test'}
             </Button>
           </div>
         </form>

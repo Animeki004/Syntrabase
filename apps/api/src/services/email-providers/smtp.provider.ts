@@ -217,32 +217,47 @@ export class SmtpEmailProvider implements IEmailProviderAdapter {
   /**
    * Retrieves account usage and daily quota allowances.
    */
-  public async getAccountUsage(rawCredentials: string | Record<string, any>): Promise<{
+  public async getAccountUsage(
+    rawCredentials: string | Record<string, any>,
+    currentDailySent = 0
+  ): Promise<{
     credits?: number;
     creditsType?: string;
     planType?: string;
     totalDailyQuota?: number;
     remainingCredits?: number;
+    dailySentCount?: number;
     liveFromSmtp?: boolean;
     lastSyncedAt?: string;
     [key: string]: unknown;
   }> {
     try {
       const config = this.parseConfig(rawCredentials);
+      const totalDailyQuota = config.dailyLimit || 500;
+      const sent = typeof (rawCredentials as any)?.dailySent === 'number'
+        ? (rawCredentials as any).dailySent
+        : (typeof (rawCredentials as any)?.dailySentCount === 'number' ? (rawCredentials as any).dailySentCount : currentDailySent);
+      const remainingCredits = Math.max(0, totalDailyQuota - sent);
       return {
-        credits: config.dailyLimit,
+        credits: remainingCredits,
         creditsType: 'daily_quota',
         planType: 'smtp',
-        totalDailyQuota: config.dailyLimit,
+        totalDailyQuota,
+        remainingCredits,
+        dailySentCount: sent,
         liveFromSmtp: true,
         lastSyncedAt: new Date().toISOString(),
       };
     } catch {
+      const remainingCredits = Math.max(0, 500 - currentDailySent);
       return {
-        credits: 500,
+        credits: remainingCredits,
         creditsType: 'daily_quota',
         planType: 'smtp',
         totalDailyQuota: 500,
+        remainingCredits,
+        dailySentCount: currentDailySent,
+        liveFromSmtp: true,
       };
     }
   }

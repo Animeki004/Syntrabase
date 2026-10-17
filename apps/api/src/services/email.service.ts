@@ -264,12 +264,12 @@ export class EmailService {
     const accountEmail = validation.accountIdentity?.email;
     const companyName = validation.accountIdentity?.companyName;
 
-    // Reject duplicate Brevo API keys or keys belonging to the same underlying Brevo account
-    if (params.providerType === 'brevo' && accountEmail) {
+    // Reject duplicate Brevo/Mock API keys or keys belonging to the same underlying account
+    if ((params.providerType === 'brevo' || params.providerType === 'mock') && accountEmail) {
       try {
         const existingAcc = await query<any>(
-          `SELECT id, account_name, account_email FROM email_provider_accounts WHERE LOWER(account_email) = LOWER($1) AND provider_type = 'brevo' LIMIT 1`,
-          [accountEmail]
+          `SELECT id, account_name, account_email FROM email_provider_accounts WHERE LOWER(account_email) = LOWER($1) AND provider_type = $2 LIMIT 1`,
+          [accountEmail, params.providerType]
         );
         if (existingAcc.rows.length > 0) {
           throw new Error(
@@ -281,7 +281,7 @@ export class EmailService {
           throw err;
         }
         for (const acc of inMemoryProviderAccounts.values()) {
-          if (acc.providerType === 'brevo' && acc.accountEmail?.toLowerCase() === accountEmail.toLowerCase()) {
+          if ((acc.providerType === 'brevo' || acc.providerType === 'mock') && acc.accountEmail?.toLowerCase() === accountEmail.toLowerCase()) {
             throw new Error(
               `Duplicate Brevo account detected: Underlying account identity "${accountEmail}" is already registered (account: "${acc.accountName}"). Multiple keys belonging to the same underlying Brevo account share one quota pool and cannot be counted as independent quota pools.`
             );
@@ -588,8 +588,8 @@ export class EmailService {
 
         // For SMTP and non-Brevo accounts, daily usage is tracked locally via daily_sent_count
         const dailySent = (isSmtp || !isLiveBrevo)
-          ? Number(acc.dailySentCount || 0)
-          : (planInfo.dailySentCount !== undefined ? Number(planInfo.dailySentCount) : Number(acc.dailySentCount || 0));
+          ? Number(acc.dailySentCount ?? acc.daily_sent_count ?? 0)
+          : (planInfo.dailySentCount !== undefined ? Number(planInfo.dailySentCount) : Number(acc.dailySentCount ?? acc.daily_sent_count ?? 0));
 
         const remainingCredits = (isSmtp || !isLiveBrevo)
           ? Math.max(0, totalDailyQuota - dailySent)
@@ -618,8 +618,8 @@ export class EmailService {
           : (planInfo.credits !== undefined ? Number(planInfo.credits) : (isSmtp ? 500 : 300));
 
         const dailySent = (isSmtp || !isLiveBrevo)
-          ? Number(rest.dailySentCount || 0)
-          : (planInfo.dailySentCount !== undefined ? Number(planInfo.dailySentCount) : Number(rest.dailySentCount || 0));
+          ? Number(rest.dailySentCount ?? (rest as any).daily_sent_count ?? 0)
+          : (planInfo.dailySentCount !== undefined ? Number(planInfo.dailySentCount) : Number(rest.dailySentCount ?? (rest as any).daily_sent_count ?? 0));
 
         const remainingCredits = (isSmtp || !isLiveBrevo)
           ? Math.max(0, totalDailyQuota - dailySent)
@@ -791,30 +791,46 @@ export class EmailService {
     }
 
     const adapter = EmailProviderRegistry.getAdapter(providerType);
-    const usage = await adapter.getAccountUsage(apiKey);
+    const currentSent = Number(currentAcc.dailySentCount ?? currentAcc.daily_sent_count ?? 0);
+
+    const usage = await (adapter as any).getAccountUsage(apiKey, currentSent);
     const now = new Date().toISOString();
 
     if (usage && Object.keys(usage).length > 0) {
       const isSmtp = providerType === 'smtp';
-      const dailySent = (isSmtp || !usage.liveFromBrevo)
-        ? Number(currentAcc.daily_sent_count || 0)
-        : (usage.dailySentCount !== undefined ? usage.dailySentCount : Number(currentAcc.daily_sent_count || 0));
+      const effectiveSent = (isSmtp || !usage.liveFromBrevo)
+        ? currentSent
+        : (usage.dailySentCount !== undefined ? usage.dailySentCount : currentSent);
 
       const totalDailyQuota = usage.totalDailyQuota || currentAcc.provider_plan_info?.totalDailyQuota || (isSmtp ? 500 : 300);
       const remaining = (isSmtp || !usage.liveFromBrevo)
-        ? Math.max(0, totalDailyQuota - dailySent)
+        ? Math.max(0, totalDailyQuota - effectiveSent)
         : (usage.remainingCredits ?? (usage.credits !== undefined ? usage.credits : 300));
 
       const newPlanInfo = {
         ...(typeof currentAcc.provider_plan_info === 'object' ? currentAcc.provider_plan_info : {}),
         ...usage,
-        dailySentCount: dailySent,
+        dailySentCount: effectiveSent,
         remainingCredits: remaining,
+        credits: remaining,
         totalDailyQuota,
         lastSyncedAt: now,
       };
 
       const newStatus = remaining === 0 ? 'quota_exhausted' : (currentAcc.status === 'invalid_credentials' ? 'healthy' : currentAcc.status);
+
+      // Always update in-memory record so cache never drifts
+      const memAcc = inMemoryProviderAccounts.get(id);
+      if (memAcc) {
+        memAcc.providerPlanInfo = newPlanInfo;
+        memAcc.dailySentCount = effectiveSent;
+        memAcc.status = newStatus;
+        memAcc.lastHealthCheckAt = now;
+        memAcc.remainingCredits = remaining;
+        memAcc.totalDailyQuota = totalDailyQuota;
+        if (usage.email && typeof usage.email === 'string') memAcc.accountEmail = usage.email;
+        if (usage.companyName && typeof usage.companyName === 'string') memAcc.companyName = usage.companyName;
+      }
 
       try {
         const updateRes = await query<any>(
@@ -836,23 +852,154 @@ export class EmailService {
                      paused_until as "pausedUntil", provider_plan_info as "providerPlanInfo",
                      COALESCE(is_primary, FALSE) as "isPrimary",
                      created_at as "createdAt", updated_at as "updatedAt"`,
-          [JSON.stringify(newPlanInfo), newStatus, dailySent, usage.email || null, usage.companyName || null, now, id]
+          [JSON.stringify(newPlanInfo), newStatus, effectiveSent, usage.email || null, usage.companyName || null, now, id]
         );
-        return updateRes.rows[0];
+        return {
+          ...updateRes.rows[0],
+          totalDailyQuota,
+          dailySentCount: effectiveSent,
+          remainingCredits: remaining,
+        };
       } catch {
-        const memAcc = inMemoryProviderAccounts.get(id);
         if (memAcc) {
-          memAcc.providerPlanInfo = newPlanInfo;
-          memAcc.dailySentCount = dailySent;
-          memAcc.status = newStatus;
-          memAcc.lastHealthCheckAt = now;
-          if (usage.email && typeof usage.email === 'string') memAcc.accountEmail = usage.email;
-          if (usage.companyName && typeof usage.companyName === 'string') memAcc.companyName = usage.companyName;
+          return {
+            ...memAcc,
+            totalDailyQuota,
+            dailySentCount: effectiveSent,
+            remainingCredits: remaining,
+          };
         }
       }
     }
 
     return currentAcc;
+  }
+
+  /**
+   * Atomically records an email dispatch against a provider account, updating counters and decrements remaining credits.
+   */
+  public static async recordExternalDispatch(accountId: string, count = 1): Promise<void> {
+    const memAcc = inMemoryProviderAccounts.get(accountId);
+    if (memAcc) {
+      memAcc.dailySentCount = (memAcc.dailySentCount || 0) + count;
+      memAcc.monthlySentCount = (memAcc.monthlySentCount || 0) + count;
+      const currentPlan: Record<string, any> = (memAcc.providerPlanInfo && typeof memAcc.providerPlanInfo === 'object') ? (memAcc.providerPlanInfo as any) : {};
+      const totalQuota: number = Number(currentPlan.totalDailyQuota) || (memAcc.providerType === 'smtp' ? 500 : 300);
+      const sent: number = Number(memAcc.dailySentCount) || 0;
+      const remaining: number = Math.max(0, totalQuota - sent);
+      memAcc.providerPlanInfo = {
+        ...currentPlan,
+        dailySentCount: sent,
+        remainingCredits: remaining,
+        credits: remaining,
+        totalDailyQuota: totalQuota,
+      };
+      memAcc.remainingCredits = remaining;
+      memAcc.totalDailyQuota = totalQuota;
+    }
+
+    try {
+      await query(
+        `UPDATE email_provider_accounts
+         SET daily_sent_count = daily_sent_count + $1,
+             monthly_sent_count = monthly_sent_count + $1,
+             provider_plan_info = jsonb_set(
+               jsonb_set(
+                 jsonb_set(
+                   COALESCE(provider_plan_info, '{}'::jsonb),
+                   '{dailySentCount}',
+                   to_jsonb(COALESCE((provider_plan_info->>'dailySentCount')::int, 0) + $1)
+                 ),
+                 '{remainingCredits}',
+                 to_jsonb(GREATEST(0, COALESCE((provider_plan_info->>'totalDailyQuota')::int, 500) - (daily_sent_count + $1)))
+               ),
+               '{credits}',
+               to_jsonb(GREATEST(0, COALESCE((provider_plan_info->>'totalDailyQuota')::int, 500) - (daily_sent_count + $1)))
+             ),
+             updated_at = NOW()
+         WHERE id = $2`,
+        [count, accountId]
+      );
+    } catch {
+      // In-memory fallback already executed above
+    }
+  }
+
+  /**
+   * Sends a live test email directly from a provider account to verify SMTP or API delivery and decrement cap.
+   */
+  public static async sendTestEmailFromAccount(
+    accountId: string,
+    toEmail: string,
+    subject?: string,
+    text?: string
+  ): Promise<{ success: boolean; messageId: string; account: EmailProviderAccount }> {
+    let apiKey: string | null = null;
+    let providerType: EmailProviderType = 'smtp';
+    let currentAcc: any = null;
+
+    try {
+      const res = await query<any>(`SELECT * FROM email_provider_accounts WHERE id = $1`, [accountId]);
+      if (res.rows.length === 0) throw new Error('Account not found');
+      currentAcc = res.rows[0];
+      providerType = currentAcc.provider_type;
+      const decrypted = this.decryptCredentials(currentAcc.encrypted_credentials);
+      apiKey = providerType === 'smtp' ? JSON.stringify(decrypted) : (decrypted.apiKey || JSON.stringify(decrypted));
+    } catch (err: any) {
+      if (err.message === 'Account not found') throw err;
+      const acc = inMemoryProviderAccounts.get(accountId);
+      if (!acc) throw new Error('Account not found');
+      apiKey = acc.rawApiKey || 'mock-key';
+      providerType = acc.providerType;
+      currentAcc = acc;
+    }
+
+    if (!apiKey) throw new Error('No API key / credentials available for test dispatch');
+
+    const cleanTo = toEmail.replace(/[\r\n]/g, '').trim();
+    if (!cleanTo || !cleanTo.includes('@')) {
+      throw new Error('Valid recipient email address is required');
+    }
+
+    const adapter = EmailProviderRegistry.getAdapter(providerType);
+    const fromEmail = currentAcc.account_email || currentAcc.accountEmail || 'support@syntrabase.internal';
+    const fromName = currentAcc.company_name || currentAcc.companyName || 'Syntrabase Platform';
+    const mailSubject = subject || 'Syntrabase Live SMTP Delivery Test';
+    const mailText = text || `Hello! This is a live transactional email sent from account "${currentAcc.account_name || currentAcc.accountName}" via ${providerType.toUpperCase()} on Syntrabase.`;
+
+    const sendRes = await adapter.sendEmail(apiKey, {
+      projectId: currentAcc.project_id || currentAcc.projectId || 'platform',
+      toEmail: cleanTo,
+      fromEmail,
+      fromName,
+      subject: mailSubject,
+      text: mailText,
+      html: `<div style="font-family: sans-serif; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 8px;">
+        <h3 style="color: #60a5fa; margin-top: 0;">${mailSubject}</h3>
+        <p>${mailText}</p>
+        <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 12px; color: #94a3b8;">
+          Sent by account: <strong>${currentAcc.account_name || currentAcc.accountName}</strong> (${providerType})<br/>
+          Timestamp: ${new Date().toISOString()}
+        </div>
+      </div>`,
+    });
+
+    if (!sendRes.success) {
+      throw new Error(`Test dispatch failed: ${sendRes.error || sendRes.status}`);
+    }
+
+    // Atomically increment sent count and decrement remaining quota
+    await this.recordExternalDispatch(accountId, 1).catch(() => {});
+
+    // Re-sync usage to get fresh snapshot
+    const updated = await this.syncProviderAccountUsage(accountId, true);
+    await this.logDelivery(currentAcc.project_id || 'platform', cleanTo, 'test', providerType, 'sent');
+
+    return {
+      success: true,
+      messageId: sendRes.messageId || `test-${Date.now()}`,
+      account: updated,
+    };
   }
 
   public static async syncAllProviderAccounts(force = false): Promise<void> {
@@ -1953,21 +2100,9 @@ export class EmailService {
           sentCount++;
           itemDispatched = true;
 
-          // Increment observed usage counters atomically
-          await query(
-            `UPDATE email_provider_accounts
-             SET daily_sent_count = daily_sent_count + 1,
-                 monthly_sent_count = monthly_sent_count + 1,
-                 updated_at = NOW()
-             WHERE id = $1`,
-            [account.id]
-          ).catch(() => {});
-
+          // Increment observed usage counters and decrement remaining cap atomically
+          await this.recordExternalDispatch(account.id, 1).catch(() => {});
           account.dailySentCount = (account.dailySentCount || 0) + 1;
-          const memAcc = inMemoryProviderAccounts.get(account.id);
-          if (memAcc) {
-            memAcc.dailySentCount = (memAcc.dailySentCount || 0) + 1;
-          }
 
           try {
             await query(
