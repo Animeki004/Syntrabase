@@ -141,14 +141,18 @@ export default function FirebaseStudioReplicaPage() {
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       let parsedDocs: any[] | undefined = undefined;
+      let serviceAccountPayload: any = undefined;
+
       if (migrationServiceAccount.trim()) {
         try {
           const parsed = JSON.parse(migrationServiceAccount.trim());
           if (Array.isArray(parsed.documents)) {
             parsedDocs = parsed.documents;
+          } else {
+            serviceAccountPayload = parsed;
           }
         } catch {
-          // non-document JSON format
+          serviceAccountPayload = migrationServiceAccount.trim();
         }
       }
 
@@ -156,6 +160,8 @@ export default function FirebaseStudioReplicaPage() {
         batchSize: migrationBatchSize,
         dryRun: migrationDryRun,
         testMode: isTestMode,
+        firebaseProjectId: migrationFirebaseProject.trim() || undefined,
+        serviceAccount: serviceAccountPayload,
         collections: migrationCollections
           ? migrationCollections.split(',').map((s) => s.trim()).filter(Boolean)
           : undefined,
@@ -3559,10 +3565,10 @@ export default function FirebaseStudioReplicaPage() {
 
           <div>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
-              Firebase Project ID (Optional)
+              Firebase Project ID (Optional — auto-detected from Service Account)
             </label>
             <Input
-              placeholder="e.g. my-firebase-app or leave empty if in service account JSON"
+              placeholder="e.g. stream-admin-319f3 (inferred automatically if service account JSON is provided)"
               value={migrationFirebaseProject}
               onChange={(e) => setMigrationFirebaseProject(e.target.value)}
               disabled={isMigrating}
@@ -3574,28 +3580,31 @@ export default function FirebaseStudioReplicaPage() {
               Specific Collections to Migrate (Optional)
             </label>
             <Input
-              placeholder="e.g. users, products, orders (comma-separated; leave empty for all)"
+              placeholder="e.g. users, products, orders (comma-separated; leave empty for all collections)"
               value={migrationCollections}
               onChange={(e) => setMigrationCollections(e.target.value)}
               disabled={isMigrating}
             />
             <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '3px', display: 'block' }}>
-              Specify collection names separated by commas, or leave blank to migrate all root collections.
+              Specify collection names separated by commas, or leave empty to automatically discover and migrate all root collections.
             </span>
           </div>
 
           <div>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
-              Firebase Service Account Credentials / Document JSON (Optional)
+              Firebase Service Account Key JSON
             </label>
             <Textarea
-              placeholder='Paste Firebase service account key JSON or exported document array {"documents": [...]}'
+              placeholder='Paste full downloaded service account JSON: {"type": "service_account", "project_id": "...", "private_key": "...", ...}'
               value={migrationServiceAccount}
               onChange={(e) => setMigrationServiceAccount(e.target.value)}
-              rows={4}
+              rows={5}
               style={{ fontFamily: 'var(--font-mono)', fontSize: '11px' }}
               disabled={isMigrating}
             />
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '3px', display: 'block' }}>
+              Paste the complete JSON file generated from Firebase Console (Project Settings &rarr; Service accounts &rarr; Generate new private key). Or click "Test with Sample Data" below to test the pipeline without Firebase credentials.
+            </span>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'center' }}>

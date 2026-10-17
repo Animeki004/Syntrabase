@@ -4,6 +4,7 @@ import { buildServer } from '../server.js';
 import { PlanService, PlanLimitError } from '../services/plan.service.js';
 import { DatabaseService } from '../services/database.service.js';
 import { ProjectService } from '../services/project.service.js';
+import { FirestoreImporterService } from '../services/firestore-importer.service.js';
 
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
@@ -115,4 +116,97 @@ test('Project & Database Management - PlanService provides default maxProjects a
   assert.ok(typeof context.limits.maxDatabases === 'number');
   assert.ok(context.limits.maxProjects >= 1);
   assert.ok(context.limits.maxDatabases >= 1);
+});
+
+test('Firestore Importer - decodeFirestoreFields parses typed REST objects to JSON', () => {
+  const firestoreRaw = {
+    title: { stringValue: 'SyntraBase Enterprise' },
+    count: { integerValue: '42' },
+    ratio: { doubleValue: 98.75 },
+    active: { booleanValue: true },
+    empty: { nullValue: null },
+    tags: { arrayValue: { values: [{ stringValue: 'cloud' }, { stringValue: 'realtime' }] } },
+    metadata: {
+      mapValue: {
+        fields: {
+          author: { stringValue: 'Security Team' },
+          version: { stringValue: '1.2.3' },
+        },
+      },
+    },
+    location: {
+      geoPointValue: { latitude: 37.7749, longitude: -122.4194 },
+    },
+  };
+
+  const decoded = FirestoreImporterService.decodeFirestoreFields(firestoreRaw);
+  assert.equal(decoded.title, 'SyntraBase Enterprise');
+  assert.equal(decoded.count, 42);
+  assert.equal(decoded.ratio, 98.75);
+  assert.equal(decoded.active, true);
+  assert.equal(decoded.empty, null);
+  assert.deepEqual(decoded.tags, ['cloud', 'realtime']);
+  assert.deepEqual(decoded.metadata, { author: 'Security Team', version: '1.2.3' });
+  assert.deepEqual(decoded.location, { _type: 'GeoPoint', latitude: 37.7749, longitude: -122.4194 });
+});
+
+test('Firestore Migration Endpoint - Rejects requests with no migration source', async () => {
+  const server = await buildServer();
+  const res = await server.inject({
+    method: 'POST',
+    url: '/api/v1/projects/default-project/databases/(default)/migrate/firestore',
+    headers: authHeaders,
+    payload: {},
+  });
+
+  assert.equal(res.statusCode, 400);
+  const data = JSON.parse(res.body);
+  assert.equal(data.error, 'NO_MIGRATION_SOURCE');
+});
+
+test('Firestore Migration Endpoint - Gracefully catches truncated/malformed service account key', async () => {
+  const server = await buildServer();
+  const res = await server.inject({
+    method: 'POST',
+    url: '/api/v1/projects/default-project/databases/(default)/migrate/firestore',
+    headers: authHeaders,
+    payload: {
+      serviceAccount: {
+        type: 'service_account',
+        project_id: 'test-firebase-proj',
+        client_email: 'test@test-firebase-proj.iam.gserviceaccount.com',
+        private_key: '-----BEGIN PRIVATE KEY-----\nNOT_A_VALID_OR_TRUNCATED_KEY\n-----END PRIVATE KEY-----\n',
+      },
+    },
+  });
+
+  assert.equal(res.statusCode, 400);
+  const data = JSON.parse(res.body);
+  assert.equal(data.error, 'FIRESTORE_IMPORT_ERROR');
+  assert.ok(data.message.includes('INVALID_SERVICE_ACCOUNT_KEY'));
+});
+
+test('Firestore Migration Endpoint - Test mode dryRun simulates and validates sample documents', async () => {
+  const server = await buildServer();
+  const res = await server.inject({
+    method: 'POST',
+    url: '/api/v1/projects/default-project/databases/(default)/migrate/firestore',
+    headers: authHeaders,
+    payload: {
+      testMode: true,
+      batchSize: 50,
+      dryRun: true,
+    },
+  });
+
+  assert.equal(res.statusCode, 200);
+  const data = JSON.parse(res.body);
+  assert.equal(data.success, true);
+  assert.equal(data.dryRun, true);
+  assert.equal(data.testMode, true);
+  assert.ok(data.totalDocuments >= 4);
+  assert.equal(data.committedDocuments, 0); // 0 written in dry-run
+  assert.ok(data.collections.includes('users'));
+  assert.ok(data.collections.includes('products'));
+  assert.ok(data.message.includes('Dry run validated'));
 });

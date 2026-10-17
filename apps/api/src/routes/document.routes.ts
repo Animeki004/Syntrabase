@@ -16,6 +16,7 @@ import {
 } from '@syntrabase/schemas';
 import { TokenPayload, QueryFilter } from '@syntrabase/shared-types';
 import { ProjectService } from '../services/project.service.js';
+import { FirestoreImporterService } from '../services/firestore-importer.service.js';
 
 export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance) => {
   // Canonicalize any :projectId parameter and x-environment-id to valid UUIDs before hitting database handlers
@@ -564,6 +565,8 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
       batchSize: z.number().int().min(1).max(500).optional().default(250),
       dryRun: z.boolean().optional().default(false),
       testMode: z.boolean().optional().default(false),
+      firebaseProjectId: z.string().optional(),
+      serviceAccount: z.union([z.string(), z.record(z.any())]).optional(),
       collections: z.array(z.string()).optional(),
       documents: z.array(
         z.object({
@@ -577,7 +580,59 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
     const body = MigrationSchema.parse(req.body || {});
     const startTime = Date.now();
 
-    let targetDocs = body.documents || [];
+    let targetDocs: Array<{ collectionPath: string; documentId: string; data: Record<string, any> }> = body.documents ? [...body.documents] : [];
+    let discoveredCollections: string[] = [];
+
+    // If service account is provided, fetch live collections and documents directly from Google Cloud Firestore
+    if (body.serviceAccount) {
+      let creds: any = body.serviceAccount;
+      if (typeof creds === 'string') {
+        try {
+          creds = JSON.parse(creds);
+        } catch (err: any) {
+          return reply.status(400).send({
+            success: false,
+            error: 'INVALID_SERVICE_ACCOUNT_JSON',
+            message: `Could not parse service account JSON: ${err.message}`,
+          });
+        }
+      }
+
+      const gcpProjectId = body.firebaseProjectId || creds.project_id;
+      if (!gcpProjectId) {
+        return reply.status(400).send({
+          success: false,
+          error: 'MISSING_PROJECT_ID',
+          message: 'Firebase project ID was not found in the service account JSON or request body.',
+        });
+      }
+
+      try {
+        const accessToken = await FirestoreImporterService.getAccessToken({
+          project_id: gcpProjectId,
+          client_email: creds.client_email,
+          private_key: creds.private_key,
+        });
+
+        // Determine collections to fetch: explicitly provided or auto-discovered
+        let collectionsToFetch = body.collections && body.collections.length > 0 ? body.collections : [];
+        if (collectionsToFetch.length === 0) {
+          collectionsToFetch = await FirestoreImporterService.listCollections(gcpProjectId, accessToken);
+        }
+        discoveredCollections = collectionsToFetch;
+
+        for (const col of collectionsToFetch) {
+          const docs = await FirestoreImporterService.fetchCollectionDocs(gcpProjectId, col, accessToken);
+          targetDocs.push(...docs);
+        }
+      } catch (err: any) {
+        return reply.status(400).send({
+          success: false,
+          error: 'FIRESTORE_IMPORT_ERROR',
+          message: err.message,
+        });
+      }
+    }
 
     // If running in test mode with no explicit docs, provide verified test dataset
     if (body.testMode && targetDocs.length === 0) {
@@ -603,6 +658,15 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
           data: { maintenanceMode: false, version: '1.2.3', migratedAt: new Date().toISOString() },
         },
       ];
+    }
+
+    // If user provided no source at all, provide helpful guidance
+    if (targetDocs.length === 0 && !body.serviceAccount && !body.testMode) {
+      return reply.status(400).send({
+        success: false,
+        error: 'NO_MIGRATION_SOURCE',
+        message: 'No data source provided. Please provide a Firebase Service Account key JSON, an exported documents array, or enable Test Mode.',
+      });
     }
 
     if (body.collections && body.collections.length > 0) {
@@ -648,18 +712,27 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
       );
     } catch {}
 
+    const reportedCollections = uniqueCollections.length > 0 ? uniqueCollections : discoveredCollections;
+
+    let responseMessage: string;
+    if (body.dryRun) {
+      responseMessage = `Dry run validated ${targetDocs.length} documents across ${reportedCollections.length} collections (no changes written).`;
+    } else if (targetDocs.length === 0 && body.serviceAccount) {
+      responseMessage = `Connected to Firebase successfully. Found 0 documents in the specified/discovered collections (${reportedCollections.join(', ') || 'none'}).`;
+    } else {
+      responseMessage = `Successfully migrated ${targetDocs.length} documents across ${reportedCollections.length} collections directly into project database.`;
+    }
+
     return reply.send({
       success: true,
       dryRun: body.dryRun,
       testMode: body.testMode,
-      collections: uniqueCollections,
+      collections: reportedCollections,
       totalDocuments: targetDocs.length,
       committedDocuments: body.dryRun ? 0 : targetDocs.length,
       batchesCommitted: body.dryRun ? 0 : Math.ceil(targetDocs.length / body.batchSize),
       durationMs: Date.now() - startTime,
-      message: body.dryRun
-        ? `Dry run validated ${targetDocs.length} documents across ${uniqueCollections.length} collections (no changes written).`
-        : `Successfully migrated ${targetDocs.length} documents across ${uniqueCollections.length} collections directly into project database.`,
+      message: responseMessage,
     });
   });
 };
