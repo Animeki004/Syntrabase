@@ -196,3 +196,85 @@ test('Admin SDK - Drop-in modular compatibility (initializeApp, getApp, getApps,
   const storage = getStorage(app);
   assert.ok(storage);
 });
+
+test('Admin SDK - Drop-in default export `admin` with namespaced APIs', async () => {
+  const admin = (await import('../index.js')).default;
+  assert.ok(admin);
+  assert.equal(typeof admin.initializeApp, 'function');
+  assert.equal(typeof admin.firestore, 'function');
+  assert.equal(typeof admin.auth, 'function');
+  assert.equal(typeof admin.storage, 'function');
+  assert.equal(typeof admin.credential.cert, 'function');
+
+  // Test credential.cert with JSON object
+  const cred = admin.credential.cert({
+    projectId: 'test-project-cert',
+    secretKey: 'sk_live_cert_secret_key_1234567890',
+    apiUrl: 'http://localhost:4000',
+  });
+  assert.ok(cred);
+  assert.equal(cred.projectId, 'test-project-cert');
+
+  // Test admin.initializeApp({ credential })
+  const app = admin.initializeApp({ credential: cred });
+  assert.ok(app);
+  assert.equal(app.options.projectId, 'test-project-cert');
+
+  // Test zero-arg admin.firestore() and admin.auth()
+  const db = admin.firestore();
+  assert.ok(db);
+  assert.equal(typeof db.collection, 'function');
+  assert.equal(typeof db.doc, 'function');
+
+  const auth = admin.auth();
+  assert.ok(auth);
+  assert.equal(typeof auth.verifyIdToken, 'function');
+
+  // Test static firestore namespaces
+  assert.ok(admin.firestore.Timestamp);
+  assert.ok(admin.firestore.FieldValue);
+  assert.ok(admin.firestore.GeoPoint);
+});
+
+test('Admin SDK - DocumentSnapshot and QuerySnapshot contract compatibility', async () => {
+  const { DocumentSnapshot, QueryDocumentSnapshot, QuerySnapshot } = await import('../index.js');
+
+  const mockRef: any = { id: 'user_doc_1', path: 'users/user_doc_1' };
+
+  // 1. Existing DocumentSnapshot
+  const existingDoc = new DocumentSnapshot(mockRef, {
+    id: 'user_doc_1',
+    data: { name: 'Alice', maxDevices: 3, profile: { role: 'admin' } },
+  });
+  assert.equal(existingDoc.exists, true);
+  assert.equal(existingDoc.id, 'user_doc_1');
+  assert.deepEqual(existingDoc.data(), { name: 'Alice', maxDevices: 3, profile: { role: 'admin' } });
+  assert.equal(existingDoc.get('profile.role'), 'admin');
+
+  // 2. Non-existent DocumentSnapshot (404)
+  const missingDoc = new DocumentSnapshot(mockRef, null);
+  assert.equal(missingDoc.exists, false);
+  assert.equal(missingDoc.id, 'user_doc_1');
+  assert.equal(missingDoc.data(), undefined);
+
+  // 3. QuerySnapshot
+  const qdoc1 = new QueryDocumentSnapshot(mockRef, { id: 'doc1', data: { title: 'Movie 1' } });
+  const qdoc2 = new QueryDocumentSnapshot(mockRef, { id: 'doc2', data: { title: 'Movie 2' } });
+  const qsnap = new QuerySnapshot([qdoc1, qdoc2]);
+
+  assert.equal(qsnap.empty, false);
+  assert.equal(qsnap.size, 2);
+  assert.equal(qsnap.docs.length, 2);
+
+  // Array accessors
+  assert.deepEqual(qsnap.docs.map(d => d.id), ['doc1', 'doc2']);
+  assert.deepEqual(qsnap.map(d => d.data().title), ['Movie 1', 'Movie 2']);
+
+  let count = 0;
+  qsnap.forEach((doc) => {
+    assert.ok(doc.id);
+    assert.ok(doc.data().title);
+    count++;
+  });
+  assert.equal(count, 2);
+});

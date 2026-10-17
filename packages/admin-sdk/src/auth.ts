@@ -14,31 +14,65 @@ export class AdminAuth {
     };
   }
 
-  public async getUser(uid: string): Promise<AppUser | null> {
+  private _decorateUser<T extends Partial<AppUser>>(user: T): T & {
+    uid: string;
+    metadata: { creationTime: string; lastSignInTime?: string };
+  } {
+    if (!user) return user as any;
+    const creationTime = (user as any).createdAt
+      ? (typeof (user as any).createdAt === 'number' ? new Date((user as any).createdAt).toISOString() : String((user as any).createdAt))
+      : new Date().toISOString();
+    const lastSignInTime = (user as any).lastLoginAt
+      ? (typeof (user as any).lastLoginAt === 'number' ? new Date((user as any).lastLoginAt).toISOString() : String((user as any).lastLoginAt))
+      : undefined;
+
+    return {
+      ...user,
+      uid: (user as any).uid || (user as any).id,
+      metadata: {
+        creationTime,
+        lastSignInTime,
+      },
+    };
+  }
+
+  public async getUser(uid: string): Promise<(AppUser & { uid: string; metadata: { creationTime: string; lastSignInTime?: string } }) | null> {
     const list = await this.listUsers({ search: uid, limit: 1 });
-    return list.users.find((u) => u.id === uid) || null;
+    const user = list.users.find((u) => u.id === uid || u.uid === uid) || null;
+    return user ? this._decorateUser(user) : null;
   }
 
-  public async getUserByEmail(email: string): Promise<AppUser | null> {
+  public async getUserByEmail(email: string): Promise<(AppUser & { uid: string; metadata: { creationTime: string; lastSignInTime?: string } }) | null> {
     const list = await this.listUsers({ search: email.trim().toLowerCase(), limit: 5 });
-    return list.users.find((u) => u.email?.toLowerCase() === email.trim().toLowerCase()) || null;
+    const user = list.users.find((u) => u.email?.toLowerCase() === email.trim().toLowerCase()) || null;
+    return user ? this._decorateUser(user) : null;
   }
 
-  public async listUsers(options: { page?: number; limit?: number; search?: string } = {}): Promise<{
-    users: AppUser[];
+  public async listUsers(
+    optionsOrLimit?: number | { page?: number; limit?: number; maxResults?: number; search?: string }
+  ): Promise<{
+    users: (AppUser & { uid: string; metadata: { creationTime: string; lastSignInTime?: string } })[];
     total: number;
     page: number;
     limit: number;
+    pageToken?: string;
   }> {
+    const options = typeof optionsOrLimit === 'number' ? { limit: optionsOrLimit } : (optionsOrLimit || {});
+    const limit = options.limit || options.maxResults;
     const params = new URLSearchParams();
     if (options.page) params.set('page', options.page.toString());
-    if (options.limit) params.set('limit', options.limit.toString());
+    if (limit) params.set('limit', limit.toString());
     if (options.search) params.set('search', options.search);
 
     const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/auth/users?${params.toString()}`;
     const res = await fetch(url, { method: 'GET', headers: this.getHeaders() });
     if (!res.ok) throw new Error(`Admin listUsers failed: ${res.statusText}`);
-    return (await res.json()) as { users: AppUser[]; total: number; page: number; limit: number };
+    const data = (await res.json()) as { users: AppUser[]; total: number; page: number; limit: number };
+    const decoratedUsers = (data.users || []).map((u) => this._decorateUser(u));
+    return {
+      ...data,
+      users: decoratedUsers,
+    };
   }
 
   public async createUser(data: {
@@ -48,7 +82,7 @@ export class AdminAuth {
     phoneNumber?: string;
     emailVerified?: boolean;
     disabled?: boolean;
-  }): Promise<AppUser> {
+  }): Promise<AppUser & { uid: string; metadata: { creationTime: string; lastSignInTime?: string } }> {
     const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/auth/users`;
     const res = await fetch(url, {
       method: 'POST',
@@ -60,7 +94,7 @@ export class AdminAuth {
       throw new Error(err.error || `Admin createUser failed: ${res.statusText}`);
     }
     const result = (await res.json()) as { user: AppUser };
-    return result.user;
+    return this._decorateUser(result.user);
   }
 
   public async updateUser(
@@ -74,7 +108,7 @@ export class AdminAuth {
       password?: string;
       customClaims?: Record<string, unknown>;
     }
-  ): Promise<AppUser> {
+  ): Promise<AppUser & { uid: string; metadata: { creationTime: string; lastSignInTime?: string } }> {
     const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/auth/users/${uid}`;
     const res = await fetch(url, {
       method: 'PATCH',
@@ -86,7 +120,7 @@ export class AdminAuth {
       throw new Error(err.error || `Admin updateUser failed: ${res.statusText}`);
     }
     const result = (await res.json()) as { user: AppUser };
-    return result.user;
+    return this._decorateUser(result.user);
   }
 
   public async deleteUser(uid: string): Promise<void> {
@@ -334,8 +368,8 @@ export class AdminAuth {
   }
 }
 
-export function getAdminAuth(app: AdminApp): AdminAuth {
-  return new AdminAuth(app);
+export function getAdminAuth(app?: AdminApp): AdminAuth {
+  return new AdminAuth(app || AdminApp.getInstance());
 }
 
 export const getAuth = getAdminAuth;

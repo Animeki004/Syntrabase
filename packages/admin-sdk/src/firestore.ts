@@ -1,7 +1,7 @@
 import { AdminApp } from './app.js';
 import {
   DocumentData,
-  DocumentSnapshot,
+  DocumentSnapshot as SharedDocumentSnapshot,
   QueryFilter,
   QueryOrderBy,
   TransactionPrecondition,
@@ -168,6 +168,79 @@ export class FieldPath {
 
 export const documentId = () => FieldPath.documentId();
 
+export class DocumentSnapshot<T = DocumentData> {
+  constructor(
+    public readonly ref: AdminDocumentReference,
+    private readonly _raw: { id: string; data?: T; [key: string]: any } | null
+  ) {}
+
+  public get id(): string {
+    return this._raw?.id || this.ref.id;
+  }
+
+  public get exists(): boolean {
+    return this._raw !== null && this._raw !== undefined;
+  }
+
+  public data(): T | undefined {
+    if (!this.exists) return undefined;
+    if (this._raw && this._raw.data !== undefined) {
+      return this._raw.data as T;
+    }
+    return this._raw as unknown as T;
+  }
+
+  public get(fieldPath: string): any {
+    const d = this.data();
+    if (!d || typeof d !== 'object') return undefined;
+    const parts = fieldPath.split('.');
+    let cur: any = d;
+    for (const part of parts) {
+      if (cur == null) return undefined;
+      cur = cur[part];
+    }
+    return cur;
+  }
+}
+
+export class QueryDocumentSnapshot<T = DocumentData> extends DocumentSnapshot<T> {
+  override data(): T {
+    return (super.data() || {}) as T;
+  }
+}
+
+export class QuerySnapshot<T = DocumentData> {
+  constructor(public readonly docs: QueryDocumentSnapshot<T>[]) {}
+
+  public get empty(): boolean {
+    return this.docs.length === 0;
+  }
+
+  public get size(): number {
+    return this.docs.length;
+  }
+
+  public get length(): number {
+    return this.docs.length;
+  }
+
+  public forEach(callback: (result: QueryDocumentSnapshot<T>, index: number) => void, thisArg?: any): void {
+    this.docs.forEach(callback, thisArg);
+  }
+
+  public map<U>(callback: (doc: QueryDocumentSnapshot<T>, index: number, array: QueryDocumentSnapshot<T>[]) => U): U[] {
+    return this.docs.map(callback);
+  }
+
+  public filter(predicate: (doc: QueryDocumentSnapshot<T>, index: number, array: QueryDocumentSnapshot<T>[]) => boolean): QueryDocumentSnapshot<T>[] {
+    return this.docs.filter(predicate);
+  }
+
+  public [Symbol.iterator](): Iterator<QueryDocumentSnapshot<T>> {
+    return this.docs[Symbol.iterator]();
+  }
+}
+
 export class AdminQuery {
   constructor(
     public readonly firestore: AdminFirestore,
@@ -193,8 +266,8 @@ export class AdminQuery {
   public count(): { get(): Promise<{ data(): { count: number } }> } {
     return {
       get: async () => {
-        const docs = await this.get();
-        return { data: () => ({ count: docs.length }) };
+        const snap = await this.get();
+        return { data: () => ({ count: snap.docs.length }) };
       },
     };
   }
@@ -232,14 +305,19 @@ export class AdminQuery {
     );
   }
 
-  public async get(): Promise<DocumentSnapshot[]> {
-    return this.firestore.queryDocs({
+  public async get(): Promise<QuerySnapshot> {
+    const rawDocs = await this.firestore.queryDocs({
       collectionPath: this.collectionPath,
       filters: this.filters,
       orderBy: this.orderBys,
       limit: this.limitCount,
       startAfter: this.startAfterId,
     });
+    const docSnapshots = rawDocs.map((raw) => {
+      const docRef = new AdminDocumentReference(this.firestore, `${this.collectionPath}/${raw.id}`, raw.id);
+      return new QueryDocumentSnapshot(docRef, raw);
+    });
+    return new QuerySnapshot(docSnapshots);
   }
 }
 
@@ -257,25 +335,28 @@ export class AdminDocumentReference {
     );
   }
 
-  public async get(): Promise<DocumentSnapshot | null> {
+  public async get(): Promise<DocumentSnapshot> {
     const parts = this.path.split('/');
     const docId = parts.pop()!;
     const colPath = parts.join('/');
-    return this.firestore.getDoc(colPath, docId);
+    const raw = await this.firestore.getDocRaw(colPath, docId);
+    return new DocumentSnapshot(this, raw);
   }
 
   public async set(data: DocumentData, options: { merge?: boolean } = {}): Promise<DocumentSnapshot> {
     const parts = this.path.split('/');
     const docId = parts.pop()!;
     const colPath = parts.join('/');
-    return this.firestore.setDoc(colPath, docId, data, options.merge || false);
+    const raw = await this.firestore.setDocRaw(colPath, docId, data, options.merge || false);
+    return new DocumentSnapshot(this, raw);
   }
 
   public async update(data: DocumentData): Promise<DocumentSnapshot> {
     const parts = this.path.split('/');
     const docId = parts.pop()!;
     const colPath = parts.join('/');
-    return this.firestore.updateDoc(colPath, docId, data);
+    const raw = await this.firestore.updateDocRaw(colPath, docId, data);
+    return new DocumentSnapshot(this, raw);
   }
 
   public async delete(): Promise<void> {
@@ -303,8 +384,8 @@ export class AdminCollectionReference {
     return docRef;
   }
 
-  public async get(): Promise<DocumentSnapshot[]> {
-    return this.firestore.queryDocs({ collectionPath: this.path });
+  public async get(): Promise<QuerySnapshot> {
+    return new AdminQuery(this.firestore, this.path).get();
   }
 
   public where(field: string, operator: any, value: any): AdminQuery {
@@ -341,7 +422,7 @@ export class AdminFirestore {
     };
   }
 
-  public async getDoc(collectionPath: string, documentId: string): Promise<DocumentSnapshot | null> {
+  public async getDocRaw(collectionPath: string, documentId: string): Promise<any | null> {
     const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/databases/(default)/documents/${collectionPath}/${documentId}`;
     const res = await fetch(url, { method: 'GET', headers: this.getHeaders() });
     if (res.status === 404) return null;
@@ -349,10 +430,16 @@ export class AdminFirestore {
       const err = (await res.json().catch(() => ({}))) as { error?: string };
       throw new Error(err.error || `Admin getDoc failed: ${res.statusText}`);
     }
-    return (await res.json()) as DocumentSnapshot;
+    return (await res.json());
   }
 
-  public async setDoc(collectionPath: string, documentId: string, data: DocumentData, merge = false): Promise<DocumentSnapshot> {
+  public async getDoc(collectionPath: string, documentId: string): Promise<DocumentSnapshot> {
+    const raw = await this.getDocRaw(collectionPath, documentId);
+    const docRef = new AdminDocumentReference(this, `${collectionPath}/${documentId}`, documentId);
+    return new DocumentSnapshot(docRef, raw);
+  }
+
+  public async setDocRaw(collectionPath: string, documentId: string, data: DocumentData, merge = false): Promise<any> {
     const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/databases/(default)/documents/${collectionPath}/${documentId}`;
     const res = await fetch(url, {
       method: 'POST',
@@ -363,10 +450,16 @@ export class AdminFirestore {
       const err = (await res.json().catch(() => ({}))) as { error?: string };
       throw new Error(err.error || `Admin setDoc failed: ${res.statusText}`);
     }
-    return (await res.json()) as DocumentSnapshot;
+    return (await res.json());
   }
 
-  public async updateDoc(collectionPath: string, documentId: string, data: DocumentData): Promise<DocumentSnapshot> {
+  public async setDoc(collectionPath: string, documentId: string, data: DocumentData, merge = false): Promise<DocumentSnapshot> {
+    const raw = await this.setDocRaw(collectionPath, documentId, data, merge);
+    const docRef = new AdminDocumentReference(this, `${collectionPath}/${documentId}`, documentId);
+    return new DocumentSnapshot(docRef, raw);
+  }
+
+  public async updateDocRaw(collectionPath: string, documentId: string, data: DocumentData): Promise<any> {
     const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/databases/(default)/documents/${collectionPath}/${documentId}`;
     const res = await fetch(url, {
       method: 'PATCH',
@@ -377,7 +470,13 @@ export class AdminFirestore {
       const err = (await res.json().catch(() => ({}))) as { error?: string };
       throw new Error(err.error || `Admin updateDoc failed: ${res.statusText}`);
     }
-    return (await res.json()) as DocumentSnapshot;
+    return (await res.json());
+  }
+
+  public async updateDoc(collectionPath: string, documentId: string, data: DocumentData): Promise<DocumentSnapshot> {
+    const raw = await this.updateDocRaw(collectionPath, documentId, data);
+    const docRef = new AdminDocumentReference(this, `${collectionPath}/${documentId}`, documentId);
+    return new DocumentSnapshot(docRef, raw);
   }
 
   public async deleteDoc(collectionPath: string, documentId: string): Promise<void> {
@@ -395,7 +494,7 @@ export class AdminFirestore {
     orderBy?: QueryOrderBy[];
     limit?: number;
     startAfter?: string;
-  }): Promise<DocumentSnapshot[]> {
+  }): Promise<SharedDocumentSnapshot[]> {
     const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/databases/(default)/query`;
     const res = await fetch(url, {
       method: 'POST',
@@ -412,7 +511,7 @@ export class AdminFirestore {
       const err = (await res.json().catch(() => ({}))) as { error?: string };
       throw new Error(err.error || `Admin queryDocs failed: ${res.statusText}`);
     }
-    const result = (await res.json()) as { documents: DocumentSnapshot[] };
+    const result = (await res.json()) as { documents: SharedDocumentSnapshot[] };
     return result.documents;
   }
 
@@ -436,7 +535,7 @@ export class AdminFirestore {
   public async queryCollectionGroup(
     collectionId: string,
     options: { limit?: number; offset?: number } = {}
-  ): Promise<DocumentSnapshot[]> {
+  ): Promise<SharedDocumentSnapshot[]> {
     const params = new URLSearchParams();
     if (options.limit) params.set('limit', String(options.limit));
     if (options.offset) params.set('offset', String(options.offset));
@@ -447,7 +546,7 @@ export class AdminFirestore {
       const err = (await res.json().catch(() => ({}))) as { error?: string };
       throw new Error(err.error || `Admin queryCollectionGroup failed: ${res.statusText}`);
     }
-    const result = (await res.json()) as { documents: DocumentSnapshot[] };
+    const result = (await res.json()) as { documents: SharedDocumentSnapshot[] };
     return result.documents;
   }
 
@@ -506,8 +605,8 @@ export class AdminFirestore {
   }
 }
 
-export function getAdminFirestore(app: AdminApp): AdminFirestore {
-  return new AdminFirestore(app);
+export function getAdminFirestore(app?: AdminApp): AdminFirestore {
+  return new AdminFirestore(app || AdminApp.getInstance());
 }
 
 export const getFirestore = getAdminFirestore;
@@ -515,5 +614,5 @@ export type Firestore = AdminFirestore;
 export type DocumentReference = AdminDocumentReference;
 export type CollectionReference = AdminCollectionReference;
 export type Query = AdminQuery;
-export type { DocumentData, DocumentSnapshot, SetOptions } from '@syntrabase/shared-types';
+export type { DocumentData, SetOptions } from '@syntrabase/shared-types';
 
