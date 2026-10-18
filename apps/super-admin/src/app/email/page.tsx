@@ -972,8 +972,8 @@ export default function GlobalEmailControlPage() {
         </div>
       )}
 
-      {/* Top Telemetry Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px', alignItems: 'stretch' }}>
+      {/* Top Telemetry Cards - Exactly 4 in a single row on desktop */}
+      <div className="grid-4" style={{ alignItems: 'stretch', marginBottom: '20px' }}>
         {/* Card 1: Provider Plan & Dynamic Credits Countdown */}
         <Card className="has-sections" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '140px', overflow: 'hidden', padding: 0 }}>
           <div style={{ padding: '16px 18px 10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>

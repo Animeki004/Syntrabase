@@ -95,40 +95,45 @@ export class UrlUtil {
    * 4. Inferred dynamically from request host (e.g. security@yourdomain.com)
    */
   public static async resolvePlatformSender(req?: FastifyRequest | any): Promise<{ email: string; name: string }> {
-    let email = process.env.SYSTEM_FROM_EMAIL || process.env.DEFAULT_FROM_EMAIL || '';
-    let name = process.env.SYSTEM_FROM_NAME || 'Platform Security';
-
-    if (email) {
-      return { email, name };
-    }
+    let email = '';
+    let name = '';
 
     try {
       // 1. Strictly look up platform-scoped authorized senders (Super Admin configured)
       const senderRes = await query<{ email_address: string; display_name: string }>(
         `SELECT email_address, display_name FROM authorized_sender_identities
-         WHERE project_id = 'platform' AND status = 'active'
-         ORDER BY created_at DESC LIMIT 1`
+         WHERE (project_id = 'platform' OR project_id IS NULL) AND status = 'active'
+         ORDER BY is_default DESC, created_at DESC LIMIT 1`
       );
       if (senderRes.rows[0]?.email_address) {
         email = senderRes.rows[0].email_address;
-        if (senderRes.rows[0].display_name) name = senderRes.rows[0].display_name;
+        name = senderRes.rows[0].display_name || 'Platform Security';
         return { email, name };
       }
 
-      // 2. Fallback to platform-scoped provider account (Super Admin Brevo/SMTP account owner)
-      const accRes = await query<{ account_email: string }>(
-        `SELECT account_email FROM email_provider_accounts
+      // 2. Look up platform-scoped provider account (Super Admin Brevo/SMTP account owner)
+      const accRes = await query<{ account_email: string; account_name: string }>(
+        `SELECT account_email, account_name FROM email_provider_accounts
          WHERE (project_id = 'platform' OR project_id IS NULL)
-           AND is_enabled = TRUE AND status = 'healthy' AND account_email IS NOT NULL
+           AND is_enabled = TRUE AND status = 'healthy' AND account_email IS NOT NULL AND account_email != ''
          ORDER BY is_primary DESC, created_at DESC LIMIT 1`
       );
       if (accRes.rows[0]?.account_email) {
         email = accRes.rows[0].account_email;
+        name = accRes.rows[0].account_name || 'Platform Security';
         return { email, name };
       }
     } catch {}
 
-    if (!email && req) {
+    // 3. Fallback to environment variables if no database sender is configured
+    email = process.env.SYSTEM_FROM_EMAIL || process.env.DEFAULT_FROM_EMAIL || '';
+    name = process.env.SYSTEM_FROM_NAME || 'Platform Security';
+
+    if (email) {
+      return { email, name };
+    }
+
+    if (req) {
       const host = (req.headers?.['x-forwarded-host'] as string) || req.headers?.host || '';
       const cleanHost = host.replace(/:\d+$/, '').replace(/^api\./, '');
       if (cleanHost && !cleanHost.includes('localhost') && cleanHost.includes('.')) {

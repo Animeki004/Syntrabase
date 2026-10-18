@@ -66,9 +66,13 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
         }
         if (payload.projectId === projectId || payload.isPlatformAdmin || payload.projectId === 'platform') {
           authUser = { uid: payload.uid, email: payload.email, token: payload.claims };
-          // Super Admin has global bypass
+          // Super Admin has global bypass only if verified in PostgreSQL
           if (payload.isPlatformAdmin) {
-            return;
+            const isVerifiedAdmin = await AuthService.isSuperAdmin(payload.uid).catch(() => false);
+            if (isVerifiedAdmin) {
+              return;
+            }
+            throw new Error('FORBIDDEN: Server-side check rejected — user is not an active platform administrator');
           }
           // Console developer must have verified project access to manage documents administratively
           if (payload.projectId === 'platform') {

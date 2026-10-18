@@ -799,7 +799,7 @@ document.getElementById('btn-run-all-tests')?.addEventListener('click', async ()
 
   log('================================================================', 'info');
   log(`Starting Syntrabase Client SDK Automated Verification Suite [${modeBadge}]...`, 'info');
-  log(`Engine: @syntrabase/client-sdk v1.2.1 | API: ${currentAppInstance.options.apiUrl}`, 'info');
+  log(`Engine: @syntrabase/client-sdk v1.2.7 | API: ${currentAppInstance.options.apiUrl}`, 'info');
   log('================================================================', 'info');
 
   let passedCount = 0;
@@ -1406,13 +1406,36 @@ document.getElementById('btn-rt-unsubscribe')?.addEventListener('click', () => {
 
 document.getElementById('btn-rt-trigger-update')?.addEventListener('click', () => {
   const payloadEl = document.getElementById('rt-last-payload');
-  payloadEl.textContent = `Remote Mutation Broadcast at ${new Date().toLocaleTimeString()}: { "price": ${(100 + Math.random() * 50).toFixed(2)}, "bidder": "usr_bob" }`;
+  payloadEl.textContent = `Remote Mutation Broadcast at ${new Date().toLocaleTimeString()}: { "title": "Hamrawit 2026", "rating": ${(4.5 + Math.random() * 0.5).toFixed(1)}, "activeViewers": ${Math.floor(1200 + Math.random() * 300)} }`;
   log(`[Actual SDK] Remote snapshot event dispatched through WebSocket channel!`, 'success');
 });
 
 // Storage Playground (Powered by Actual SDK uploadBytes & getDownloadURL)
+let lastPlaygroundUploadTime = 0;
 document.getElementById('btn-st-upload')?.addEventListener('click', async () => {
+  const now = Date.now();
+  if (now - lastPlaygroundUploadTime < 5000) {
+    const remaining = Math.ceil((5000 - (now - lastPlaygroundUploadTime)) / 1000);
+    log(`[Security Guardrail] Rate limit throttle: Please wait ${remaining}s before uploading again.`, 'warn');
+    return;
+  }
+
   const path = document.getElementById('st-object-path').value.trim() || 'demo.txt';
+
+  // Anti-traversal security check
+  if (path.includes('..') || path.startsWith('/') || path.startsWith('\\')) {
+    log(`[Security Guardrail] Upload rejected: Path traversal sequences and leading slashes are prohibited.`, 'error');
+    return;
+  }
+
+  // Executable extension filter
+  const forbiddenExts = /\.(exe|dll|bat|cmd|sh|ps1|vbs|jar|com|scr|pif|msi|app|apk)$/i;
+  if (forbiddenExts.test(path)) {
+    log(`[Security Guardrail] Upload rejected: Script and executable files are blocked for security.`, 'error');
+    return;
+  }
+
+  lastPlaygroundUploadTime = now;
   log(`[Actual SDK: uploadBytes] Uploading file to "${path}"...`, 'info');
   try {
     const fileRef = ref(currentStorageInstance, path);

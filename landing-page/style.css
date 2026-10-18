@@ -235,12 +235,13 @@ body {
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.35);
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .glass-card:hover {
   border-color: var(--card-border-hover);
+  box-shadow: 0 12px 32px -4px rgba(99, 102, 241, 0.16);
 }
 
 /* ========================================================================= */
@@ -978,16 +979,20 @@ body[data-theme="light"] .mobile-nav-link:hover {
 }
 
 .pillar-card {
-  padding: 28px 24px;
+  padding: 30px 26px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  transition: transform 0.25s ease, border-color 0.25s ease;
+  gap: 14px;
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.7) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
 .pillar-card:hover {
   transform: translateY(-3px);
   border-color: rgba(99, 102, 241, 0.45);
+  box-shadow: 0 12px 30px -8px rgba(99, 102, 241, 0.2);
 }
 
 .pillar-icon-box {

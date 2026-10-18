@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Syntrabase SDK — The Self-Hosted, Open-Source Firebase Alternative Built on PostgreSQL 16</title>
-  <meta name="description" content="Syntrabase SDK: Modular, tree-shakeable client and privileged admin SDKs for PostgreSQL 16 JSONB. Drop-in Firebase v9/v10 API compatibility, FIDO2 WebAuthn passkeys, visual TOTP MFA, realtime WebSockets, and predictable $5/mo fixed hosting.">
+  <meta name="description" content="Syntrabase SDK: Modular, tree-shakeable client and privileged admin SDKs for PostgreSQL 16 JSONB. Drop-in Firebase v9/v10 API compatibility, FIDO2 WebAuthn passkeys, visual TOTP MFA, realtime WebSockets, and predictable sovereign cloud hosting.">
   <meta name="keywords" content="Syntrabase, Firebase alternative, PostgreSQL 16 JSONB, self-hosted backend, client SDK, admin SDK, WebAuthn passkeys, TOTP MFA, Coolify, Docker, open source">
   
   <link rel="canonical" href="https://animeki004.github.io/Syntrabase/">
@@ -14,7 +14,7 @@
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://animeki004.github.io/Syntrabase/">
   <meta property="og:title" content="Syntrabase SDK — Open-Source Firebase Alternative on PostgreSQL 16">
-  <meta property="og:description" content="Drop-in Firebase v9/v10 API compatibility powered by PostgreSQL 16 JSONB. Zero vendor lock-in, fixed $5/mo hosting, WebAuthn passkeys & TOTP MFA.">
+  <meta property="og:description" content="Drop-in Firebase v9/v10 API compatibility powered by PostgreSQL 16 JSONB. Zero vendor lock-in, predictable hosting, WebAuthn passkeys & TOTP MFA.">
   <meta property="og:image" content="./assets/syntrabase-banner.jpg">
 
   <!-- Twitter Meta -->
@@ -45,7 +45,7 @@
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         </div>
         <span class="logo-title">Syntrabase</span>
-        <span class="version-tag">v1.2.3</span>
+        <span class="version-tag">v1.2.7</span>
       </div>
 
       <!-- Navigation Links -->
@@ -88,7 +88,7 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
           </div>
           <span class="logo-title">Syntrabase</span>
-          <span class="version-tag">v1.2.3</span>
+          <span class="version-tag">v1.2.7</span>
         </div>
         <button id="btn-mobile-close" class="btn-icon" aria-label="Close menu">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -135,7 +135,7 @@
       <!-- Announcement Pill -->
       <div class="hero-announcement-wrap">
         <div class="hero-pill">
-          <span class="pill-badge">v1.2.3 Released</span>
+          <span class="pill-badge">v1.2.7 Released</span>
           <span class="pill-text">Security Audit Pass, Direct Firestore SDK-to-SDK Migration & Real-Time SOC Defense</span>
           <a href="#doc-security-audit-center" class="pill-arrow" id="hero-passkeys-link">View Advisory →</a>
         </div>
@@ -148,7 +148,7 @@
           <span class="text-gradient">Firebase Alternative</span> Built for Production
         </h1>
         <p class="hero-subtitle">
-          Enjoy the exact modular Firestore, Auth, Storage, and Realtime developer workflow you love—backed entirely by an authoritative <strong>PostgreSQL 16 JSONB</strong> foundation you control. Predictable $5/mo fixed hosting, zero proprietary vendor lock-in, and enterprise-grade Argon2id, WebAuthn & TOTP security.
+          Enjoy the exact modular Firestore, Auth, Storage, and Realtime developer workflow you love—backed entirely by an authoritative <strong>PostgreSQL 16 JSONB</strong> foundation you control. Predictable sovereign cloud hosting, zero proprietary vendor lock-in, and enterprise-grade Argon2id, WebAuthn & TOTP security.
         </p>
 
         <!-- Quick Install Command Blocks -->
@@ -266,28 +266,28 @@ console.log(<span class="str">'Hardware Passkey bound:'</span>, passkey.credenti
 <span class="kw">const</span> db = getFirestore(app);
 
 <span class="cmt">// 1. Set Document with Atomic Server Timestamp</span>
-<span class="kw">await</span> setDoc(doc(db, <span class="str">'orders'</span>, <span class="str">'order_789'</span>), {
-  customer: <span class="str">'Alice Cooper'</span>,
-  total: 129.50,
-  status: <span class="str">'paid'</span>,
+<span class="kw">await</span> setDoc(doc(db, <span class="str">'movies'</span>, <span class="str">'movie_789'</span>), {
+  title: <span class="str">'Hamrawit 2026'</span>,
+  rating: 4.8,
+  status: <span class="str">'released'</span>,
   createdAt: serverTimestamp() <span class="cmt">// Syntrabase replaces sentinel atomically</span>
 });
 
 <span class="cmt">// 2. PostgreSQL GIN Index-Accelerated Query</span>
 <span class="kw">const</span> q = query(
-  collection(db, <span class="str">'orders'</span>),
-  where(<span class="str">'status'</span>, <span class="str">'=='</span>, <span class="str">'paid'</span>),
-  orderBy(<span class="str">'total'</span>, <span class="str">'desc'</span>),
+  collection(db, <span class="str">'movies'</span>),
+  where(<span class="str">'status'</span>, <span class="str">'=='</span>, <span class="str">'released'</span>),
+  orderBy(<span class="str">'rating'</span>, <span class="str">'desc'</span>),
   limit(20)
 );
 
 <span class="cmt">// 3. Optimistic ACID Transaction with Auto-Rollback</span>
 <span class="kw">await</span> runTransaction(db, <span class="kw">async</span> (txn) => {
-  <span class="kw">const</span> invDoc = <span class="kw">await</span> txn.get(doc(db, <span class="str">'inventory'</span>, <span class="str">'laptop_pro'</span>));
-  <span class="kw">if</span> (invDoc.data().stock <= 0) <span class="kw">throw new</span> Error(<span class="str">'Item out of stock'</span>);
+  <span class="kw">const</span> showDoc = <span class="kw">await</span> txn.get(doc(db, <span class="str">'screenings'</span>, <span class="str">'screening_pro'</span>));
+  <span class="kw">if</span> (showDoc.data().availableSeats <= 0) <span class="kw">throw new</span> Error(<span class="str">'Screening sold out'</span>);
 
-  txn.update(doc(db, <span class="str">'inventory'</span>, <span class="str">'laptop_pro'</span>), {
-    stock: increment(-1)
+  txn.update(doc(db, <span class="str">'screenings'</span>, <span class="str">'screening_pro'</span>), {
+    availableSeats: increment(-1)
   });
 });</code></pre>
           </div>
@@ -297,14 +297,14 @@ console.log(<span class="str">'Hardware Passkey bound:'</span>, passkey.credenti
             <pre><code><span class="kw">import</span> { getFirestore, doc, onSnapshot } <span class="kw">from</span> <span class="str">'@syntrabase/client-sdk'</span>;
 
 <span class="kw">const</span> db = getFirestore(app);
-<span class="kw">const</span> docRef = doc(db, <span class="str">'live_auctions'</span>, <span class="str">'auction_item_42'</span>);
+<span class="kw">const</span> docRef = doc(db, <span class="str">'live_streams'</span>, <span class="str">'stream_channel_42'</span>);
 
 <span class="cmt">// Subscribe to instantaneous WebSocket document updates</span>
 <span class="cmt">// Enforces token-first handshake and multi-tenant project isolation</span>
 <span class="kw">const</span> unsubscribe = onSnapshot(docRef, (snapshot) => {
   <span class="kw">const</span> data = snapshot.data();
-  console.log(<span class="str">'Live Bid Received in &lt;10ms:'</span>, data.highestBid, data.bidder);
-  updatePriceDisplay(data.highestBid);
+  console.log(<span class="str">'Live Stream Viewers Received in &lt;10ms:'</span>, data.activeViewers, data.channel);
+  updateViewerDisplay(data.activeViewers);
 });
 
 <span class="cmt">// Cleanly tear down subscription when unmounting view</span>
@@ -416,8 +416,8 @@ console.log(<span class="str">'Audit Chain Intact:'</span>, ledgerStatus.valid);
             <div class="pillar-icon-box">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             </div>
-            <h3>Predictable $5/mo Fixed Cost</h3>
-            <p>1-Click deployment via Coolify or Docker. Serve 10M+ reads and writes on a $5/mo VPS instead of facing unbounded $10,000+ surprise cloud bills.</p>
+            <h3>Predictable Sovereign Hosting</h3>
+            <p>1-Click deployment via Coolify or Docker. Scale to 10M+ operations on your sovereign infrastructure without pay-per-read billing surprises.</p>
           </div>
         </div>
       </div>
@@ -433,7 +433,7 @@ console.log(<span class="str">'Audit Chain Intact:'</span>, ledgerStatus.valid);
       
       <!-- Documentation Main Section Header -->
       <div class="docs-header-banner text-center">
-        <span class="doc-badge badge-blue">Official Documentation • v1.2.1</span>
+        <span class="doc-badge badge-blue">Official Documentation • v1.2.7</span>
         <h1 class="section-title">Complete SDK Guides & API Reference</h1>
         <p class="section-subtitle">Drop-in Firebase v9/v10 syntax, enterprise FIDO2 WebAuthn passkeys, visual TOTP QR MFA, and PostgreSQL 16 JSONB primitives.</p>
       </div>
@@ -540,13 +540,13 @@ console.log(<span class="str">'Audit Chain Intact:'</span>, ledgerStatus.valid);
           <div class="doc-callout callout-info">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
             <div>
-              <strong>Predictable $5/Month Fixed Infrastructure:</strong> Run your entire SaaS (Auth, Firestore, Storage, Realtime) on a single $5/mo VPS with 10M+ operations instead of risking unbounded $10,000+ cloud bills.
+              <strong>Predictable Sovereign Infrastructure:</strong> Run your entire SaaS (Auth, Firestore, Storage, Realtime) with 10M+ operations without risking unbounded pay-per-read cloud bills.
             </div>
           </div>
           <p>The Syntrabase ecosystem consists of two first-class SDK packages:</p>
           <ul class="doc-list">
-            <li><strong><code>@syntrabase/client-sdk@^1.2.1</code></strong>: Tree-shakeable, modular client library for browsers and mobile applications matching Firebase v9/v10 functional syntax.</li>
-            <li><strong><code>@syntrabase/admin-sdk@^1.2.1</code></strong>: Privileged Node.js server library using master <code>sk_live_...</code> keys for backend microservices, Next.js server actions, and background workers.</li>
+            <li><strong><code>@syntrabase/client-sdk@^1.2.7</code></strong>: Tree-shakeable, modular client library for browsers and mobile applications matching Firebase v9/v10 functional syntax.</li>
+            <li><strong><code>@syntrabase/admin-sdk@^1.2.7</code></strong>: Privileged Node.js server library using master <code>sk_live_...</code> keys for backend microservices, Next.js server actions, and background workers.</li>
           </ul>
         </div>
 
@@ -556,14 +556,14 @@ console.log(<span class="str">'Audit Chain Intact:'</span>, ledgerStatus.valid);
           <h2 class="doc-title">Installation & Package Ecosystem</h2>
           <p>Install the modular client SDK in your web application (Next.js, Vite, React, Vue, Svelte, or Vanilla JS):</p>
           <div class="code-box" data-filename="terminal.sh">
-            <pre><code>npm install @syntrabase/client-sdk@^1.2.1</code></pre>
-            <button class="btn-copy-code" data-copy="npm install @syntrabase/client-sdk@^1.2.1">Copy</button>
+            <pre><code>npm install @syntrabase/client-sdk@^1.2.7</code></pre>
+            <button class="btn-copy-code" data-copy="npm install @syntrabase/client-sdk@^1.2.7">Copy</button>
           </div>
 
           <p>For Node.js backend servers, server actions, or administrative microservices, install the admin SDK:</p>
           <div class="code-box" data-filename="terminal.sh">
-            <pre><code>npm install @syntrabase/admin-sdk@^1.2.1</code></pre>
-            <button class="btn-copy-code" data-copy="npm install @syntrabase/admin-sdk@^1.2.1">Copy</button>
+            <pre><code>npm install @syntrabase/admin-sdk@^1.2.7</code></pre>
+            <button class="btn-copy-code" data-copy="npm install @syntrabase/admin-sdk@^1.2.7">Copy</button>
           </div>
         </div>
 
@@ -787,10 +787,10 @@ await deleteDoc(doc(db, 'notes', 'custom_id_1'));</code></pre>
 const db = getFirestore(app);
 
 const q = query(
-  collection(db, 'products'),
-  where('category', '==', 'electronics'),
-  where('price', '<=', 500),
-  orderBy('price', 'desc'),
+  collection(db, 'movies'),
+  where('genres', '==', 'Thriller'),
+  where('rating', '>=', 4.5),
+  orderBy('rating', 'desc'),
   limit(25)
 );
 
@@ -851,20 +851,20 @@ await updateDoc(doc(db, 'analytics', 'page_views'), {
 
 const db = getFirestore(app);
 
-// 1. ACID Transaction (E-Commerce Stock Purchase)
+// 1. ACID Transaction (Seat Reservation / Content Allocation)
 await runTransaction(db, async (txn) => {
-  const productDoc = await txn.get(doc(db, 'inventory', 'laptop_x1'));
-  if (productDoc.data().stock <= 0) {
-    throw new Error('Item out of stock');
+  const showDoc = await txn.get(doc(db, 'screenings', 'screening_x1'));
+  if (showDoc.data().availableSeats <= 0) {
+    throw new Error('Screening sold out');
   }
 
-  // Atomically decrement stock and record order
-  txn.update(doc(db, 'inventory', 'laptop_x1'), {
-    stock: increment(-1)
+  // Atomically decrement seats and record reservation
+  txn.update(doc(db, 'screenings', 'screening_x1'), {
+    availableSeats: increment(-1)
   });
-  txn.set(doc(db, 'orders', 'order_5502'), {
-    itemId: 'laptop_x1',
-    status: 'paid'
+  txn.set(doc(db, 'reservations', 'res_5502'), {
+    screeningId: 'screening_x1',
+    status: 'confirmed'
   });
 });
 
@@ -888,13 +888,13 @@ await batch.commit();</code></pre>
             <pre><code>import { getFirestore, doc, onSnapshot } from '@syntrabase/client-sdk';
 
 const db = getFirestore(app);
-const liveDocRef = doc(db, 'live_auctions', 'item_101');
+const liveDocRef = doc(db, 'live_streams', 'stream_101');
 
 // Listen to sub-10ms change events
 const unsubscribe = onSnapshot(liveDocRef, (snapshot) => {
   const data = snapshot.data();
-  console.log('Instantaneous Bid Update:', data.currentPrice, data.topBidder);
-  renderLiveAuctionPrice(data.currentPrice);
+  console.log('Instantaneous Stream Update:', data.viewerCount, data.streamStatus);
+  renderLiveViewerCount(data.viewerCount);
 });
 
 // Cleanly disconnect WebSocket subscription on view unmount
@@ -1140,24 +1140,24 @@ npm run test:unit --workspace=@syntrabase/admin-sdk">Copy</button>
         <!-- Doc 21: Release Readiness & Platform Changelog -->
         <div class="doc-block" id="doc-release">
           <div class="doc-badge badge-emerald">Release Verification & Changelog</div>
-          <h2 class="doc-title">Release & Platform Changelog (v1.2.3 & SDK v1.2.6)</h2>
+          <h2 class="doc-title">Release & Platform Changelog (v1.2.7 & SDK v1.2.7)</h2>
           <p>
-            Syntrabase v1.2.3 platform and SDK v1.2.6 are fully verified for production deployments with 43/43 security audits passing, 100% Firebase Admin/Client drop-in parity, and zero open vulnerabilities.
+            Syntrabase v1.2.7 platform and SDK v1.2.7 are fully verified for enterprise production deployments with 43/43 security audits passing, 100% Firebase Admin/Client drop-in parity, and zero open vulnerabilities.
           </p>
           
           <div class="callout callout-info" style="margin: 18px 0; padding: 16px 20px; background: rgba(37, 99, 235, 0.08); border-left: 4px solid #2563eb; border-radius: 8px;">
-            <strong style="color: #60a5fa; font-size: 14px;">SDK v1.2.6 Highlights & Drop-In Parity:</strong>
+            <strong style="color: #60a5fa; font-size: 14px;">SDK v1.2.7 Highlights & Drop-In Parity:</strong>
             <ul style="margin: 8px 0 0 16px; font-size: 13px; color: var(--text-muted); line-height: 1.6;">
+              <li><strong>Standard 20-Character Auto IDs:</strong> Matches Firebase 20-character cryptographically secure base62 document identifiers (e.g., <code>0dfZdeHBcIAUxeG7ttyi</code>) with zero prefix anomalies.</li>
+              <li><strong>Instant Realtime Cache Reactivity:</strong> Local mutation broadcasts synchronize instantaneously with onSnapshot subscribers, maintaining zero latency on updates.</li>
+              <li><strong>Privilege Escalation Defense:</strong> Server-side <code>AuthService.isSuperAdmin()</code> PostgreSQL validation rejects forged claims and enforces absolute tenant boundaries.</li>
+              <li><strong>Upload Security & Anti-Spam:</strong> Multi-layer upload protection with 60 ops/min rate limiting, path traversal validation (<code>..</code> and leading slash guards), and forbidden executable extension blocking.</li>
+              <li><strong>Authoritative SMTP Sender Resolution:</strong> Platform email infrastructure automatically prioritizes administrator-configured DB sender identities before environment fallbacks.</li>
               <li><strong>Firebase Admin Drop-in Namespace:</strong> <code>import admin from '@syntrabase/admin-sdk'</code> with <code>admin.initializeApp({ credential: admin.credential.cert(...) })</code>, <code>admin.firestore()</code>, and <code>admin.auth()</code>.</li>
               <li><strong>Document & Query Snapshot Parity:</strong> <code>DocumentSnapshot</code> with boolean <code>.exists</code>, method <code>.data()</code>, <code>.id</code>, and <code>QuerySnapshot</code> with <code>.docs</code>, <code>.forEach()</code>, and <code>for..of</code> iteration.</li>
-              <li><strong>Auth Server Management:</strong> <code>admin.auth().listUsers(1000)</code> with automatic user record decoration (<code>.uid</code> and <code>.metadata.creationTime</code>).</li>
               <li><strong>Persistence Engines:</strong> <code>browserLocalPersistence</code>, <code>browserSessionPersistence</code>, <code>indexedDBLocalPersistence</code>, <code>inMemoryPersistence</code>, and dynamic <code>setPersistence()</code>.</li>
-              <li><strong>Multi-Tab Firestore Cache:</strong> <code>enableIndexedDbPersistence</code>, <code>enableMultiTabIndexedDbPersistence</code>, and <code>initializeFirestore</code> with offline cache support.</li>
-              <li><strong>Custom Token Authentication:</strong> <code>createCustomToken</code> in Admin SDK and <code>signInWithCustomToken</code> in Client SDK.</li>
+              <li><strong>Multi-Tab Firestore Cache:</strong> <code>enableIndexedDbPersistence</code>, <code>enableMultiTabIndexedDbPersistence</code>, and offline cache synchronization.</li>
               <li><strong>Firestore Datatypes & Query Operators:</strong> <code>Timestamp</code>, <code>GeoPoint</code>, <code>Bytes</code>, <code>FieldPath</code>, <code>documentId()</code>, <code>limitToLast</code>, cursor pagination, <code>and()</code>/<code>or()</code> queries.</li>
-              <li><strong>Server Aggregations:</strong> <code>count()</code>, <code>getCountFromServer()</code>, and <code>getAggregateFromServer()</code>.</li>
-              <li><strong>Storage Extensions:</strong> <code>uploadString()</code> (raw, base64, base64url, data_url), <code>getBytes()</code>, <code>getBlob()</code>, and <code>list()</code>.</li>
-              <li><strong>Security Hardening:</strong> 43/43 audit vectors remediated and verified across all services.</li>
             </ul>
           </div>
 
@@ -1591,8 +1591,8 @@ curl -f http://localhost:4000/api/v1/health">Copy</button>
             <span>All Versions</span>
             <span class="tab-count">43</span>
           </button>
-          <button class="sec-version-tab" data-version="v1.2.3">
-            <span>v1.2.3 (Current Release)</span>
+          <button class="sec-version-tab" data-version="v1.2.7">
+            <span>v1.2.7 (Current Release)</span>
             <span class="tab-count">4</span>
           </button>
           <button class="sec-version-tab" data-version="v1.2.2">
@@ -1698,7 +1698,7 @@ curl -f http://localhost:4000/api/v1/health">Copy</button>
               <td><strong>Pricing Model</strong></td>
               <td>Uncapped Pay-Per-Read / Write</td>
               <td>Tiered + Egress Overages</td>
-              <td><span class="badge-success">Fixed $5/mo VPS (Unlimited Reads)</span></td>
+              <td><span class="badge-success">Predictable Sovereign Hosting (Unlimited Reads)</span></td>
             </tr>
             <tr>
               <td><strong>FIDO2 WebAuthn Passkeys</strong></td>

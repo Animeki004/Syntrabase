@@ -916,7 +916,7 @@ export default function ProjectEmailPage() {
            MODE 1: MANAGED DELIVERY NETWORK (Dedicated Brevo is Locked)
            Zero Brevo cards, zero super-admin details, zero fake 500 daily caps.
            =================================================================== */
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+        <div className="grid-3" style={{ marginBottom: '24px' }}>
           {/* Card 1: Syntrabase Managed Outbound Gateway */}
           <Card>
             <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1041,7 +1041,7 @@ export default function ProjectEmailPage() {
            MODE 2: DEDICATED BREVO LIVE (Enabled & Tenant API Key Added)
            Shows ONLY this project's own Brevo account details and live credits.
            =================================================================== */
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+        <div className="grid-3" style={{ marginBottom: '24px' }}>
           {/* Card 1: Live Brevo Credits for Project's Own Account */}
           <Card>
             <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1181,7 +1181,7 @@ export default function ProjectEmailPage() {
         /* ===================================================================
            MODE 3: DEDICATED BREVO ENABLED, AWAITING API KEY SETUP
            =================================================================== */
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+        <div className="grid-3" style={{ marginBottom: '24px' }}>
           {/* Card 1: Setup Prompt */}
           <Card>
             <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>

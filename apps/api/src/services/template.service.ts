@@ -1,6 +1,7 @@
 import { AuthConfigService, DEFAULT_EMAIL_TEMPLATES } from './auth-config.service.js';
 import { EmailService } from './email.service.js';
 import { EmailTemplateConfig, EmailTemplateType } from '@syntrabase/shared-types';
+import { UrlUtil } from '../utils/url.util.js';
 
 export class TemplateService {
   /**
@@ -91,14 +92,21 @@ export class TemplateService {
         senderEmail = activeSenders[0].emailAddress;
         senderName = activeSenders[0].displayName || rendered.senderName;
       }
-    } else if (senderEmail.endsWith('.internal') || senderEmail.includes('noreply@syntrabase')) {
-      const fallbackEmail = process.env.SYSTEM_FROM_EMAIL || process.env.DEFAULT_FROM_EMAIL;
-      if (fallbackEmail) {
-        senderEmail = fallbackEmail;
-      } else {
-        throw new Error(
-          `Cannot send '${templateType}' email: No verified authorized sender identity configured for project '${projectId}' or platform. Please configure a verified custom domain and authorized sender in Super Admin or Project Settings -> Email.`
-        );
+    } else {
+      // Check database-configured platform sender (authorized identities or provider accounts)
+      const platformSender = await UrlUtil.resolvePlatformSender();
+      if (platformSender.email && !platformSender.email.endsWith('.internal') && !platformSender.email.includes('localhost')) {
+        senderEmail = platformSender.email;
+        senderName = platformSender.name || rendered.senderName;
+      } else if (senderEmail.endsWith('.internal') || senderEmail.includes('noreply@syntrabase')) {
+        const fallbackEmail = process.env.SYSTEM_FROM_EMAIL || process.env.DEFAULT_FROM_EMAIL;
+        if (fallbackEmail) {
+          senderEmail = fallbackEmail;
+        } else {
+          throw new Error(
+            `Cannot send '${templateType}' email: No verified authorized sender identity configured for project '${projectId}' or platform. Please configure a verified custom domain and authorized sender in Super Admin or Project Settings -> Email.`
+          );
+        }
       }
     }
 

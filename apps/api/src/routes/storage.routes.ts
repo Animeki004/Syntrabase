@@ -8,6 +8,9 @@ import { config } from '../config.js';
 import { query } from '../db/pool.js';
 import { CreateSignedDownloadUrlSchema, CreateSignedUploadUrlSchema } from '@syntrabase/schemas';
 
+// In-memory rate limiting map for storage uploads (anti-spam defense: max 60 uploads / minute / project)
+const uploadRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
 export const storageRoutes: FastifyPluginAsync = async (server: FastifyInstance) => {
   // Upload file (JSON payload with base64 data or binary stream)
   server.post('/api/v1/storage/:projectId/upload', async (req, reply) => {
@@ -17,6 +20,23 @@ export const storageRoutes: FastifyPluginAsync = async (server: FastifyInstance)
     if (config.env !== 'test' || req.headers.authorization || req.headers['x-api-key']) {
       await AuthService.requireProjectAccess(req, projectId);
     }
+
+    // Anti-spam throttling check
+    const now = Date.now();
+    const rateKey = `upload_${projectId}`;
+    const rateData = uploadRateLimitMap.get(rateKey);
+    if (rateData && rateData.resetAt > now) {
+      if (rateData.count >= 60) {
+        return reply.status(429).send({
+          error: 'TOO_MANY_REQUESTS: Storage upload rate limit exceeded. Please wait before uploading more files.',
+          code: 'UPLOAD_RATE_LIMIT_EXCEEDED',
+        });
+      }
+      rateData.count++;
+    } else {
+      uploadRateLimitMap.set(rateKey, { count: 1, resetAt: now + 60000 });
+    }
+
     const body = req.body as {
       bucketName?: string;
       objectPath: string;
@@ -30,6 +50,16 @@ export const storageRoutes: FastifyPluginAsync = async (server: FastifyInstance)
       return reply.status(400).send({ error: 'Missing objectPath or base64Data' });
     }
 
+    const cleanObjectPath = body.objectPath.trim().replace(/^\/+/, '');
+    if (cleanObjectPath.includes('..') || cleanObjectPath.length > 512) {
+      return reply.status(400).send({ error: 'INVALID_OBJECT_PATH: Directory traversal or invalid object path characters rejected.' });
+    }
+
+    const dangerousExtensions = /\.(exe|sh|bat|cmd|ps1|vbs|msi|com|scr|pif|reg|dll|so|dylib)$/i;
+    if (dangerousExtensions.test(cleanObjectPath) || dangerousExtensions.test(body.originalName || '')) {
+      return reply.status(400).send({ error: 'FORBIDDEN_FILE_TYPE: Executable or script extensions are prohibited.' });
+    }
+
     const buffer = Buffer.from(body.base64Data, 'base64');
     const bucketName = body.bucketName || 'default';
 
@@ -40,7 +70,7 @@ export const storageRoutes: FastifyPluginAsync = async (server: FastifyInstance)
       const metadata = await StorageService.uploadFile({
         projectId,
         bucketName,
-        objectPath: body.objectPath,
+        objectPath: cleanObjectPath,
         originalName: body.originalName || 'file',
         mimeType: body.mimeType || 'application/octet-stream',
         buffer,

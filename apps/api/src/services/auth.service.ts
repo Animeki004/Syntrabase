@@ -1282,9 +1282,15 @@ export class AuthService {
         const { ProjectService } = await import('./project.service.js');
         const resolvedId = await ProjectService.resolveProjectId(projectId).catch(() => projectId);
 
-        // 1. Authoritative Super Admin: Global platform access
+        // 1. Authoritative Super Admin: Global platform access strictly verified in PostgreSQL
         if (payload.isPlatformAdmin) {
-          return { callerId: payload.uid, type: 'developer' };
+          const isVerifiedAdmin = await this.isSuperAdmin(payload.uid).catch(() => false);
+          if (isVerifiedAdmin) {
+            return { callerId: payload.uid, type: 'developer' };
+          }
+          const err: any = new Error('FORBIDDEN: Server-side check rejected — user is not an active platform administrator');
+          err.statusCode = 403;
+          throw err;
         }
 
         // 2. Developer Console Session: Strictly verify active session and assert project ownership
