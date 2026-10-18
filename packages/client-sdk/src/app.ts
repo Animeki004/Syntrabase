@@ -56,4 +56,20 @@ export function getApps(): FirebaseApp[] {
   return Array.from((FirebaseApp as any).instances.values());
 }
 
+export async function deleteApp(app: FirebaseApp): Promise<void> {
+  (FirebaseApp as any).instances.delete(app.name);
+}
+
+export class FirebaseError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly customData?: Record<string, unknown>
+  ) {
+    super(message);
+    this.name = 'FirebaseError';
+  }
+}
+
 export type App = FirebaseApp;
+

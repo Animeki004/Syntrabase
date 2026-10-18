@@ -300,3 +300,63 @@ test('Admin SDK - Standard Firebase 20-character alphanumeric autoId generation'
   assert.ok(idPattern.test(autoDocRef.id), `Admin doc auto ID '${autoDocRef.id}' must be 20-char alphanumeric`);
   assert.equal(autoDocRef.path, `movies/${autoDocRef.id}`);
 });
+
+test('Admin SDK - Drop-in Firebase Admin parity additions', async () => {
+  const { default: admin, Filter, writeBatch, runTransaction, FirebaseError, deleteApp } = await import('../index.js');
+  
+  assert.equal(typeof admin.firestore.Filter, 'function');
+  assert.equal(typeof Filter.where, 'function');
+  assert.equal(typeof Filter.and, 'function');
+  assert.equal(typeof Filter.or, 'function');
+
+  const f1 = Filter.where('status', '==', 'active');
+  const f2 = Filter.where('role', '==', 'admin');
+  const composite = Filter.and(f1, f2);
+  assert.equal(composite.operator, 'AND');
+  assert.equal(composite.filters.length, 2);
+
+  const db = admin.firestore();
+  assert.equal(typeof db.batch, 'function');
+  assert.equal(typeof db.runTransaction, 'function');
+  assert.equal(typeof db.getAll, 'function');
+  assert.equal(typeof db.collectionGroup, 'function');
+  assert.equal(typeof db.listCollections, 'function');
+
+  // Test writeBatch builder
+  const batch = db.batch();
+  assert.equal(typeof batch.set, 'function');
+  assert.equal(typeof batch.update, 'function');
+  assert.equal(typeof batch.delete, 'function');
+  assert.equal(typeof batch.commit, 'function');
+
+  const docRef = db.collection('items').doc('test-item');
+  batch.set(docRef, { name: 'Item 1' });
+  batch.update(docRef, { name: 'Item Updated' });
+  batch.delete(docRef);
+
+  // Test query with Filter
+  const q = db.collection('users').where(Filter.where('age', '>=', 18));
+  assert.equal(q.filters.length, 1);
+  assert.equal(q.filters[0].field, 'age');
+  assert.equal(q.filters[0].operator, '>=');
+  assert.equal(q.filters[0].value, 18);
+
+  // Test collectionGroup returns AdminQuery
+  const cgQuery = db.collectionGroup('comments');
+  assert.ok(cgQuery);
+  assert.equal(typeof cgQuery.where, 'function');
+  assert.equal(typeof cgQuery.limit, 'function');
+
+  // Auth additions
+  const auth = admin.auth();
+  assert.equal(typeof auth.getUserByPhoneNumber, 'function');
+  assert.equal(typeof auth.getUsers, 'function');
+  assert.equal(typeof auth.createSessionCookie, 'function');
+  assert.equal(typeof auth.verifySessionCookie, 'function');
+
+  // Error class
+  const err = new FirebaseError('auth/user-not-found', 'User not found');
+  assert.equal(err.code, 'auth/user-not-found');
+  assert.equal(err.name, 'FirebaseError');
+});
+

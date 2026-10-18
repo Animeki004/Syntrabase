@@ -133,8 +133,11 @@ test('Client SDK API Surface - Exposes standard Firebase v9/v10 functions', () =
   assert.equal(typeof ClientSDK.initializeFirestore, 'function');
   assert.equal(typeof ClientSDK.persistentLocalCache, 'function');
   assert.equal(typeof ClientSDK.memoryLocalCache, 'function');
+  assert.equal(typeof ClientSDK.deleteApp, 'function');
+  assert.equal(typeof ClientSDK.FirebaseError, 'function');
   assert.equal(ClientSDK.CACHE_SIZE_UNLIMITED, -1);
 });
+
 
 test('Client SDK Storage - toBase64 handles Uint8Array and Buffer correctly', async () => {
   const sampleString = 'Hello Syntrabase Storage!';

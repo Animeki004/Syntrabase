@@ -1,5 +1,5 @@
 import { AdminApp, initializeAdminApp, getApp, getApps, AdminOptions } from './app.js';
-import { getAdminFirestore, Timestamp, GeoPoint, Bytes, AdminFieldValue, FieldPath } from './firestore.js';
+import { getAdminFirestore, Timestamp, GeoPoint, Bytes, AdminFieldValue, FieldPath, Filter, AdminWriteBatch, AdminTransaction } from './firestore.js';
 import { getAdminAuth } from './auth.js';
 import { getAdminStorage } from './storage.js';
 
@@ -52,8 +52,13 @@ const firestoreFn = Object.assign(
     Bytes,
     FieldValue: AdminFieldValue,
     FieldPath,
+    Filter,
+    WriteBatch: AdminWriteBatch,
+    Transaction: AdminTransaction,
+    setLogFunction: (_fn: any) => {},
   }
 );
+
 
 const authFn = Object.assign(
   (app?: AdminApp) => getAdminAuth(app),

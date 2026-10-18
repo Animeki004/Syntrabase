@@ -168,7 +168,37 @@ export class FieldPath {
 
 export const documentId = () => FieldPath.documentId();
 
+export class Filter {
+  constructor(
+    public readonly field?: string | FieldPath,
+    public readonly op?: any,
+    public readonly value?: any
+  ) {}
+
+  static where(field: string | FieldPath, opStr: any, value: any): Filter {
+    return new Filter(field, opStr, value);
+  }
+
+  static and(...filters: Filter[]): CompositeFilter {
+    return new CompositeFilter('AND', filters);
+  }
+
+  static or(...filters: Filter[]): CompositeFilter {
+    return new CompositeFilter('OR', filters);
+  }
+}
+
+export class CompositeFilter extends Filter {
+  constructor(
+    public readonly operator: 'AND' | 'OR',
+    public readonly filters: Filter[]
+  ) {
+    super();
+  }
+}
+
 export class DocumentSnapshot<T = DocumentData> {
+
   constructor(
     public readonly ref: AdminDocumentReference,
     private readonly _raw: { id: string; data?: T; [key: string]: any } | null
@@ -251,8 +281,38 @@ export class AdminQuery {
     public readonly startAfterId?: string
   ) {}
 
-  public where(field: string | FieldPath, operator: any, value: any): AdminQuery {
-    const fieldStr = field instanceof FieldPath ? field.toString() : field;
+  public where(fieldOrFilter: string | FieldPath | Filter, operator?: any, value?: any): AdminQuery {
+    if (fieldOrFilter instanceof Filter) {
+      if (fieldOrFilter instanceof CompositeFilter) {
+        const flatFilters: QueryFilter[] = [];
+        for (const f of fieldOrFilter.filters) {
+          if (f.field) {
+            const fStr = f.field instanceof FieldPath ? f.field.toString() : String(f.field);
+            flatFilters.push({ field: fStr, operator: f.op, value: f.value });
+          }
+        }
+        return new AdminQuery(
+          this.firestore,
+          this.collectionPath,
+          [...this.filters, ...flatFilters],
+          this.orderBys,
+          this.limitCount,
+          this.startAfterId
+        );
+      } else if (fieldOrFilter.field) {
+        const fieldStr = fieldOrFilter.field instanceof FieldPath ? fieldOrFilter.field.toString() : String(fieldOrFilter.field);
+        return new AdminQuery(
+          this.firestore,
+          this.collectionPath,
+          [...this.filters, { field: fieldStr, operator: fieldOrFilter.op, value: fieldOrFilter.value }],
+          this.orderBys,
+          this.limitCount,
+          this.startAfterId
+        );
+      }
+      return this;
+    }
+    const fieldStr = fieldOrFilter instanceof FieldPath ? fieldOrFilter.toString() : fieldOrFilter;
     return new AdminQuery(
       this.firestore,
       this.collectionPath,
@@ -306,15 +366,22 @@ export class AdminQuery {
   }
 
   public async get(): Promise<QuerySnapshot> {
-    const rawDocs = await this.firestore.queryDocs({
-      collectionPath: this.collectionPath,
-      filters: this.filters,
-      orderBy: this.orderBys,
-      limit: this.limitCount,
-      startAfter: this.startAfterId,
-    });
+    let rawDocs: SharedDocumentSnapshot[];
+    if (this.collectionPath.startsWith('__cg__/')) {
+      const colId = this.collectionPath.slice('__cg__/'.length);
+      rawDocs = await this.firestore.queryCollectionGroup(colId, { limit: this.limitCount });
+    } else {
+      rawDocs = await this.firestore.queryDocs({
+        collectionPath: this.collectionPath,
+        filters: this.filters,
+        orderBy: this.orderBys,
+        limit: this.limitCount,
+        startAfter: this.startAfterId,
+      });
+    }
     const docSnapshots = rawDocs.map((raw) => {
-      const docRef = new AdminDocumentReference(this.firestore, `${this.collectionPath}/${raw.id}`, raw.id);
+      const docPath = (raw as any).path || `${this.collectionPath}/${raw.id}`;
+      const docRef = new AdminDocumentReference(this.firestore, docPath.replace(/^\/+/, ''), raw.id);
       return new QueryDocumentSnapshot(docRef, raw);
     });
     return new QuerySnapshot(docSnapshots);
@@ -406,8 +473,8 @@ export class AdminCollectionReference {
     return new AdminQuery(this.firestore, this.path).get();
   }
 
-  public where(field: string, operator: any, value: any): AdminQuery {
-    return new AdminQuery(this.firestore, this.path, [{ field, operator, value }]);
+  public where(fieldOrFilter: string | FieldPath | Filter, operator?: any, value?: any): AdminQuery {
+    return new AdminQuery(this.firestore, this.path).where(fieldOrFilter, operator, value);
   }
 
   public orderBy(field: string, direction: 'asc' | 'desc' = 'asc'): AdminQuery {
@@ -419,8 +486,162 @@ export class AdminCollectionReference {
   }
 }
 
+export class AdminWriteBatch {
+  private _ops: Array<{ type: 'set' | 'update' | 'delete'; path: string; data?: any; merge?: boolean }> = [];
+
+  constructor(public readonly firestore: AdminFirestore) {}
+
+  public set(documentRef: AdminDocumentReference, data: DocumentData, options: { merge?: boolean } = {}): this {
+    this._ops.push({ type: 'set', path: documentRef.path, data, merge: options.merge ?? false });
+    return this;
+  }
+
+  public update(documentRef: AdminDocumentReference, data: DocumentData): this {
+    this._ops.push({ type: 'update', path: documentRef.path, data });
+    return this;
+  }
+
+  public delete(documentRef: AdminDocumentReference): this {
+    this._ops.push({ type: 'delete', path: documentRef.path });
+    return this;
+  }
+
+  public async commit(): Promise<any> {
+    const url = `${this.firestore.app.options.apiUrl}/api/v1/projects/${this.firestore.app.options.projectId}/databases/(default)/batch`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: (this.firestore as any).getHeaders(),
+      body: JSON.stringify({ operations: this._ops }),
+    });
+
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(err.error || `Admin batch write failed: ${res.statusText}`);
+    }
+
+    return res.json().catch(() => ({ success: true }));
+  }
+}
+export const WriteBatch = AdminWriteBatch;
+
+export class AdminTransaction {
+  private preconditions: TransactionPrecondition[] = [];
+  private writes: TransactionWriteOp[] = [];
+
+  constructor(public readonly firestore: AdminFirestore) {}
+
+  public async get(documentRef: AdminDocumentReference): Promise<DocumentSnapshot> {
+    const snap = await documentRef.get();
+    if (snap.exists) {
+      const version = (snap as any)._raw?.version;
+      if (version !== undefined) {
+        this.preconditions.push({ path: documentRef.path, expectedVersion: version });
+      }
+    } else {
+      this.preconditions.push({ path: documentRef.path, mustNotExist: true });
+    }
+    return snap;
+  }
+
+  public set(documentRef: AdminDocumentReference, data: DocumentData, options: { merge?: boolean } = {}): this {
+    this.writes.push({ type: 'set', path: documentRef.path, data, merge: options.merge });
+    return this;
+  }
+
+  public update(documentRef: AdminDocumentReference, data: DocumentData): this {
+    this.writes.push({ type: 'update', path: documentRef.path, data });
+    return this;
+  }
+
+  public delete(documentRef: AdminDocumentReference): this {
+    this.writes.push({ type: 'delete', path: documentRef.path });
+    return this;
+  }
+
+  public getPayload(): { preconditions: TransactionPrecondition[]; writes: TransactionWriteOp[] } {
+    return {
+      preconditions: this.preconditions,
+      writes: this.writes,
+    };
+  }
+}
+export const Transaction = AdminTransaction;
+
 export class AdminFirestore {
   constructor(public readonly app: AdminApp) {}
+
+  public batch(): AdminWriteBatch {
+    return new AdminWriteBatch(this);
+  }
+
+  public async runTransaction<T>(
+    updateFunction: (transaction: AdminTransaction) => Promise<T>,
+    options: { maxAttempts?: number } = {}
+  ): Promise<T> {
+    const maxAttempts = options.maxAttempts ?? 5;
+    let attempt = 0;
+
+    while (attempt < maxAttempts) {
+      attempt++;
+      const transaction = new AdminTransaction(this);
+      const result = await updateFunction(transaction);
+
+      const payload = transaction.getPayload();
+      const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/databases/(default)/transaction`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify(payload),
+      });
+
+      if (res.status === 409) {
+        if (attempt >= maxAttempts) {
+          const err = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(err.error || 'Transaction failed: max retries reached due to concurrent conflicts');
+        }
+        const backoffMs = Math.min(1000, Math.pow(2, attempt) * 50) + Math.random() * 50;
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        continue;
+      }
+
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error || `Transaction failed: ${res.statusText}`);
+      }
+
+      return result;
+    }
+
+    throw new Error('Transaction failed: exceeded maximum attempts');
+  }
+
+  public collectionGroup(collectionId: string): AdminQuery {
+    return new AdminQuery(this, `__cg__/${collectionId}`);
+  }
+
+  public async getAll(...documentReferences: (AdminDocumentReference | AdminDocumentReference[])[]): Promise<DocumentSnapshot[]> {
+    const flattened: AdminDocumentReference[] = [];
+    for (const ref of documentReferences) {
+      if (Array.isArray(ref)) {
+        flattened.push(...ref);
+      } else if (ref) {
+        flattened.push(ref);
+      }
+    }
+    return Promise.all(flattened.map((ref) => ref.get()));
+  }
+
+  public async listCollections(): Promise<AdminCollectionReference[]> {
+    const url = `${this.app.options.apiUrl}/api/v1/projects/${this.app.options.projectId}/databases/(default)/collections`;
+    try {
+      const res = await fetch(url, { method: 'GET', headers: this.getHeaders() });
+      if (res.ok) {
+        const data = (await res.json()) as { collections?: string[] };
+        return (data.collections || []).map((col) => this.collection(col));
+      }
+    } catch {}
+    return [];
+  }
 
   public collection(collectionPath: string): AdminCollectionReference {
     return new AdminCollectionReference(this, collectionPath.replace(/^\/+|\/+$/g, ''));
@@ -439,6 +660,7 @@ export class AdminFirestore {
     }
     return new AdminDocumentReference(this, fullPath, id);
   }
+
 
   private getHeaders(): Record<string, string> {
     return {
@@ -635,9 +857,20 @@ export function getAdminFirestore(app?: AdminApp): AdminFirestore {
 }
 
 export const getFirestore = getAdminFirestore;
+export function writeBatch(db: AdminFirestore): AdminWriteBatch {
+  return db.batch();
+}
+export async function runTransaction<T>(
+  db: AdminFirestore,
+  updateFunction: (transaction: AdminTransaction) => Promise<T>,
+  options?: { maxAttempts?: number }
+): Promise<T> {
+  return db.runTransaction(updateFunction, options);
+}
 export type Firestore = AdminFirestore;
 export type DocumentReference = AdminDocumentReference;
 export type CollectionReference = AdminCollectionReference;
 export type Query = AdminQuery;
 export type { DocumentData, SetOptions } from '@syntrabase/shared-types';
+
 

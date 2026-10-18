@@ -65,6 +65,7 @@ export interface AppUser {
   environmentId: string;
   email?: string;
   displayName?: string;
+  phoneNumber?: string;
   photoURL?: string;
   emailVerified: boolean;
   disabled: boolean;
@@ -567,6 +568,7 @@ export interface TransactionWriteOp {
   type: 'set' | 'update' | 'delete';
   path: string;
   data?: Record<string, unknown>;
+  merge?: boolean;
 }
 
 export interface TransactionCommitPayload {

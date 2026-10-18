@@ -86,4 +86,23 @@ export const getApps = (): AdminApp[] => {
     return [];
   }
 };
+export async function deleteApp(app: AdminApp): Promise<void> {
+  // Reset singleton if matched
+  if ((AdminApp as any).instance === app) {
+    (AdminApp as any).instance = null;
+  }
+}
+
+export class FirebaseError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly customData?: Record<string, unknown>
+  ) {
+    super(message);
+    this.name = 'FirebaseError';
+  }
+}
+
 export type App = AdminApp;
+

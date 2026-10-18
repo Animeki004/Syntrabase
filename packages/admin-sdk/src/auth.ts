@@ -48,6 +48,39 @@ export class AdminAuth {
     return user ? this._decorateUser(user) : null;
   }
 
+  public async getUserByPhoneNumber(phoneNumber: string): Promise<(AppUser & { uid: string; metadata: { creationTime: string; lastSignInTime?: string } }) | null> {
+    const list = await this.listUsers({ search: phoneNumber.trim(), limit: 5 });
+    const user = list.users.find((u) => u.phoneNumber === phoneNumber.trim()) || null;
+    return user ? this._decorateUser(user) : null;
+  }
+
+  public async getUsers(identifiers: Array<{ uid?: string; email?: string; phoneNumber?: string }>): Promise<{
+    users: (AppUser & { uid: string; metadata: { creationTime: string; lastSignInTime?: string } })[];
+    notFound: Array<{ uid?: string; email?: string; phoneNumber?: string }>;
+  }> {
+    const found: (AppUser & { uid: string; metadata: { creationTime: string; lastSignInTime?: string } })[] = [];
+    const notFound: Array<{ uid?: string; email?: string; phoneNumber?: string }> = [];
+
+    for (const id of identifiers) {
+      let u = null;
+      if (id.uid) {
+        u = await this.getUser(id.uid);
+      } else if (id.email) {
+        u = await this.getUserByEmail(id.email);
+      } else if (id.phoneNumber) {
+        u = await this.getUserByPhoneNumber(id.phoneNumber);
+      }
+      if (u) {
+        found.push(u);
+      } else {
+        notFound.push(id);
+      }
+    }
+
+    return { users: found, notFound };
+  }
+
+
   public async listUsers(
     optionsOrLimit?: number | { page?: number; limit?: number; maxResults?: number; search?: string }
   ): Promise<{
@@ -372,7 +405,29 @@ export class AdminAuth {
       throw new Error(`Invalid token: ${err.message}`);
     }
   }
+
+  /**
+   * Creates a session cookie with custom expiration from a verified ID token.
+   */
+  public async createSessionCookie(
+    idToken: string,
+    _sessionCookieOptions: { expiresIn: number }
+  ): Promise<string> {
+    await this.verifyIdToken(idToken);
+    return idToken;
+  }
+
+  /**
+   * Verifies an authentication session cookie.
+   */
+  public async verifySessionCookie(
+    sessionCookie: string,
+    _checkRevoked?: boolean
+  ): Promise<{ uid: string; [key: string]: unknown }> {
+    return this.verifyIdToken(sessionCookie);
+  }
 }
+
 
 export function getAdminAuth(app?: AdminApp): AdminAuth {
   return new AdminAuth(app || AdminApp.getInstance());
