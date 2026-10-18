@@ -383,3 +383,33 @@ test('Client SDK - Firebase modular v9/v10 drop-in functions and snapshot iterat
   assert.deepEqual(ids, ['item1', 'item2']);
 });
 
+test('Client SDK - Standard Firebase 20-character alphanumeric autoId generation', () => {
+  const autoId = (ClientSDK as any).autoId;
+  assert.equal(typeof autoId, 'function');
+
+  const idPattern = /^[A-Za-z0-9]{20}$/;
+  const generatedIds = new Set<string>();
+
+  for (let i = 0; i < 50; i++) {
+    const id = autoId();
+    assert.equal(id.length, 20, `Generated auto ID must be exactly 20 characters, got ${id.length}`);
+    assert.ok(idPattern.test(id), `Generated auto ID '${id}' must be alphanumeric [A-Za-z0-9]`);
+    generatedIds.add(id);
+  }
+  // All 50 IDs must be distinct
+  assert.equal(generatedIds.size, 50, 'All generated auto IDs must be unique');
+
+  const app = ClientSDK.initializeApp({
+    projectId: 'test-auto-id-proj',
+    apiKey: 'pk_live_test_key',
+  }, 'auto-id-app');
+  const db = ClientSDK.getFirestore(app);
+  const collRef = ClientSDK.collection(db, 'movies');
+  const autoDocRef = ClientSDK.doc(collRef);
+
+  assert.equal(autoDocRef.id.length, 20);
+  assert.ok(idPattern.test(autoDocRef.id), `Auto doc ID '${autoDocRef.id}' must be 20-char alphanumeric`);
+  assert.equal(autoDocRef.path, `movies/${autoDocRef.id}`);
+});
+
+

@@ -10,6 +10,7 @@ export interface FirebaseOptions {
 export class FirebaseApp {
   private static instances = new Map<string, FirebaseApp>();
   public readonly options: FirebaseOptions & { apiUrl: string };
+  public readonly _authChangeListeners = new Set<(user: any) => void>();
 
   constructor(
     public readonly name: string,

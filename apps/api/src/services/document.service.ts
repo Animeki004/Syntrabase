@@ -259,7 +259,7 @@ export class DocumentService {
     collectionPath: string,
     filters: QueryFilter[] = [],
     orderBy: QueryOrderBy[] = [],
-    limit = 50,
+    limit = 1000,
     startAfter?: string
   ): Promise<DocumentSnapshot[]> {
     const params: unknown[] = [projectId, environmentId, collectionPath];
@@ -335,7 +335,7 @@ export class DocumentService {
     }
 
     // Limit
-    params.push(Math.min(limit, 500));
+    params.push(Math.min(limit || 1000, 5000));
     querySql += ` LIMIT $${params.length}`;
 
     const res = await query<{

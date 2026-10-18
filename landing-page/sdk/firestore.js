@@ -35,15 +35,32 @@ export class CollectionReference {
         this.path = path;
     }
 }
+const AUTO_ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+export function autoId() {
+    let id = '';
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+        const bytes = new Uint8Array(20);
+        crypto.getRandomValues(bytes);
+        for (let i = 0; i < 20; i++) {
+            id += AUTO_ID_CHARS.charAt(bytes[i] % AUTO_ID_CHARS.length);
+        }
+    } else {
+        for (let i = 0; i < 20; i++) {
+            id += AUTO_ID_CHARS.charAt(Math.floor(Math.random() * AUTO_ID_CHARS.length));
+        }
+    }
+    return id;
+}
+
 export function doc(db, pathOrColl, id) {
-    const generateAutoId = () => `auto_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     if (typeof pathOrColl === 'string') {
         const fullPath = id ? `${pathOrColl}/${id}` : pathOrColl;
         const parts = fullPath.replace(/^\/+|\/+$/g, '').split('/');
         const docId = parts[parts.length - 1];
         return new DocumentReference(db, fullPath, docId);
     }
-    const docId = id || generateAutoId();
+    const docId = id || autoId();
     const fullPath = `${pathOrColl.path}/${docId}`;
     return new DocumentReference(db, fullPath, docId);
 }

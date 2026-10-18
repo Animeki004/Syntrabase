@@ -367,6 +367,24 @@ export class AdminDocumentReference {
   }
 }
 
+const AUTO_ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+export function autoId(): string {
+  let id = '';
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(20);
+    crypto.getRandomValues(bytes);
+    for (let i = 0; i < 20; i++) {
+      id += AUTO_ID_CHARS.charAt(bytes[i] % AUTO_ID_CHARS.length);
+    }
+  } else {
+    for (let i = 0; i < 20; i++) {
+      id += AUTO_ID_CHARS.charAt(Math.floor(Math.random() * AUTO_ID_CHARS.length));
+    }
+  }
+  return id;
+}
+
 export class AdminCollectionReference {
   constructor(
     public readonly firestore: AdminFirestore,
@@ -374,7 +392,7 @@ export class AdminCollectionReference {
   ) {}
 
   public doc(documentId?: string): AdminDocumentReference {
-    const id = documentId || `auto_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const id = documentId || autoId();
     return new AdminDocumentReference(this.firestore, `${this.path}/${id}`, id);
   }
 
@@ -410,9 +428,16 @@ export class AdminFirestore {
 
   public doc(documentPath: string): AdminDocumentReference {
     const clean = documentPath.replace(/^\/+|\/+$/g, '');
-    const parts = clean.split('/');
-    const id = parts[parts.length - 1];
-    return new AdminDocumentReference(this, clean, id);
+    const parts = clean.split('/').filter(Boolean);
+    let id = '';
+    let fullPath = clean;
+    if (parts.length % 2 === 1) {
+      id = autoId();
+      fullPath = fullPath ? `${fullPath}/${id}` : id;
+    } else {
+      id = parts[parts.length - 1] || autoId();
+    }
+    return new AdminDocumentReference(this, fullPath, id);
   }
 
   private getHeaders(): Record<string, string> {
@@ -503,7 +528,7 @@ export class AdminFirestore {
         collectionPath: params.collectionPath,
         filters: params.filters || [],
         orderBy: params.orderBy || [],
-        limit: params.limit || 100,
+        limit: params.limit || 1000,
         startAfter: params.startAfter,
       }),
     });

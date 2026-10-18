@@ -159,6 +159,12 @@ export class Auth {
     for (const listener of this.listeners) {
       listener(user);
     }
+
+    for (const appListener of this.app._authChangeListeners) {
+      try {
+        appListener(user);
+      } catch {}
+    }
   }
 
   public addListener(callback: (user: AppUser | null) => void): () => void {

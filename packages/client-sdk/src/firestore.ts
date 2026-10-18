@@ -17,6 +17,12 @@ export class Firestore {
   public _persistenceEnabled = false;
   public _persistenceType: 'memory' | 'indexeddb' = 'memory';
   public _cache = new Map<string, DocumentRecord>();
+  public readonly _snapshotListeners = new Set<(change: {
+    collectionPath: string;
+    documentId: string;
+    data: any;
+    type: 'added' | 'modified' | 'removed';
+  }) => void>();
 
   constructor(public readonly app: FirebaseApp) {}
 }
@@ -47,20 +53,36 @@ export class CollectionReference {
   ) {}
 }
 
+const AUTO_ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+export function autoId(): string {
+  let id = '';
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(20);
+    crypto.getRandomValues(bytes);
+    for (let i = 0; i < 20; i++) {
+      id += AUTO_ID_CHARS.charAt(bytes[i] % AUTO_ID_CHARS.length);
+    }
+  } else {
+    for (let i = 0; i < 20; i++) {
+      id += AUTO_ID_CHARS.charAt(Math.floor(Math.random() * AUTO_ID_CHARS.length));
+    }
+  }
+  return id;
+}
+
 export function doc(
   dbOrColl: Firestore | CollectionReference,
   pathOrColl?: string | CollectionReference,
   ...morePaths: string[]
 ): DocumentReference {
-  const generateAutoId = () => `auto_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-
   // Case 1: doc(collectionRef, ...morePaths)
   if (dbOrColl instanceof CollectionReference) {
     const rawSegments = pathOrColl
       ? (typeof pathOrColl === 'string' ? [pathOrColl, ...morePaths] : [pathOrColl.path, ...morePaths])
       : [];
     const segments = rawSegments.filter(Boolean);
-    const docId = segments.length > 0 ? segments[segments.length - 1] : generateAutoId();
+    const docId = segments.length > 0 ? segments[segments.length - 1] : autoId();
     const fullPath = segments.length > 0
       ? `${dbOrColl.path}/${segments.join('/')}`.replace(/^\/+|\/+$/g, '')
       : `${dbOrColl.path}/${docId}`;
@@ -70,7 +92,7 @@ export function doc(
   // Case 2: doc(firestore, collectionRef, ...morePaths)
   if (pathOrColl instanceof CollectionReference) {
     const segments = morePaths.filter(Boolean);
-    const docId = segments.length > 0 ? segments[segments.length - 1] : generateAutoId();
+    const docId = segments.length > 0 ? segments[segments.length - 1] : autoId();
     const fullPath = segments.length > 0
       ? `${pathOrColl.path}/${segments.join('/')}`.replace(/^\/+|\/+$/g, '')
       : `${pathOrColl.path}/${docId}`;
@@ -79,9 +101,16 @@ export function doc(
 
   // Case 3: doc(firestore, 'path', ...morePaths)
   const segments = pathOrColl ? [pathOrColl, ...morePaths].filter(Boolean) : [];
-  const fullPath = segments.join('/').replace(/^\/+|\/+$/g, '');
-  const parts = fullPath.split('/');
-  const docId = parts[parts.length - 1] || generateAutoId();
+  let fullPath = segments.join('/').replace(/^\/+|\/+$/g, '');
+  const parts = fullPath.split('/').filter(Boolean);
+  let docId = '';
+  if (parts.length % 2 === 1) {
+    // If an odd number of segments are passed (e.g. doc(db, 'movies')), it represents a collection path, so generate an autoId
+    docId = autoId();
+    fullPath = fullPath ? `${fullPath}/${docId}` : docId;
+  } else {
+    docId = parts[parts.length - 1] || autoId();
+  }
   return new DocumentReference(dbOrColl, fullPath, docId);
 }
 
@@ -344,6 +373,15 @@ export async function setDoc(
   const docId = parts.pop()!;
   const collPath = parts.join('/');
 
+  // Immediate latency compensation for active onSnapshot listeners
+  if (docRef.firestore._snapshotListeners && docRef.firestore._snapshotListeners.size > 0) {
+    for (const listener of docRef.firestore._snapshotListeners) {
+      try {
+        listener({ collectionPath: collPath, documentId: docId, data, type: 'added' });
+      } catch {}
+    }
+  }
+
   const url = `${docRef.firestore.app.options.apiUrl}/api/v1/projects/${docRef.firestore.app.options.projectId}/databases/(default)/documents/${collPath}/${docId}`;
   const res = await fetch(url, {
     method: 'POST',
@@ -367,6 +405,14 @@ export async function updateDoc(docRef: DocumentReference, data: DocumentData): 
   const docId = parts.pop()!;
   const collPath = parts.join('/');
 
+  if (docRef.firestore._snapshotListeners && docRef.firestore._snapshotListeners.size > 0) {
+    for (const listener of docRef.firestore._snapshotListeners) {
+      try {
+        listener({ collectionPath: collPath, documentId: docId, data, type: 'modified' });
+      } catch {}
+    }
+  }
+
   const url = `${docRef.firestore.app.options.apiUrl}/api/v1/projects/${docRef.firestore.app.options.projectId}/databases/(default)/documents/${collPath}/${docId}`;
   const res = await fetch(url, {
     method: 'PATCH',
@@ -389,6 +435,14 @@ export async function deleteDoc(docRef: DocumentReference): Promise<void> {
   const parts = docRef.path.replace(/^\/+|\/+$/g, '').split('/');
   const docId = parts.pop()!;
   const collPath = parts.join('/');
+
+  if (docRef.firestore._snapshotListeners && docRef.firestore._snapshotListeners.size > 0) {
+    for (const listener of docRef.firestore._snapshotListeners) {
+      try {
+        listener({ collectionPath: collPath, documentId: docId, data: {}, type: 'removed' });
+      } catch {}
+    }
+  }
 
   const url = `${docRef.firestore.app.options.apiUrl}/api/v1/projects/${docRef.firestore.app.options.projectId}/databases/(default)/documents/${collPath}/${docId}`;
   const res = await fetch(url, {
@@ -593,7 +647,7 @@ export async function getDocs(queryObj: Query | CollectionReference | Collection
 
   const filters: QueryFilter[] = [];
   const orderBys: QueryOrderBy[] = [];
-  let limitCount = 50;
+  let limitCount: number | undefined = undefined;
   let startAfterId: string | undefined = undefined;
 
   for (const c of constraints) {
@@ -611,7 +665,7 @@ export async function getDocs(queryObj: Query | CollectionReference | Collection
       collectionPath: collectionRef.path,
       filters,
       orderBy: orderBys,
-      limit: limitCount,
+      limit: limitCount !== undefined ? limitCount : 1000,
       startAfter: startAfterId,
     }),
   });

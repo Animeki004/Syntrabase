@@ -43,7 +43,32 @@ class RealtimeConnectionPool {
   private reconnectTimer: any = null;
   private reconnectDelay = 1000;
 
-  constructor(private app: FirebaseApp) {}
+  constructor(private app: FirebaseApp) {
+    if (this.app._authChangeListeners) {
+      this.app._authChangeListeners.add(() => {
+        this.reauthenticate();
+      });
+    }
+  }
+
+  public reauthenticate(): void {
+    if (this.ws && (this.ws.readyState === 0 || this.ws.readyState === 1)) {
+      const auth = getAuth(this.app);
+      if (auth.accessToken) {
+        this.ws.send(JSON.stringify({ type: 'auth', token: auth.accessToken }));
+      } else if (this.app.options.apiKey) {
+        this.ws.send(
+          JSON.stringify({
+            type: 'auth',
+            apiKey: this.app.options.apiKey,
+            projectId: this.app.options.projectId,
+          })
+        );
+      }
+    } else if (this.subscriptions.size > 0 && !this.isConnecting) {
+      this.connect();
+    }
+  }
 
   public static getInstance(app: FirebaseApp): RealtimeConnectionPool {
     let pool = this.pools.get(app);
@@ -93,7 +118,13 @@ class RealtimeConnectionPool {
         if (auth.accessToken) {
           this.ws.send(JSON.stringify({ type: 'auth', token: auth.accessToken }));
         } else if (this.app.options.apiKey) {
-          this.ws.send(JSON.stringify({ type: 'auth', apiKey: this.app.options.apiKey }));
+          this.ws.send(
+            JSON.stringify({
+              type: 'auth',
+              apiKey: this.app.options.apiKey,
+              projectId: this.app.options.projectId,
+            })
+          );
         }
       };
 
@@ -365,6 +396,58 @@ export function onSnapshot(
   const subscriptionId = `sub_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   const pool = RealtimeConnectionPool.getInstance(db.app);
 
+  const cleanListenColl = collectionPath.replace(/^\/+|\/+$/g, '');
+  const localListener = (change: {
+    collectionPath: string;
+    documentId: string;
+    data: any;
+    type: 'added' | 'modified' | 'removed';
+  }) => {
+    const cleanChangeColl = change.collectionPath.replace(/^\/+|\/+$/g, '');
+    if (cleanListenColl !== cleanChangeColl) return;
+
+    if (isDoc) {
+      if (documentId && documentId !== change.documentId) return;
+      onNext({
+        id: change.documentId,
+        exists: () => change.type !== 'removed',
+        data: () => (change.type === 'removed' ? undefined : change.data),
+        version: 1,
+      });
+    } else {
+      const wasExisting = docsMap.has(change.documentId);
+      if (change.type === 'removed') {
+        docsMap.delete(change.documentId);
+      } else {
+        const docSnap: QueryDocumentSnapshot = {
+          id: change.documentId,
+          exists: () => true,
+          data: () => change.data,
+          version: 1,
+        };
+        docsMap.set(change.documentId, docSnap);
+      }
+
+      const changeType = change.type === 'removed' ? 'removed' : wasExisting ? 'modified' : 'added';
+      onNext(
+        createQuerySnapshot({
+          type: changeType,
+          doc: {
+            id: change.documentId,
+            exists: () => change.type !== 'removed',
+            data: () => (change.type === 'removed' ? undefined : change.data),
+            version: 1,
+          },
+          wasExisting,
+        })
+      );
+    }
+  };
+
+  if (db._snapshotListeners) {
+    db._snapshotListeners.add(localListener);
+  }
+
   const unsubscribe = pool.subscribe({
     id: subscriptionId,
     isDoc,
@@ -379,5 +462,10 @@ export function onSnapshot(
     createQuerySnapshot,
   });
 
-  return unsubscribe;
+  return () => {
+    if (db._snapshotListeners) {
+      db._snapshotListeners.delete(localListener);
+    }
+    unsubscribe();
+  };
 }

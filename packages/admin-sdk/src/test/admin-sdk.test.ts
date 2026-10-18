@@ -278,3 +278,25 @@ test('Admin SDK - DocumentSnapshot and QuerySnapshot contract compatibility', as
   });
   assert.equal(count, 2);
 });
+
+test('Admin SDK - Standard Firebase 20-character alphanumeric autoId generation', async () => {
+  const { autoId, default: admin } = await import('../index.js');
+  assert.equal(typeof autoId, 'function');
+
+  const idPattern = /^[A-Za-z0-9]{20}$/;
+  const generatedIds = new Set<string>();
+
+  for (let i = 0; i < 50; i++) {
+    const id = autoId();
+    assert.equal(id.length, 20);
+    assert.ok(idPattern.test(id), `Admin auto ID '${id}' must be alphanumeric`);
+    generatedIds.add(id);
+  }
+  assert.equal(generatedIds.size, 50);
+
+  const db = admin.firestore();
+  const autoDocRef = db.collection('movies').doc();
+  assert.equal(autoDocRef.id.length, 20);
+  assert.ok(idPattern.test(autoDocRef.id), `Admin doc auto ID '${autoDocRef.id}' must be 20-char alphanumeric`);
+  assert.equal(autoDocRef.path, `movies/${autoDocRef.id}`);
+});

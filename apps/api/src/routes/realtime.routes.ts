@@ -27,12 +27,19 @@ export const realtimeRoutes: FastifyPluginAsync = async (server: FastifyInstance
             try {
               const { CredentialService } = await import('../services/credential.service.js');
               const validSecret = await CredentialService.validateCredential(msg.apiKey);
-              if (!validSecret.valid || !validSecret.credential) {
+              if (validSecret.valid && validSecret.credential) {
+                client.projectId = validSecret.credential.projectId;
+                client.apiKey = msg.apiKey;
+                ws.send(JSON.stringify({ type: 'auth_success', projectId: client.projectId }));
+              } else if (typeof msg.apiKey === 'string' && msg.apiKey.startsWith('pk_live_') && msg.projectId) {
+                const { ProjectService } = await import('../services/project.service.js');
+                const resolved = await ProjectService.resolveProjectId(msg.projectId);
+                client.projectId = resolved;
+                client.apiKey = msg.apiKey;
+                ws.send(JSON.stringify({ type: 'auth_success', projectId: resolved }));
+              } else {
                 throw new Error(validSecret.error || 'Invalid API key');
               }
-              client.projectId = validSecret.credential.projectId;
-              client.apiKey = msg.apiKey;
-              ws.send(JSON.stringify({ type: 'auth_success', projectId: client.projectId }));
             } catch (err) {
               ws.send(JSON.stringify({ type: 'auth_error', message: (err as Error).message }));
             }

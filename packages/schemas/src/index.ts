@@ -107,7 +107,7 @@ export const ExecuteQuerySchema = z.object({
   collectionPath: z.string().min(1).max(512),
   filters: z.array(QueryFilterSchema).default([]),
   orderBy: z.array(QueryOrderBySchema).default([]),
-  limit: z.number().int().min(1).max(500).default(50),
+  limit: z.number().int().min(1).max(5000).default(1000),
   startAfter: z.string().optional(),
 });
 
