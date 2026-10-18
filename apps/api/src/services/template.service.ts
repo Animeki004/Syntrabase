@@ -18,7 +18,7 @@ export class TemplateService {
   ): { subject: string; body: string; senderName: string; fromEmail: string; replyTo: string } {
     const appName = variables.appName || 'Syntrabase App';
     const displayName = variables.displayName || 'Valued User';
-    const link = variables.link || 'https://syntrabase.internal/auth/action';
+    const link = variables.link || '#';
     const email = variables.email || '';
 
     let subject = template.subject

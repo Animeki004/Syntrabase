@@ -238,7 +238,7 @@ export default function SocDefensePage() {
           <Badge variant="outline">RFC-Compliant Sandboxing</Badge>
         </CardHeader>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+        <div className="grid-4">
           {/* Level 0 */}
           <div
             style={{
@@ -355,7 +355,7 @@ export default function SocDefensePage() {
           </div>
         </CardHeader>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+        <div className="grid-4">
           <div
             style={{
               padding: '16px',

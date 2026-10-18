@@ -78,9 +78,38 @@ export class BrandingService {
   public static async updateBranding(updates: Partial<PlatformBranding>): Promise<PlatformBranding> {
     const current = await this.getBranding();
 
+    // Security validation against script injection, malicious schemes, and weaponized SVGs
+    const validateImageUrl = (url?: string, fieldName: string = 'image') => {
+      if (!url) return;
+      const trimmed = url.trim();
+      const lower = trimmed.toLowerCase();
+      if (lower.startsWith('javascript:') || lower.startsWith('vbscript:') || lower.startsWith('data:text/html')) {
+        throw new Error(`Security validation failed: Prohibited URI scheme for ${fieldName}`);
+      }
+      if (lower.startsWith('data:image/svg+xml')) {
+        const rawContent = lower.includes('base64,')
+          ? Buffer.from(trimmed.split('base64,')[1] || '', 'base64').toString('utf8')
+          : decodeURIComponent(trimmed);
+        if (/<script|onload|onerror|onclick|xlink:href=["']javascript/i.test(rawContent)) {
+          throw new Error(`Security validation failed: Embedded scripts in SVG ${fieldName} are prohibited`);
+        }
+      }
+    };
+
+    validateImageUrl(updates.logoUrl, 'Platform Logo');
+    validateImageUrl(updates.faviconUrl, 'Favicon');
+    validateImageUrl(updates.ogImageUrl, 'OpenGraph Banner');
+
     const merged: PlatformBranding = {
       ...current,
       ...updates,
+      platformName: (updates.platformName || current.platformName || 'Syntrabase').slice(0, 100),
+      tagline: (updates.tagline ?? current.tagline ?? '').slice(0, 200),
+      metaTitle: (updates.metaTitle || current.metaTitle || 'Syntrabase').slice(0, 120),
+      metaDescription: (updates.metaDescription ?? current.metaDescription ?? '').slice(0, 500),
+      metaKeywords: (updates.metaKeywords ?? current.metaKeywords ?? '').slice(0, 500),
+      contactEmail: (updates.contactEmail ?? current.contactEmail ?? '').slice(0, 120),
+      copyrightText: (updates.copyrightText ?? current.copyrightText ?? '').slice(0, 200),
       updatedAt: new Date().toISOString(),
     };
 

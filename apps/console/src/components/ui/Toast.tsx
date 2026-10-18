@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { CheckCircle2, AlertCircle, Info, AlertTriangle, X } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -10,6 +10,7 @@ interface ToastMessage {
   type: ToastType;
   message: string;
   title?: string;
+  isExiting?: boolean;
 }
 
 interface ToastContextType {
@@ -32,21 +33,52 @@ const ToastContext = createContext<ToastContextType>({
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const timersRef = useRef<Map<string, { dismissTimer: NodeJS.Timeout; removeTimer: NodeJS.Timeout }>>(new Map());
 
-  const removeToast = useCallback((id: string) => {
+  const removeToastImmediate = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+    const timers = timersRef.current.get(id);
+    if (timers) {
+      clearTimeout(timers.dismissTimer);
+      clearTimeout(timers.removeTimer);
+      timersRef.current.delete(id);
+    }
   }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, isExiting: true } : t))
+    );
+    const timers = timersRef.current.get(id);
+    if (timers) {
+      clearTimeout(timers.dismissTimer);
+      clearTimeout(timers.removeTimer);
+    }
+    const removeTimer = setTimeout(() => {
+      removeToastImmediate(id);
+    }, 320);
+    timersRef.current.set(id, {
+      dismissTimer: setTimeout(() => {}, 0),
+      removeTimer,
+    });
+  }, [removeToastImmediate]);
 
   const addToast = useCallback((message: string, type: ToastType = 'info', title?: string) => {
     const id = `toast_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const newToast: ToastMessage = { id, type, message, title };
+    const newToast: ToastMessage = { id, type, message, title, isExiting: false };
 
     setToasts((prev) => [...prev, newToast]);
 
-    setTimeout(() => {
-      removeToast(id);
-    }, 4500);
-  }, [removeToast]);
+    const dismissTimer = setTimeout(() => {
+      dismissToast(id);
+    }, 4200);
+
+    const removeTimer = setTimeout(() => {
+      removeToastImmediate(id);
+    }, 4550);
+
+    timersRef.current.set(id, { dismissTimer, removeTimer });
+  }, [dismissToast, removeToastImmediate]);
 
   const value = {
     toast: addToast,
@@ -72,7 +104,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               : Info;
 
           return (
-            <div key={t.id} className={`toast-item toast-${t.type}`} role="alert">
+            <div
+              key={t.id}
+              className={`toast-item toast-${t.type} ${t.isExiting ? 'toast-exiting' : ''}`}
+              role="alert"
+            >
               <Icon size={18} className="toast-icon" />
               <div className="toast-content">
                 {t.title && <div className="toast-title">{t.title}</div>}
@@ -81,11 +117,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 className="toast-close"
-                onClick={() => removeToast(t.id)}
+                onClick={() => dismissToast(t.id)}
                 aria-label="Close notification"
               >
                 <X size={14} />
               </button>
+              <div className="toast-progress-track">
+                <div className="toast-progress-bar" />
+              </div>
             </div>
           );
         })}

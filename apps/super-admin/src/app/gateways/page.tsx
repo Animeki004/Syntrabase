@@ -281,8 +281,8 @@ export default function AuthGovernancePage() {
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+      {/* KPI Cards - Single Row Grid */}
+      <div className="grid-3" style={{ marginBottom: '24px' }}>
         <Card>
           <div style={{ padding: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

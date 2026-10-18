@@ -196,4 +196,43 @@ export class UrlUtil {
       name: senderRes.rows[0].display_name || 'Project Team',
     };
   }
+
+  /**
+   * Resolves the authoritative base URL for client email action links (verification, password reset).
+   * Priority:
+   * 1. Project's first configured authorizedDomain (e.g. https://myapp.com)
+   * 2. Environment variable CLIENT_URL / APP_URL
+   * 3. Fallback to developer console URL
+   */
+  public static async resolveProjectActionBaseUrl(projectId: string): Promise<string> {
+    try {
+      const res = await query<{ authorized_domains: any }>(
+        'SELECT authorized_domains FROM project_auth_configs WHERE project_id = $1',
+        [projectId]
+      );
+      if (res.rows.length > 0 && res.rows[0].authorized_domains) {
+        let domains = res.rows[0].authorized_domains;
+        if (typeof domains === 'string') {
+          try { domains = JSON.parse(domains); } catch {}
+        }
+        if (Array.isArray(domains) && domains.length > 0) {
+          const first = String(domains[0]).trim().replace(/\/$/, '');
+          if (first) {
+            return first.startsWith('http://') || first.startsWith('https://')
+              ? first
+              : `https://${first}`;
+          }
+        }
+      }
+    } catch {}
+
+    if (process.env.APP_URL) {
+      return process.env.APP_URL.replace(/\/$/, '');
+    }
+    if (process.env.CLIENT_URL) {
+      return process.env.CLIENT_URL.replace(/\/$/, '');
+    }
+
+    return UrlUtil.resolveConsoleUrl();
+  }
 }

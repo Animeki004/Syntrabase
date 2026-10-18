@@ -230,7 +230,7 @@ export class AuthConfigService {
           '{}'::jsonb, FALSE,
           '{"minLength": 8, "requireUppercase": false, "requireLowercase": false, "requireNumbers": false, "requireSymbols": false, "maxAgeDays": 0}'::jsonb,
           'link_same_email', 100,
-          '["localhost", "127.0.0.1"]'::jsonb,
+          '[]'::jsonb,
           '{"accessTokenTtlMinutes": 15, "refreshTokenTtlDays": 7, "singleSessionPerUser": false}'::jsonb,
           '{"enabled": false, "enforceForAdmins": false, "allowedFactors": ["totp"]}'::jsonb,
           TRUE,
@@ -272,7 +272,7 @@ export class AuthConfigService {
         },
         accountLinkingMode: 'link_same_email',
         signupQuotaPerWindow: 100,
-        authorizedDomains: ['localhost', '127.0.0.1'],
+        authorizedDomains: [],
         sessionPolicy: {
           accessTokenTtlMinutes: 15,
           refreshTokenTtlDays: 7,
@@ -853,7 +853,7 @@ export class AuthConfigService {
       },
       accountLinkingMode: row.account_linking_mode || 'link_same_email',
       signupQuotaPerWindow: row.signup_quota_per_window || 100,
-      authorizedDomains: row.authorized_domains || ['localhost', '127.0.0.1'],
+      authorizedDomains: Array.isArray(row.authorized_domains) ? row.authorized_domains : [],
       sessionPolicy: row.session_policy || {
         accessTokenTtlMinutes: 15,
         refreshTokenTtlDays: 7,

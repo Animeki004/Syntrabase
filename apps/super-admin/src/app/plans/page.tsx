@@ -271,8 +271,8 @@ export default function PlansManagementPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '40px' }}>
-      {/* Overview Stat Badges */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+      {/* Overview Stat Badges - Single Row Grid */}
+      <div className="grid-3" style={{ marginBottom: '24px' }}>
         <Card>
           <div style={{ padding: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

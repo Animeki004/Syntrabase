@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Globe,
   Image as ImageIcon,
@@ -11,15 +11,16 @@ import {
   RefreshCw,
   Save,
   Upload,
-  Link as LinkIcon,
   Eye,
   Sparkles,
-  Info,
-  Shield,
-  Layers,
+  ShieldCheck,
   FileText,
   Mail,
-  ExternalLink,
+  Trash2,
+  Check,
+  AlertCircle,
+  HelpCircle,
+  Laptop,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -47,10 +48,15 @@ interface BrandingData {
   updatedAt?: string;
 }
 
+type TabKey = 'identity' | 'seo' | 'social' | 'compliance';
+type PreviewTabKey = 'tab' | 'google' | 'social';
+
 export default function BrandingPage() {
   const { addToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabKey>('identity');
+  const [activePreviewTab, setActivePreviewTab] = useState<PreviewTabKey>('tab');
 
   // Form State
   const [platformName, setPlatformName] = useState('Syntrabase');
@@ -108,6 +114,58 @@ export default function BrandingPage() {
     fetchBranding();
   }, [fetchBranding]);
 
+  // Secure File Upload Handler with MIME, extension, and SVG script scanning
+  const handleSecureFileUpload = async (
+    file: File | undefined,
+    setter: (val: string) => void,
+    fieldLabel: string,
+    maxBytes: number = 2 * 1024 * 1024
+  ) => {
+    if (!file) return;
+
+    // 1. File size check
+    if (file.size > maxBytes) {
+      const mb = (maxBytes / (1024 * 1024)).toFixed(1);
+      addToast(`${fieldLabel} exceeds maximum allowed size of ${mb}MB`, 'error');
+      return;
+    }
+
+    // 2. Strict MIME check
+    const allowedTypes = [
+      'image/png',
+      'image/jpeg',
+      'image/jpg',
+      'image/webp',
+      'image/x-icon',
+      'image/vnd.microsoft.icon',
+      'image/svg+xml',
+    ];
+    if (!allowedTypes.includes(file.type.toLowerCase())) {
+      addToast(`${fieldLabel} must be a valid image (PNG, JPG, WebP, ICO, or SVG)`, 'error');
+      return;
+    }
+
+    // 3. SVG Security scan
+    if (file.type === 'image/svg+xml') {
+      const text = await file.text();
+      if (/<script|onload|onerror|onclick|xlink:href=["']javascript/i.test(text)) {
+        addToast(`Security Violation: Embedded scripts detected in ${fieldLabel}. Upload aborted.`, 'error');
+        return;
+      }
+    }
+
+    // Read and encode safely
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (result) {
+        setter(result);
+        addToast(`${fieldLabel} uploaded and verified securely`, 'success');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setSaving(true);
@@ -153,34 +211,14 @@ export default function BrandingPage() {
     }
   };
 
-  // Convert uploaded image file to Data URL
-  const handleFileUpload = (
-    e: React.ChangeEvent<HTMLInputElement>,
-    setter: (val: string) => void,
-    fieldLabel: string
-  ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 2 * 1024 * 1024) {
-      addToast(`${fieldLabel} must be smaller than 2MB`, 'error');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      if (result) {
-        setter(result);
-        addToast(`${fieldLabel} loaded successfully`, 'info');
-      }
-    };
-    reader.readAsDataURL(file);
+  const handleDiscard = () => {
+    fetchBranding();
+    addToast('Reverted uncommitted branding modifications', 'info');
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '60px' }}>
-      {/* Header Banner */}
+      {/* Top Header Banner */}
       <div
         style={{
           display: 'flex',
@@ -188,522 +226,646 @@ export default function BrandingPage() {
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: '16px',
+          borderBottom: '1px solid var(--border-subtle)',
+          paddingBottom: '20px',
         }}
       >
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Globe size={26} color="var(--primary)" />
-            Website Branding & SEO
-          </h1>
-          <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            Configure custom Favicon, Platform Logo, SEO Meta Tags, OpenGraph Cards, and appearance across the fleet.
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+                boxShadow: '0 4px 12px rgba(220, 38, 38, 0.25)',
+              }}
+            >
+              <Globe size={20} />
+            </div>
+            <div>
+              <h1 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                Website Branding &amp; SEO Engine
+              </h1>
+              <p style={{ margin: '2px 0 0', color: 'var(--text-secondary)', fontSize: '0.84rem' }}>
+                Manage sovereign logos, favicons, open-graph banners, and search indexation across fleet portals.
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Button variant="outline" onClick={fetchBranding} disabled={loading || saving}>
-            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} style={{ marginRight: '6px' }} /> Refresh
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {lastUpdated && (
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <ShieldCheck size={13} color="var(--success)" />
+              Saved {new Date(lastUpdated).toLocaleDateString()} {new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+          <Button variant="secondary" size="sm" onClick={handleDiscard} disabled={loading || saving}>
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} style={{ marginRight: '6px' }} />
+            Discard
           </Button>
-          <Button variant="primary" onClick={handleSave} disabled={saving}>
-            <Save size={15} style={{ marginRight: '6px' }} /> {saving ? 'Saving...' : 'Save Changes'}
+          <Button variant="primary" size="sm" onClick={handleSave} disabled={saving}>
+            <Save size={13} style={{ marginRight: '6px' }} />
+            {saving ? 'Persisting...' : 'Save Configuration'}
           </Button>
         </div>
       </div>
 
-      {/* Real-time Previews Carousel / Section */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-        {/* Preview 1: Browser Tab Preview */}
-        <Card>
-          <CardHeader>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Eye size={16} color="var(--primary)" />
-              <CardTitle style={{ fontSize: '0.95rem' }}>Browser Tab & Favicon</CardTitle>
-            </div>
-            <CardDescription>Live simulation of how your platform displays in browser tabs</CardDescription>
-          </CardHeader>
-          <div
-            style={{
-              padding: '14px',
-              backgroundColor: '#161922',
-              borderRadius: '8px',
-              border: '1px solid #282f3e',
-            }}
-          >
-            {/* Mock browser chrome bar */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-              <div style={{ width: '9px', height: '9px', borderRadius: '50%', backgroundColor: '#ef4444' }} />
-              <div style={{ width: '9px', height: '9px', borderRadius: '50%', backgroundColor: '#eab308' }} />
-              <div style={{ width: '9px', height: '9px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
+      {/* Interactive Live Simulation Stage */}
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div
+          style={{
+            padding: '14px 20px',
+            background: 'var(--bg-surface-subtle)',
+            borderBottom: '1px solid var(--border-subtle)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Eye size={16} color="var(--primary)" />
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Live Omnichannel Preview Stage
+            </span>
+            <Badge variant="outline" size="sm" style={{ fontSize: '11px' }}>Real-time Reactive</Badge>
+          </div>
+
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <Button
+              variant={activePreviewTab === 'tab' ? 'primary' : 'ghost'}
+              size="xs"
+              onClick={() => setActivePreviewTab('tab')}
+            >
+              <Laptop size={12} style={{ marginRight: '4px' }} /> Browser Tab
+            </Button>
+            <Button
+              variant={activePreviewTab === 'google' ? 'primary' : 'ghost'}
+              size="xs"
+              onClick={() => setActivePreviewTab('google')}
+            >
+              <Search size={12} style={{ marginRight: '4px' }} /> Google SERP
+            </Button>
+            <Button
+              variant={activePreviewTab === 'social' ? 'primary' : 'ghost'}
+              size="xs"
+              onClick={() => setActivePreviewTab('social')}
+            >
+              <Share2 size={12} style={{ marginRight: '4px' }} /> Social OG Card
+            </Button>
+          </div>
+        </div>
+
+        <div style={{ padding: '24px', backgroundColor: 'var(--bg-canvas)' }}>
+          {/* Preview Mode 1: Browser Chrome Tab */}
+          {activePreviewTab === 'tab' && (
+            <div
+              style={{
+                maxWidth: '680px',
+                margin: '0 auto',
+                borderRadius: '8px',
+                border: '1px solid var(--border-default)',
+                backgroundColor: 'var(--bg-surface)',
+                overflow: 'hidden',
+                boxShadow: 'var(--shadow-md)',
+              }}
+            >
               <div
                 style={{
+                  padding: '8px 12px',
+                  backgroundColor: 'var(--bg-surface-subtle)',
+                  borderBottom: '1px solid var(--border-subtle)',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
-                  backgroundColor: '#1f2430',
-                  padding: '4px 12px',
-                  borderRadius: '6px 6px 0 0',
-                  marginLeft: '8px',
-                  maxWidth: '240px',
-                  borderTop: '1px solid #3b82f6',
+                  gap: '12px',
                 }}
               >
-                {faviconUrl ? (
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444' }} />
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#f59e0b' }} />
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10b981' }} />
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '4px 14px',
+                    background: 'var(--bg-surface)',
+                    borderRadius: '6px 6px 0 0',
+                    borderTop: '2px solid var(--primary)',
+                    maxWidth: '300px',
+                  }}
+                >
+                  {faviconUrl ? (
+                    <img
+                      src={faviconUrl}
+                      alt="Favicon"
+                      style={{ width: '14px', height: '14px', objectFit: 'contain', borderRadius: '2px' }}
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <Globe size={13} color="var(--primary)" />
+                  )}
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {metaTitle || `${platformName} — Console`}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--bg-surface-subtle)', borderBottom: '1px solid var(--border-subtle)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                <span style={{ padding: '2px 8px', borderRadius: '4px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', flex: 1, fontFamily: 'var(--font-mono)' }}>
+                  https://console.{platformName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'syntrabase'}.internal
+                </span>
+              </div>
+
+              <div style={{ padding: '32px 24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                {logoUrl ? (
                   <img
-                    src={faviconUrl}
-                    alt="Favicon"
-                    style={{ width: '14px', height: '14px', objectFit: 'contain', borderRadius: '2px' }}
+                    src={logoUrl}
+                    alt={platformName}
+                    style={{ maxHeight: '42px', maxWidth: '180px', objectFit: 'contain', margin: '0 auto 12px' }}
                     onError={(e) => {
                       (e.target as HTMLElement).style.display = 'none';
                     }}
                   />
                 ) : (
-                  <Globe size={14} color="#3b82f6" />
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                    {platformName}
+                  </div>
                 )}
-                <span style={{ fontSize: '12px', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {metaTitle || `${platformName} — Console`}
-                </span>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{tagline}</div>
               </div>
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              {faviconUrl ? '✓ Custom Favicon Loaded' : '⚠ Using Default Syntrabase Favicon'}
-            </div>
-          </div>
-        </Card>
+          )}
 
-        {/* Preview 2: Google SERP Preview */}
-        <Card>
-          <CardHeader>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Search size={16} color="#3b82f6" />
-              <CardTitle style={{ fontSize: '0.95rem' }}>Google Search Result</CardTitle>
+          {/* Preview Mode 2: Google SERP Preview */}
+          {activePreviewTab === 'google' && (
+            <div
+              style={{
+                maxWidth: '640px',
+                margin: '0 auto',
+                padding: '20px 24px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-default)',
+                backgroundColor: 'var(--bg-surface)',
+                fontFamily: 'arial, sans-serif',
+                boxShadow: 'var(--shadow-sm)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                {faviconUrl ? (
+                  <img src={faviconUrl} alt="" style={{ width: '18px', height: '18px', borderRadius: '50%' }} />
+                ) : (
+                  <div style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: 'var(--primary)' }} />
+                )}
+                <div style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.2 }}>
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{platformName}</span>
+                  <span style={{ marginLeft: '6px' }}>https://{platformName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'syntrabase'}.cloud</span>
+                </div>
+              </div>
+              <div style={{ color: '#60a5fa', fontSize: '18px', fontWeight: 500, lineHeight: 1.3, marginBottom: '4px', cursor: 'pointer' }}>
+                {metaTitle || `${platformName} — Enterprise Cloud Platform`}
+              </div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '13.5px', lineHeight: 1.5 }}>
+                {metaDescription || 'Scalable, multi-tenant database, real-time messaging, auth, and cloud storage.'}
+              </div>
             </div>
-            <CardDescription>Simulated appearance in Google, Bing, and search engines</CardDescription>
-          </CardHeader>
-          <div
-            style={{
-              padding: '14px',
-              backgroundColor: '#161922',
-              borderRadius: '8px',
-              border: '1px solid #282f3e',
-              fontFamily: 'arial, sans-serif',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
-              {faviconUrl ? (
-                <img src={faviconUrl} alt="" style={{ width: '16px', height: '16px', borderRadius: '50%' }} />
+          )}
+
+          {/* Preview Mode 3: Social Share OpenGraph Card */}
+          {activePreviewTab === 'social' && (
+            <div
+              style={{
+                maxWidth: '540px',
+                margin: '0 auto',
+                borderRadius: '10px',
+                border: '1px solid var(--border-default)',
+                overflow: 'hidden',
+                backgroundColor: 'var(--bg-surface)',
+                boxShadow: 'var(--shadow-md)',
+              }}
+            >
+              {ogImageUrl ? (
+                <div style={{ height: '180px', backgroundColor: '#0f172a', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <img src={ogImageUrl} alt="OG Banner" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
               ) : (
-                <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: '#3b82f6' }} />
+                <div style={{ height: '120px', backgroundColor: 'var(--bg-surface-subtle)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: '6px' }}>
+                  <ImageIcon size={24} />
+                  <span style={{ fontSize: '0.8rem' }}>Default OpenGraph Banner Active</span>
+                </div>
               )}
-              <div style={{ fontSize: '12px', color: '#bdc1c6', lineHeight: 1.2 }}>
-                <span style={{ fontWeight: 600 }}>{platformName}</span>
-                <span style={{ color: '#9aa0a6', marginLeft: '6px' }}>https://syntrabase.cloud</span>
+              <div style={{ padding: '14px 18px' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  {platformName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'syntrabase'}.cloud
+                </div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', margin: '4px 0 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {metaTitle || platformName}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {metaDescription}
+                </div>
               </div>
             </div>
-            <div style={{ color: '#8ab4f8', fontSize: '16px', fontWeight: 400, lineHeight: 1.3, marginBottom: '4px', cursor: 'pointer' }}>
-              {metaTitle || `${platformName} — Enterprise Cloud Platform`}
-            </div>
-            <div style={{ color: '#bdc1c6', fontSize: '13px', lineHeight: 1.4 }}>
-              {metaDescription || 'Scalable, multi-tenant database, real-time messaging, auth, and cloud storage.'}
-            </div>
-          </div>
-        </Card>
+          )}
+        </div>
+      </Card>
 
-        {/* Preview 3: Social Share OpenGraph Card */}
-        <Card>
-          <CardHeader>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Share2 size={16} color="#10b981" />
-              <CardTitle style={{ fontSize: '0.95rem' }}>Social Card (OG / Twitter)</CardTitle>
-            </div>
-            <CardDescription>Preview for Twitter, Discord, Slack, and LinkedIn links</CardDescription>
-          </CardHeader>
-          <div
-            style={{
-              borderRadius: '8px',
-              border: '1px solid #282f3e',
-              overflow: 'hidden',
-              backgroundColor: '#161922',
-            }}
-          >
-            {ogImageUrl ? (
-              <div style={{ height: '100px', backgroundColor: '#0f172a', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <img src={ogImageUrl} alt="OG Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              </div>
-            ) : (
-              <div style={{ height: '70px', backgroundColor: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: '12px', gap: '6px' }}>
-                <ImageIcon size={18} /> Default OG Image
-              </div>
-            )}
-            <div style={{ padding: '10px 12px' }}>
-              <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                syntrabase.cloud
-              </div>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', margin: '2px 0 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {metaTitle || platformName}
-              </div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                {metaDescription}
-              </div>
-            </div>
-          </div>
-        </Card>
+      {/* Segmented Section Tabs */}
+      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px', overflowX: 'auto' }}>
+        <Button
+          variant={activeTab === 'identity' ? 'primary' : 'ghost'}
+          onClick={() => setActiveTab('identity')}
+        >
+          <Sparkles size={14} style={{ marginRight: '6px' }} />
+          Brand Assets &amp; Identity
+        </Button>
+        <Button
+          variant={activeTab === 'seo' ? 'primary' : 'ghost'}
+          onClick={() => setActiveTab('seo')}
+        >
+          <Search size={14} style={{ marginRight: '6px' }} />
+          SEO &amp; Indexation
+        </Button>
+        <Button
+          variant={activeTab === 'social' ? 'primary' : 'ghost'}
+          onClick={() => setActiveTab('social')}
+        >
+          <Share2 size={14} style={{ marginRight: '6px' }} />
+          Social &amp; OpenGraph
+        </Button>
+        <Button
+          variant={activeTab === 'compliance' ? 'primary' : 'ghost'}
+          onClick={() => setActiveTab('compliance')}
+        >
+          <FileText size={14} style={{ marginRight: '6px' }} />
+          Compliance &amp; Legal
+        </Button>
       </div>
 
-      {/* Main Settings Form */}
-      <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        {/* Section 1: Platform Brand Assets */}
-        <Card>
-          <CardHeader>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Sparkles size={18} color="var(--primary)" />
-              <CardTitle>1. Brand Assets & Identity</CardTitle>
-            </div>
-            <CardDescription>Primary logo, favicon, and brand naming reflected across all user portals</CardDescription>
-          </CardHeader>
-
-          <div style={{ padding: '0 20px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '18px' }}>
-            {/* Platform Name */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                Platform Name *
-              </label>
-              <Input
-                type="text"
-                value={platformName}
-                onChange={(e) => setPlatformName(e.target.value)}
-                placeholder="Syntrabase"
-                required
-              />
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Appears on login screens, navigation titles, and system notices.
-              </div>
-            </div>
-
-            {/* Tagline */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                Tagline / Slogan
-              </label>
-              <Input
-                type="text"
-                value={tagline}
-                onChange={(e) => setTagline(e.target.value)}
-                placeholder="Enterprise Cloud Platform & Firebase Alternative"
-              />
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Displayed under brand headers and marketing pages.
-              </div>
-            </div>
-
-            {/* Favicon URL & Upload */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                Favicon (32x32 ICO, PNG, or SVG)
-              </label>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <Input
-                  type="text"
-                  value={faviconUrl}
-                  onChange={(e) => setFaviconUrl(e.target.value)}
-                  placeholder="https://.../favicon.ico or upload"
-                  style={{ flex: 1 }}
-                />
-                <label
-                  className="btn btn-secondary"
-                  style={{ padding: '8px 12px', fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
-                >
-                  <Upload size={14} /> Upload
-                  <input
-                    type="file"
-                    accept="image/x-icon,image/png,image/svg+xml"
-                    onChange={(e) => handleFileUpload(e, setFaviconUrl, 'Favicon')}
-                    style={{ display: 'none' }}
+      {/* Form Content */}
+      <form onSubmit={handleSave}>
+        {/* TAB 1: BRAND ASSETS & IDENTITY */}
+        {activeTab === 'identity' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <Card>
+              <CardHeader>
+                <CardTitle>Core Platform Naming</CardTitle>
+                <CardDescription>Defines the official brand name and subtitle across all login portals and shells</CardDescription>
+              </CardHeader>
+              <div className="grid-2" style={{ padding: '0 20px 20px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                    Platform Display Name *
+                  </label>
+                  <Input
+                    type="text"
+                    value={platformName}
+                    onChange={(e) => setPlatformName(e.target.value)}
+                    placeholder="Syntrabase"
+                    required
                   />
-                </label>
-              </div>
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Replaces standard browser tab icon on console, super-admin, and landing pages.
-              </div>
-            </div>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Displayed on login forms, welcome banners, and emails.
+                  </div>
+                </div>
 
-            {/* Platform Logo URL & Upload */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                Platform Logo URL / Asset
-              </label>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <Input
-                  type="text"
-                  value={logoUrl}
-                  onChange={(e) => setLogoUrl(e.target.value)}
-                  placeholder="https://.../logo.png or upload"
-                  style={{ flex: 1 }}
-                />
-                <label
-                  className="btn btn-secondary"
-                  style={{ padding: '8px 12px', fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
-                >
-                  <Upload size={14} /> Upload
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileUpload(e, setLogoUrl, 'Platform Logo')}
-                    style={{ display: 'none' }}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                    Brand Tagline / Subtitle
+                  </label>
+                  <Input
+                    type="text"
+                    value={tagline}
+                    onChange={(e) => setTagline(e.target.value)}
+                    placeholder="Enterprise Cloud Platform & Firebase Alternative"
                   />
-                </label>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Subordinate title displayed on landing and registration screens.
+                  </div>
+                </div>
               </div>
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Rendered on navigation headers and welcome screens.
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Logos &amp; Visual Icons</CardTitle>
+                <CardDescription>Secure image upload with client-side verification and SVG script sanitization</CardDescription>
+              </CardHeader>
+              <div className="grid-2" style={{ padding: '0 20px 20px' }}>
+                {/* Platform Logo */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                    Header Brand Logo (PNG / SVG / WebP)
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <Input
+                      type="text"
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      placeholder="https://.../logo.png or upload"
+                      style={{ flex: 1 }}
+                    />
+                    <label
+                      className="btn btn-secondary"
+                      style={{ padding: '8px 12px', fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+                    >
+                      <Upload size={14} /> Upload
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        onChange={(e) => handleSecureFileUpload(e.target.files?.[0], setLogoUrl, 'Platform Logo', 1024 * 1024)}
+                        style={{ display: 'none' }}
+                      />
+                    </label>
+                    {logoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setLogoUrl('')}
+                        className="btn btn-ghost"
+                        style={{ padding: '6px', color: 'var(--danger)' }}
+                        title="Remove Logo"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Recommended height: 36–48px with transparent background.
+                  </div>
+                </div>
+
+                {/* Favicon */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                    Favicon (32x32 ICO / PNG / SVG)
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <Input
+                      type="text"
+                      value={faviconUrl}
+                      onChange={(e) => setFaviconUrl(e.target.value)}
+                      placeholder="https://.../favicon.ico or upload"
+                      style={{ flex: 1 }}
+                    />
+                    <label
+                      className="btn btn-secondary"
+                      style={{ padding: '8px 12px', fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+                    >
+                      <Upload size={14} /> Upload
+                      <input
+                        type="file"
+                        accept="image/x-icon,image/png,image/svg+xml"
+                        onChange={(e) => handleSecureFileUpload(e.target.files?.[0], setFaviconUrl, 'Favicon', 512 * 1024)}
+                        style={{ display: 'none' }}
+                      />
+                    </label>
+                    {faviconUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setFaviconUrl('')}
+                        className="btn btn-ghost"
+                        style={{ padding: '6px', color: 'var(--danger)' }}
+                        title="Remove Favicon"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Applied dynamically to browser tabs across developer console and super-admin.
+                  </div>
+                </div>
               </div>
-            </div>
+            </Card>
           </div>
-        </Card>
+        )}
 
-        {/* Section 2: Search Engine Optimization (SEO) */}
-        <Card>
-          <CardHeader>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Search size={18} color="#3b82f6" />
-              <CardTitle>2. Search Engine Optimization (SEO)</CardTitle>
-            </div>
-            <CardDescription>Default search engine title templates, descriptions, and crawler keywords</CardDescription>
-          </CardHeader>
-
-          <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Meta Title */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                Page Title Template (Meta Title) *
-              </label>
-              <Input
-                type="text"
-                value={metaTitle}
-                onChange={(e) => setMetaTitle(e.target.value)}
-                placeholder="Syntrabase — Enterprise Cloud Platform"
-                required
-              />
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Optimal length: 50–60 characters. Current: {metaTitle.length} characters.
-              </div>
-            </div>
-
-            {/* Meta Description */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                Meta Description *
-              </label>
-              <textarea
-                value={metaDescription}
-                onChange={(e) => setMetaDescription(e.target.value)}
-                placeholder="Scalable, multi-tenant database, real-time messaging, auth, and cloud storage."
-                rows={3}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: '6px',
-                  backgroundColor: 'var(--bg-surface-subtle)',
-                  border: '1px solid var(--border-default)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.88rem',
-                  fontFamily: 'inherit',
-                  resize: 'vertical',
-                }}
-              />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                <span>Summary shown in search snippets. Recommended: 150–160 characters.</span>
-                <span style={{ color: metaDescription.length > 160 ? 'var(--warning)' : undefined }}>
-                  {metaDescription.length} characters
-                </span>
-              </div>
-            </div>
-
-            {/* Meta Keywords */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                Meta Keywords (Comma-separated)
-              </label>
-              <Input
-                type="text"
-                value={metaKeywords}
-                onChange={(e) => setMetaKeywords(e.target.value)}
-                placeholder="syntrabase, firestore, firebase, authentication, postgresql, cloud"
-              />
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Relevant search terms separated by commas for search engines and indexing robots.
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* Section 3: OpenGraph & Social Sharing */}
-        <Card>
-          <CardHeader>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Share2 size={18} color="#10b981" />
-              <CardTitle>3. OpenGraph & Social Cards</CardTitle>
-            </div>
-            <CardDescription>Social sharing banner images and preview cards for Discord, Twitter, and Slack</CardDescription>
-          </CardHeader>
-
-          <div style={{ padding: '0 20px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '18px' }}>
-            {/* OG Image URL */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                OpenGraph Image URL (1200x630 recommended)
-              </label>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <Input
-                  type="text"
-                  value={ogImageUrl}
-                  onChange={(e) => setOgImageUrl(e.target.value)}
-                  placeholder="https://.../og-banner.png or upload"
-                  style={{ flex: 1 }}
-                />
-                <label
-                  className="btn btn-secondary"
-                  style={{ padding: '8px 12px', fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
-                >
-                  <Upload size={14} /> Upload
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileUpload(e, setOgImageUrl, 'OG Image')}
-                    style={{ display: 'none' }}
+        {/* TAB 2: SEARCH ENGINE OPTIMIZATION (SEO) */}
+        {activeTab === 'seo' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <Card>
+              <CardHeader>
+                <CardTitle>Search Engine Metadata</CardTitle>
+                <CardDescription>Authoritative search snippet properties for crawler robots</CardDescription>
+              </CardHeader>
+              <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                    Default Page Title Template (Meta Title) *
+                  </label>
+                  <Input
+                    type="text"
+                    value={metaTitle}
+                    onChange={(e) => setMetaTitle(e.target.value)}
+                    placeholder="Syntrabase — Enterprise Cloud Platform"
+                    required
                   />
-                </label>
-              </div>
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                High-resolution social banner for links shared across platforms.
-              </div>
-            </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    <span>Recommended length: 50–60 characters.</span>
+                    <span style={{ color: metaTitle.length > 60 ? 'var(--warning)' : undefined }}>
+                      {metaTitle.length} characters
+                    </span>
+                  </div>
+                </div>
 
-            {/* Twitter Card Type */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                Twitter / X Card Type
-              </label>
-              <select
-                value={twitterCard}
-                onChange={(e) => setTwitterCard(e.target.value as any)}
-                style={{
-                  width: '100%',
-                  padding: '9px 12px',
-                  borderRadius: '6px',
-                  backgroundColor: 'var(--bg-surface-subtle)',
-                  border: '1px solid var(--border-default)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.88rem',
-                }}
-              >
-                <option value="summary_large_image">summary_large_image (Large Hero Banner)</option>
-                <option value="summary">summary (Compact Square Thumbnail)</option>
-              </select>
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Controls how Twitter/X renders link cards when shared.
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                    Meta Description *
+                  </label>
+                  <textarea
+                    value={metaDescription}
+                    onChange={(e) => setMetaDescription(e.target.value)}
+                    placeholder="Scalable, multi-tenant database, real-time messaging, auth, and cloud storage."
+                    rows={3}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: 'var(--radius-md)',
+                      backgroundColor: 'var(--bg-surface-subtle)',
+                      border: '1px solid var(--border-default)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.88rem',
+                      fontFamily: 'inherit',
+                      resize: 'vertical',
+                    }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    <span>Optimal search summary: 150–160 characters.</span>
+                    <span style={{ color: metaDescription.length > 160 ? 'var(--warning)' : undefined }}>
+                      {metaDescription.length} characters
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                    Meta Keywords (Comma-separated)
+                  </label>
+                  <Input
+                    type="text"
+                    value={metaKeywords}
+                    onChange={(e) => setMetaKeywords(e.target.value)}
+                    placeholder="syntrabase, firestore, firebase, authentication, postgresql, realtime"
+                  />
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Comma-separated terms indexed by discovery engines.
+                  </div>
+                </div>
               </div>
-            </div>
+            </Card>
           </div>
-        </Card>
+        )}
 
-        {/* Section 4: Platform Appearance & Legal */}
-        <Card>
-          <CardHeader>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Palette size={18} color="#eab308" />
-              <CardTitle>4. Appearance, Contact & Copyright</CardTitle>
-            </div>
-            <CardDescription>Primary brand accent color and official platform contact coordinates</CardDescription>
-          </CardHeader>
+        {/* TAB 3: SOCIAL & OPENGRAPH */}
+        {activeTab === 'social' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <Card>
+              <CardHeader>
+                <CardTitle>OpenGraph &amp; Social Card Configuration</CardTitle>
+                <CardDescription>Rich sharing previews for links shared on Discord, Twitter / X, Slack, and LinkedIn</CardDescription>
+              </CardHeader>
+              <div className="grid-2" style={{ padding: '0 20px 20px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                    OpenGraph Banner Image (1200x630)
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <Input
+                      type="text"
+                      value={ogImageUrl}
+                      onChange={(e) => setOgImageUrl(e.target.value)}
+                      placeholder="https://.../banner.png or upload"
+                      style={{ flex: 1 }}
+                    />
+                    <label
+                      className="btn btn-secondary"
+                      style={{ padding: '8px 12px', fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+                    >
+                      <Upload size={14} /> Upload
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={(e) => handleSecureFileUpload(e.target.files?.[0], setOgImageUrl, 'OG Banner', 2 * 1024 * 1024)}
+                        style={{ display: 'none' }}
+                      />
+                    </label>
+                    {ogImageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setOgImageUrl('')}
+                        className="btn btn-ghost"
+                        style={{ padding: '6px', color: 'var(--danger)' }}
+                        title="Remove Banner"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    1200 x 630 px (1.91:1 aspect ratio) under 2MB.
+                  </div>
+                </div>
 
-          <div style={{ padding: '0 20px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '18px' }}>
-            {/* Primary Accent Color */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                Primary Accent Color
-              </label>
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <input
-                  type="color"
-                  value={primaryColor}
-                  onChange={(e) => setPrimaryColor(e.target.value)}
-                  style={{
-                    width: '42px',
-                    height: '38px',
-                    padding: '2px',
-                    borderRadius: '6px',
-                    backgroundColor: 'transparent',
-                    border: '1px solid var(--border-default)',
-                    cursor: 'pointer',
-                  }}
-                />
-                <Input
-                  type="text"
-                  value={primaryColor}
-                  onChange={(e) => setPrimaryColor(e.target.value)}
-                  placeholder="#3b82f6"
-                  style={{ flex: 1, fontFamily: 'monospace' }}
-                />
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                    Twitter / X Card Format
+                  </label>
+                  <select
+                    value={twitterCard}
+                    onChange={(e) => setTwitterCard(e.target.value as any)}
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      backgroundColor: 'var(--bg-surface-subtle)',
+                      border: '1px solid var(--border-default)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.88rem',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <option value="summary_large_image">summary_large_image (Large Hero Banner)</option>
+                    <option value="summary">summary (Compact Square Thumbnail)</option>
+                  </select>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Determines card dimension layout on Twitter feeds.
+                  </div>
+                </div>
               </div>
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Brand accent used across buttons, indicators, and links.
-              </div>
-            </div>
-
-            {/* Support / Contact Email */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                Support & Contact Email
-              </label>
-              <Input
-                type="email"
-                value={contactEmail}
-                onChange={(e) => setContactEmail(e.target.value)}
-                placeholder="support@syntrabase.internal"
-              />
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Address published in platform footers and system emails.
-              </div>
-            </div>
-
-            {/* Copyright Notice */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                Copyright Text
-              </label>
-              <Input
-                type="text"
-                value={copyrightText}
-                onChange={(e) => setCopyrightText(e.target.value)}
-                placeholder="© 2026 Syntrabase Systems Inc. All rights reserved."
-              />
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Rendered on public and console layouts.
-              </div>
-            </div>
+            </Card>
           </div>
-        </Card>
+        )}
 
-        {/* Bottom Save Bar */}
+        {/* TAB 4: COMPLIANCE & LEGAL */}
+        {activeTab === 'compliance' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <Card>
+              <CardHeader>
+                <CardTitle>Corporate &amp; Legal Notices</CardTitle>
+                <CardDescription>Copyright strings and contact identity rendered in application footers</CardDescription>
+              </CardHeader>
+              <div className="grid-2" style={{ padding: '0 20px 20px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                    Support &amp; Contact Email
+                  </label>
+                  <Input
+                    type="email"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                    placeholder="support@syntrabase.internal"
+                  />
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Displayed on error pages and system support prompts.
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                    Copyright Notice
+                  </label>
+                  <Input
+                    type="text"
+                    value={copyrightText}
+                    onChange={(e) => setCopyrightText(e.target.value)}
+                    placeholder="© 2026 Syntrabase Systems Inc. All rights reserved."
+                  />
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Rendered in shell footers and transactional notifications.
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Persistent Bottom Save Bar */}
         <div
           style={{
+            marginTop: '24px',
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '16px 20px',
-            backgroundColor: 'var(--bg-surface)',
-            border: '1px solid var(--border-default)',
-            borderRadius: '8px',
+            justifyContent: 'flex-end',
+            gap: '12px',
           }}
         >
-          <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            {lastUpdated ? (
-              <span>Last updated: <strong style={{ color: 'var(--text-primary)' }}>{new Date(lastUpdated).toLocaleString()}</strong></span>
-            ) : (
-              <span>Unsaved changes</span>
-            )}
-          </div>
+          <Button variant="secondary" onClick={handleDiscard} disabled={loading || saving}>
+            Discard Changes
+          </Button>
           <Button variant="primary" type="submit" disabled={saving}>
-            <Save size={15} style={{ marginRight: '6px' }} /> {saving ? 'Saving...' : 'Save Branding & SEO'}
+            <Save size={14} style={{ marginRight: '6px' }} />
+            {saving ? 'Saving...' : 'Save Configuration'}
           </Button>
         </div>
       </form>

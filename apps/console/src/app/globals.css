@@ -270,18 +270,25 @@ code, kbd, pre {
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--text-secondary);
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
 }
 
 .nav-item:hover {
   background-color: var(--bg-surface-hover);
   color: var(--text-primary);
+  transform: translateX(2px);
+}
+
+.nav-item:active {
+  transform: scale(0.98);
 }
 
 .nav-item.active {
   background-color: var(--bg-surface-active);
   color: #ffffff;
   font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
 .nav-item-icon {
@@ -419,11 +426,20 @@ code, kbd, pre {
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
   user-select: none;
   text-decoration: none;
   box-sizing: border-box;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0) scale(0.98);
+  transition-duration: 0.05s;
 }
 
 .btn:focus-visible {
@@ -435,6 +451,7 @@ code, kbd, pre {
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
+  transform: none !important;
 }
 
 /* Button Sizes */
@@ -840,13 +857,13 @@ code, kbd, pre {
   position: fixed;
   inset: 0;
   background-color: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(3px);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
   padding: 16px;
-  animation: fadeIn 0.15s ease-out;
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .modal-container {
@@ -858,7 +875,7 @@ code, kbd, pre {
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  animation: scaleIn 0.15s ease-out;
+  animation: scaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
 }
 
@@ -921,32 +938,102 @@ code, kbd, pre {
   gap: 10px;
 }
 
-/* Toast Container */
+/* Toast Container - Top Right Corner */
 .toast-container {
   position: fixed;
-  bottom: 24px;
+  top: 24px;
   right: 24px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  z-index: 110;
+  gap: 10px;
+  z-index: 9999;
   pointer-events: none;
+  max-width: 420px;
+  width: calc(100vw - 48px);
 }
 
 .toast-item {
   pointer-events: auto;
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: 12px;
+  padding: 14px 16px 18px 16px;
   background-color: var(--bg-surface);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-lg, 10px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
   min-width: 280px;
   max-width: 420px;
   font-size: 0.85rem;
-  animation: slideIn 0.2s ease-out;
+  animation: toastSlideIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.toast-item.toast-exiting {
+  animation: toastSlideOut 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes toastSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateX(110%) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes toastSlideOut {
+  0% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    max-height: 140px;
+    margin-bottom: 0;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(120%) scale(0.92);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-bottom: -10px;
+  }
+}
+
+/* Right-to-Left Auto-Dismissing Progress Bar */
+.toast-progress-track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.toast-progress-bar {
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  animation: toastProgressBar 4.2s linear forwards;
+}
+
+.toast-item:hover .toast-progress-bar {
+  animation-play-state: paused;
+}
+
+@keyframes toastProgressBar {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
 }
 
 .toast-icon {
@@ -956,6 +1043,7 @@ code, kbd, pre {
 
 .toast-content {
   flex: 1;
+  min-width: 0;
 }
 
 .toast-title {
@@ -966,6 +1054,8 @@ code, kbd, pre {
 
 .toast-message {
   color: var(--text-secondary);
+  line-height: 1.45;
+  word-break: break-word;
 }
 
 .toast-close {
@@ -973,17 +1063,26 @@ code, kbd, pre {
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 2px;
-  margin-top: -2px;
+  padding: 4px;
+  margin-top: -4px;
+  margin-right: -4px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
 }
 .toast-close:hover {
   color: var(--text-primary);
+  background: var(--bg-surface-subtle);
 }
 
 .toast-success .toast-icon { color: var(--success); }
 .toast-error .toast-icon { color: var(--danger); }
 .toast-warning .toast-icon { color: var(--warning); }
 .toast-info .toast-icon { color: var(--info); }
+
+.toast-success .toast-progress-bar { background: var(--success); }
+.toast-error .toast-progress-bar { background: var(--danger); }
+.toast-warning .toast-progress-bar { background: var(--warning); }
+.toast-info .toast-progress-bar { background: var(--info); }
 
 /* Theme Toggle Button */
 .theme-toggle-btn {
@@ -1037,10 +1136,27 @@ code, kbd, pre {
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
 }
+.grid-5 {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+}
+
+.grid-2 > *,
+.grid-3 > *,
+.grid-4 > *,
+.grid-5 > * {
+  min-width: 0;
+}
+
+@media (max-width: 1200px) {
+  .grid-5 { grid-template-columns: repeat(3, 1fr); }
+}
 
 @media (max-width: 1024px) {
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
   .grid-3 { grid-template-columns: repeat(2, 1fr); }
+  .grid-5 { grid-template-columns: repeat(2, 1fr); }
   .page-container { padding: 20px 24px; }
 }
 
@@ -1053,7 +1169,7 @@ code, kbd, pre {
     border-right: none;
     border-bottom: 1px solid var(--border-subtle);
   }
-  .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; }
+  .grid-5, .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; }
   .page-header { flex-direction: column; align-items: stretch; }
   .page-container { padding: 16px; }
 }

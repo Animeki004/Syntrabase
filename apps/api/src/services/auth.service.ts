@@ -9,6 +9,7 @@ import { TemplateService } from './template.service.js';
 import { ProjectService } from './project.service.js';
 import { MfaService } from './mfa.service.js';
 import { WebAuthnService } from './webauthn.service.js';
+import { UrlUtil } from '../utils/url.util.js';
 import { AuthResponse, AppUser, Developer, TokenPayload } from '@syntrabase/shared-types';
 
 const unitTestMockAppUsers = new Map<string, any>();
@@ -411,9 +412,10 @@ export class AuthService {
     if (config.requireEmailVerification) {
       try {
         const { rawToken } = await EmailService.createActionToken(projectId, envId, appUser.id, 'VERIFY_EMAIL');
+        const actionBase = await UrlUtil.resolveProjectActionBaseUrl(projectId);
         await TemplateService.sendTemplatedActionEmail(projectId, email, 'verify_email', {
           displayName: displayName || 'User',
-          link: `https://${projectId}.syntrabase.internal/auth/action?mode=verifyEmail&oobCode=${rawToken}`,
+          link: `${actionBase}/auth/action?mode=verifyEmail&oobCode=${rawToken}`,
         });
       } catch {
         // Log failure but do not break account creation
@@ -684,9 +686,10 @@ export class AuthService {
     if (user && !user.email_verified) {
       this.resendCooldowns.set(cooldownKey, now);
       const { rawToken } = await EmailService.createActionToken(projectId, resolvedEnvId, user.id, 'VERIFY_EMAIL');
+      const actionBase = await UrlUtil.resolveProjectActionBaseUrl(projectId);
       await TemplateService.sendTemplatedActionEmail(projectId, cleanEmail, 'verify_email', {
         displayName: user.display_name || 'User',
-        link: `https://${projectId}.syntrabase.internal/auth/action?mode=verifyEmail&oobCode=${rawToken}`,
+        link: `${actionBase}/auth/action?mode=verifyEmail&oobCode=${rawToken}`,
       });
     }
 
@@ -733,9 +736,10 @@ export class AuthService {
 
     this.resendCooldowns.set(cooldownKey, now);
     const { rawToken } = await EmailService.createActionToken(projectId, resolvedEnvId, user.id, 'PASSWORD_RESET');
+    const actionBase = await UrlUtil.resolveProjectActionBaseUrl(projectId);
     await TemplateService.sendTemplatedActionEmail(projectId, cleanEmail, 'password_reset', {
       displayName: user.display_name || 'User',
-      link: `https://${projectId}.syntrabase.internal/auth/action?mode=resetPassword&oobCode=${rawToken}`,
+      link: `${actionBase}/auth/action?mode=resetPassword&oobCode=${rawToken}`,
     });
 
     return { success: true, message: 'Password reset link sent successfully.' };

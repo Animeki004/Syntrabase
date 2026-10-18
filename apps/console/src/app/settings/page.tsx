@@ -689,9 +689,9 @@ export default function SettingsPage() {
           </div>
         </CardHeader>
         <CardContent style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Quotas Grid */}
+          {/* Quotas Grid - Exactly 4 in a single row */}
           {isPlanLoading ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+            <div className="grid-4" style={{ marginBottom: '14px' }}>
               {[1, 2, 3, 4].map((i) => (
                 <div
                   key={i}
@@ -712,7 +712,7 @@ export default function SettingsPage() {
               ))}
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+            <div className="grid-4" style={{ marginBottom: '14px' }}>
               {/* DB Storage */}
               <div
                 style={{

@@ -1003,7 +1003,7 @@ export default function GlobalEmailControlPage() {
                   <button
                     onClick={() => {
                       setTestSendAccount(activeAccount);
-                      setTestRecipient(localStorage.getItem('super_admin_email') || 'admin@syntrabase.internal');
+                      setTestRecipient(localStorage.getItem('super_admin_email') || 'admin@syntrabase.com');
                     }}
                     title="Send Live Test Email to verify quota decrement"
                     style={{

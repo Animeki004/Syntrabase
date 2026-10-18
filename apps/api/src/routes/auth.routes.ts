@@ -800,10 +800,11 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
     }
 
     try {
+      const actionBase = await UrlUtil.resolveProjectActionBaseUrl(projectId);
       await TemplateService.sendTemplatedActionEmail(projectId, targetEmail, templateType, {
         appName: 'Syntrabase Test App',
         displayName: 'Test Developer',
-        link: `https://${projectId}.syntrabase.internal/auth/action?mode=test&oobCode=demo_code_123`,
+        link: `${actionBase}/auth/action?mode=test&oobCode=demo_code_123`,
       });
 
       return reply.send({ success: true, message: `Test email dispatched to ${targetEmail}` });
@@ -826,10 +827,11 @@ function checkResetRateLimit(key: string, limit = 3, windowMs = 60_000): boolean
     }
 
     try {
+      const actionBase = await UrlUtil.resolveProjectActionBaseUrl(projectId);
       await TemplateService.sendTemplatedActionEmail(projectId, targetEmail, type, {
         appName: 'Syntrabase Test App',
         displayName: 'Test Developer',
-        link: `https://${projectId}.syntrabase.internal/auth/action?mode=test&oobCode=demo_code_123`,
+        link: `${actionBase}/auth/action?mode=test&oobCode=demo_code_123`,
       });
 
       return reply.send({ success: true, message: `Test email dispatched to ${targetEmail}` });

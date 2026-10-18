@@ -143,8 +143,8 @@ export default function SystemHealthPage() {
         </Button>
       </div>
 
-      {/* KPI Cards Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+      {/* KPI Cards Grid - Exactly 4 in a single row */}
+      <div className="grid-4" style={{ marginBottom: '24px' }}>
         {/* PostgreSQL Engine Health */}
         <Card>
           <div style={{ padding: '20px' }}>

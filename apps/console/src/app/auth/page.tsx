@@ -181,7 +181,7 @@ export default function SyntrabaseAuthPage() {
   const [signupQuotaWindow, setSignupQuotaWindow] = useState(100);
 
   // Authorized Domains
-  const [authorizedDomains, setAuthorizedDomains] = useState(['localhost', '127.0.0.1', 'syntrabase.internal']);
+  const [authorizedDomains, setAuthorizedDomains] = useState<string[]>([]);
   const [newDomainInput, setNewDomainInput] = useState('');
   const [showAddDomainModal, setShowAddDomainModal] = useState(false);
 
@@ -916,12 +916,8 @@ export default function SyntrabaseAuthPage() {
         <div
           id="auth-telemetry-overview-cards"
           data-testid="auth-telemetry-overview-cards"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '12px',
-            marginBottom: '20px',
-          }}
+          className="grid-5"
+          style={{ marginBottom: '20px' }}
         >
           {[
             {
@@ -1740,7 +1736,7 @@ export default function SyntrabaseAuthPage() {
       {activeTab === 'usage' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Metric cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+          <div className="grid-5">
             {[
               { label: 'Total Users', value: usageTelemetry.totalUsers || users.length, icon: Users, color: 'var(--primary)' },
               { label: 'Active Users', value: usageTelemetry.activeUsers || users.filter((u) => !u.disabled).length, icon: CheckCircle2, color: 'var(--success)' },
@@ -2385,34 +2381,50 @@ export default function SyntrabaseAuthPage() {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {authorizedDomains.map((dom) => (
+                  {authorizedDomains.length === 0 ? (
                     <div
-                      key={dom}
                       style={{
-                        padding: '10px 14px',
+                        padding: '24px 16px',
                         borderRadius: 'var(--radius-md)',
                         background: 'var(--bg-surface-subtle)',
-                        border: '1px solid var(--border-default)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
+                        border: '1px dashed var(--border-default)',
+                        textAlign: 'center',
+                        color: 'var(--text-muted)',
                         fontSize: '0.84rem',
-                        fontFamily: 'var(--font-mono)',
-                        color: 'var(--text-primary)',
                       }}
                     >
-                      <span>{dom}</span>
-                      {dom !== 'localhost' && dom !== '127.0.0.1' && (
+                      No authorized domains configured. Click &ldquo;Add Domain&rdquo; above to register allowed web origins.
+                    </div>
+                  ) : (
+                    authorizedDomains.map((dom) => (
+                      <div
+                        key={dom}
+                        style={{
+                          padding: '10px 14px',
+                          borderRadius: 'var(--radius-md)',
+                          background: 'var(--bg-surface-subtle)',
+                          border: '1px solid var(--border-default)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          fontSize: '0.84rem',
+                          fontFamily: 'var(--font-mono)',
+                          color: 'var(--text-primary)',
+                        }}
+                      >
+                        <span>{dom}</span>
                         <button
                           onClick={() => handleRemoveDomain(dom)}
                           className="btn btn-ghost"
                           style={{ padding: '4px', color: 'var(--danger)' }}
+                          title={`Remove ${dom}`}
+                          aria-label={`Remove domain ${dom}`}
                         >
                           <Trash2 size={13} />
                         </button>
-                      )}
-                    </div>
-                  ))}
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             )}
