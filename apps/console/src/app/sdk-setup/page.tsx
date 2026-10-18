@@ -29,6 +29,7 @@ export default function SdkSetupPage() {
   const [copiedTab, setCopiedTab] = useState<string | null>(null);
   const [pingStatus, setPingStatus] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
   const [publishableKey, setPublishableKey] = useState<string>('');
+  const [environmentId, setEnvironmentId] = useState<string>('');
 
   React.useEffect(() => {
     const fetchCreds = async () => {
@@ -41,6 +42,7 @@ export default function SdkSetupPage() {
         if (res.ok) {
           const data = await res.json();
           if (data.publishableKey) setPublishableKey(data.publishableKey);
+          if (data.environmentId) setEnvironmentId(data.environmentId);
         }
       } catch {
         // fallback
@@ -50,11 +52,12 @@ export default function SdkSetupPage() {
   }, [projectId]);
 
   const activeKey = publishableKey || `pk_live_${projectId.replace(/-/g, '').slice(0, 16)}`;
+  const activeEnvId = environmentId || 'default';
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedTab(id);
-    addToast('Code snippet copied to clipboard', 'info');
+    addToast('Copied to clipboard', 'info');
     setTimeout(() => setCopiedTab(null), 2000);
   };
 
@@ -76,19 +79,26 @@ export default function SdkSetupPage() {
   };
 
   const apiHost = typeof window !== 'undefined' ? window.location.origin.replace(':3000', ':4000') : 'http://localhost:4000';
-  const wsHost = apiHost.replace('http://', 'ws://').replace('https://', 'wss://');
 
   const clientCode = `// 1. Install the Syntrabase client SDK
 // npm install @syntrabase/client-sdk
 
-import { initializeApp, getFirestore, collection, doc, getDoc, setDoc, onSnapshot } from '@syntrabase/client-sdk';
+import {
+  initializeApp,
+  getFirestore,
+  collection,
+  doc,
+  getDoc,
+  setDoc,
+  onSnapshot
+} from '@syntrabase/client-sdk';
 
-// 2. Initialize the client app with publishable credentials
+// 2. Initialize the client app with publishable credentials & environment
 const app = initializeApp({
   projectId: '${projectId}',
   apiKey: '${activeKey}',
-  apiEndpoint: '${apiHost}',
-  realtimeEndpoint: '${wsHost}/v1/realtime',
+  apiUrl: '${apiHost}',
+  environmentId: '${activeEnvId}',
 });
 
 // 3. Connect to Syntrabase document store
@@ -106,13 +116,13 @@ const unsubscribe = onSnapshot(doc(db, 'users', 'user_123'), (snapshot) => {
 });`;
 
   const reactCode = `import React, { useEffect, useState } from 'react';
-import { initializeApp, getFirestore, doc, onSnapshot } from '@syntrabase/client-sdk';
+import { initializeApp, getFirestore, collection, doc, onSnapshot } from '@syntrabase/client-sdk';
 
 const app = initializeApp({
   projectId: '${projectId}',
   apiKey: '${activeKey}',
-  apiEndpoint: '${apiHost}',
-  realtimeEndpoint: '${wsHost}/v1/realtime',
+  apiUrl: '${apiHost}',
+  environmentId: '${activeEnvId}',
 });
 const db = getFirestore(app);
 
@@ -134,13 +144,19 @@ export function UserProfile({ userId }: { userId: string }) {
 }`;
 
   const authCode = `// Syntrabase Authentication with Argon2id + Session Management
-import { initializeApp } from '@syntrabase/client-sdk';
-import { getAuth, signInWithEmailAndPassword, signInAnonymously, onAuthStateChanged } from '@syntrabase/client-sdk';
+import {
+  initializeApp,
+  getAuth,
+  signInWithEmailAndPassword,
+  signInAnonymously,
+  onAuthStateChanged
+} from '@syntrabase/client-sdk';
 
 const app = initializeApp({
   projectId: '${projectId}',
   apiKey: '${activeKey}',
-  apiEndpoint: '${apiHost}',
+  apiUrl: '${apiHost}',
+  environmentId: '${activeEnvId}',
 });
 
 const auth = getAuth(app);
@@ -156,6 +172,7 @@ console.log('Signed in as UID:', userCredential.user.uid);
 onAuthStateChanged(auth, (user) => {
   if (user) {
     console.log('Active session token:', user.accessToken);
+    console.log('Environment:', user.environmentId);
   } else {
     console.log('User signed out');
   }
@@ -164,17 +181,18 @@ onAuthStateChanged(auth, (user) => {
   const adminCode = `// 1. Install the privileged Admin SDK (Node.js backend only)
 // npm install @syntrabase/admin-sdk
 
-import { initializeAdminApp, getAdminFirestore, getAdminAuth } from '@syntrabase/admin-sdk';
+import admin from '@syntrabase/admin-sdk';
 
 // ⚠️ SECURITY POLICY: NEVER bundle the Admin SDK into client-side code!
-const adminApp = initializeAdminApp({
+admin.initializeApp({
   projectId: '${projectId}',
   secretKey: process.env.SYNTRABASE_SECRET_KEY!, // 'sk_live_...'
-  apiEndpoint: '${apiHost}',
+  apiUrl: '${apiHost}',
+  environmentId: '${activeEnvId}',
 });
 
-const adminDb = getAdminFirestore(adminApp);
-const adminAuth = getAdminAuth(adminApp);
+const adminDb = admin.firestore();
+const adminAuth = admin.auth();
 
 // Privileged operations bypass security rules
 await adminDb.collection('orders').doc('ord_9901').set({
@@ -249,7 +267,7 @@ await adminAuth.revokeUserSessions('usr_suspicious_1');`;
             <h1 style={{ fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>
               SDK Integration Guide
             </h1>
-            <Badge variant="info">TypeScript SDK v1.0.0</Badge>
+            <Badge variant="info">TypeScript SDK v1.2.6</Badge>
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 }}>
             Connect client applications or backend services using modular TypeScript SDKs.
@@ -283,6 +301,46 @@ await adminAuth.revokeUserSessions('usr_suspicious_1');`;
           <span>Connection verified: Fastify API Gateway and Realtime WebSocket endpoints are reachable.</span>
         </div>
       )}
+
+      {/* Environment Parameter Callout */}
+      <div
+        style={{
+          padding: '16px 20px',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-default)',
+          borderLeft: '4px solid var(--accent-emerald)',
+          borderRadius: 'var(--radius-md)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '14px',
+        }}
+      >
+        <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+          <Layers size={20} color="var(--accent-emerald)" style={{ flexShrink: 0, marginTop: '2px' }} />
+          <div>
+            <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span>Environment ID:</span>
+              <Badge variant="success" size="sm">Default (Live)</Badge>
+              <code style={{ fontSize: '0.8rem', color: 'var(--accent-emerald)', background: 'var(--bg-main)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
+                {activeEnvId}
+              </code>
+            </div>
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Syntrabase partitions documents, authentication users, and realtime subscriptions by <code>environmentId</code>. Including it in <code>initializeApp</code> ensures instant real-time synchronization.
+            </div>
+          </div>
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => copyToClipboard(activeEnvId, 'env')}
+          icon={copiedTab === 'env' ? <Check size={13} color="var(--accent-emerald)" /> : <Copy size={13} />}
+        >
+          {copiedTab === 'env' ? 'Copied' : 'Copy Environment ID'}
+        </Button>
+      </div>
 
       {/* Security Architecture Callout */}
       <div

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { query } from '../db/pool.js';
 import { config } from '../config.js';
@@ -1126,8 +1127,36 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
       [projectId]
     );
 
+    const envRes = await query<{
+      id: string;
+      name: string;
+      slug: string;
+    }>(
+      `SELECT id, name, slug
+       FROM environments
+       WHERE project_id = $1
+       ORDER BY is_default DESC, created_at ASC LIMIT 1`,
+      [projectId]
+    );
+
+    const defaultEnv = envRes.rows[0];
+    let defaultEnvironmentId = defaultEnv?.id;
+
+    if (!defaultEnvironmentId) {
+      defaultEnvironmentId = crypto.randomUUID();
+      await query(
+        `INSERT INTO environments (id, project_id, name, slug, is_default)
+         VALUES ($1, $2, 'Default Environment', 'default', true)
+         ON CONFLICT DO NOTHING`,
+        [defaultEnvironmentId, projectId]
+      );
+    }
+
     return reply.send({
       projectId,
+      environmentId: defaultEnvironmentId,
+      environmentName: defaultEnv?.name || 'Default Environment',
+      environmentSlug: defaultEnv?.slug || 'default',
       publishableKey: pubRes.rows[0]?.key_identifier || `pk_live_${CryptoUtil.generateSecureToken(16)}`,
       secretKeys: secRes.rows.map((k) => ({
         id: k.id,
@@ -1137,6 +1166,30 @@ export const projectRoutes: FastifyPluginAsync = async (server: FastifyInstance)
         lastUsedAt: k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'Never',
       })),
     });
+  });
+
+  // Get All Project Environments
+  server.get('/api/v1/projects/:projectId/environments', async (req, reply) => {
+    const devId = await requireDeveloperId(req);
+    const { projectId: rawId } = req.params as { projectId: string };
+    const projectId = await ProjectService.resolveProjectId(rawId);
+    await ProjectService.assertProjectAccess(devId, projectId);
+
+    const res = await query<{
+      id: string;
+      name: string;
+      slug: string;
+      is_default: boolean;
+      created_at: string;
+    }>(
+      `SELECT id, name, slug, is_default as "isDefault", created_at as "createdAt"
+       FROM environments
+       WHERE project_id = $1
+       ORDER BY is_default DESC, created_at ASC`,
+      [projectId]
+    );
+
+    return reply.send({ environments: res.rows });
   });
 
   // Rotate / Generate New Publishable API Key

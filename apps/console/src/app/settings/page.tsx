@@ -107,6 +107,9 @@ export default function SettingsPage() {
 
   const [copiedPublishable, setCopiedPublishable] = useState(false);
   const [copiedSecret, setCopiedSecret] = useState(false);
+  const [environmentId, setEnvironmentId] = useState<string>('');
+  const [copiedEnvironment, setCopiedEnvironment] = useState(false);
+  const [copiedProjectId, setCopiedProjectId] = useState(false);
 
   // Cloud Triggers State
   interface TriggerItem {
@@ -346,6 +349,7 @@ export default function SettingsPage() {
         if (res.ok) {
           const data = await res.json();
           if (data.publishableKey) setPublishableKey(data.publishableKey);
+          if (data.environmentId) setEnvironmentId(data.environmentId);
           if (Array.isArray(data.secretKeys)) setKeys(data.secretKeys);
         }
       } catch {
@@ -913,32 +917,100 @@ export default function SettingsPage() {
         <CardHeader>
           <div>
             <CardTitle>Project Identity</CardTitle>
-            <CardDescription>Public identification and client configuration tokens</CardDescription>
+            <CardDescription>Public identification, environment partition, and client configuration tokens</CardDescription>
           </div>
         </CardHeader>
-        <CardContent style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+        <CardContent style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
           <div>
             <label style={{ fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
-              PROJECT IDENTIFIER
+              PROJECT IDENTIFIER (UUID)
             </label>
-            <input
-              type="text"
-              readOnly
-              value={activeProject.slug || activeProject.id}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                background: 'var(--bg-main)',
-                border: '1px solid var(--border-color)',
-                borderRadius: 'var(--radius-md)',
-                color: 'var(--text-primary)',
-                fontSize: '0.82rem',
-                fontFamily: 'var(--font-mono)',
-              }}
-            />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                type="text"
+                readOnly
+                value={activeProject.id}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  background: 'var(--bg-main)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.82rem',
+                  fontFamily: 'var(--font-mono)',
+                }}
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  navigator.clipboard.writeText(activeProject.id);
+                  setCopiedProjectId(true);
+                  addToast('Copied project ID', 'info');
+                  setTimeout(() => setCopiedProjectId(false), 2000);
+                }}
+                icon={copiedProjectId ? <Check size={13} color="var(--accent-emerald)" /> : <Copy size={13} />}
+              >
+                {copiedProjectId ? 'Copied' : 'Copy'}
+              </Button>
+            </div>
           </div>
 
           <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <label style={{ fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                ENVIRONMENT ID
+              </label>
+              <Badge variant="success" size="sm">Default</Badge>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {!environmentId ? (
+                <div
+                  className="skeleton-box"
+                  style={{
+                    flex: 1,
+                    height: '36px',
+                    borderRadius: 'var(--radius-md)',
+                  }}
+                />
+              ) : (
+                <input
+                  type="text"
+                  readOnly
+                  value={environmentId}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    background: 'var(--bg-main)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-md)',
+                    color: 'var(--accent-emerald)',
+                    fontSize: '0.82rem',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                />
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!environmentId}
+                onClick={() => {
+                  if (environmentId) {
+                    navigator.clipboard.writeText(environmentId);
+                    setCopiedEnvironment(true);
+                    addToast('Copied environment ID', 'info');
+                    setTimeout(() => setCopiedEnvironment(false), 2000);
+                  }
+                }}
+                icon={copiedEnvironment ? <Check size={13} color="var(--accent-emerald)" /> : <Copy size={13} />}
+              >
+                {copiedEnvironment ? 'Copied' : 'Copy'}
+              </Button>
+            </div>
+          </div>
+
+          <div style={{ gridColumn: '1 / -1' }}>
             <label style={{ fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
               PUBLISHABLE CLIENT API KEY
             </label>
