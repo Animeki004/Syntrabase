@@ -1649,7 +1649,21 @@ function initSecurityAuditsController() {
     });
   }
 
-  // Initial Render of all 30 audit cards
+  // Dynamically synchronize tab badge counts from dataset
+  document.querySelectorAll('.sec-version-tab').forEach((tab) => {
+    const ver = tab.getAttribute('data-version');
+    const badge = tab.querySelector('.tab-count');
+    if (badge) {
+      if (ver === 'all') {
+        badge.textContent = SECURITY_AUDITS.length;
+      } else {
+        const count = SECURITY_AUDITS.filter((a) => a.version === ver).length;
+        badge.textContent = count;
+      }
+    }
+  });
+
+  // Initial Render of all audit cards
   renderAuditCards();
 }
 
